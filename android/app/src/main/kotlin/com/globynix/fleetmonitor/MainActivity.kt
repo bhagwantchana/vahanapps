@@ -1,4 +1,4 @@
-package com.example.fleet_monitor
+package com.globynix.fleetmonitor
 
 import io.flutter.embedding.android.FlutterActivity
 

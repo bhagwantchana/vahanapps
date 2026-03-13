@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "910749107065",
+    "project_id": "fleetmonitor360-58b46",
+    "storage_bucket": "fleetmonitor360-58b46.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:910749107065:android:d43578847b16c28d1125a8",
+        "android_client_info": {
+          "package_name": "com.globynix.fleetmonitor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfgT5REOlgh5ZDAe0XhZwL1uL7zcK4XrY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
