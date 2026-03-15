@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
+import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -53,7 +55,7 @@ class _ProfileWidgetState extends State<ProfileWidget>
       return const AssetImage('assets/images/default_avatar.png');
     }
     if (imageUrl.startsWith('http')) {
-      return NetworkImage(imageUrl);
+      return CachedNetworkImageProvider(imageUrl);
     } else {
       return FileImage(File(imageUrl));
     }
@@ -251,6 +253,16 @@ class _ProfileWidgetState extends State<ProfileWidget>
                         userData.firstName = value;
                       },
                     ),
+                    _buildAnimatedField(
+                      0,
+                      Icons.person_outline,
+                      "Last Name",
+                      userData.lastName!,
+                      isReadOnly: !_isEditing,
+                      onChanged: (value) {
+                        userData.lastName = value;
+                      },
+                    ),
                     const SizedBox(height: 20),
                     _buildAnimatedField(
                       1,
@@ -275,13 +287,8 @@ class _ProfileWidgetState extends State<ProfileWidget>
 
                     if (_isEditing) ...[
                       const SizedBox(height: 12),
-                      _buildSaveButton(
-                        userData.email,
-                        userData.firstName,
-                        _pickedImagePath,
-                      ),
+                      _buildSaveButton(userData, _pickedImagePath),
                     ],
-
                     const SizedBox(height: 24),
                   ],
                 ),
@@ -293,7 +300,7 @@ class _ProfileWidgetState extends State<ProfileWidget>
     );
   }
 
-  Widget _buildSaveButton(String? email, String? name, String? file) {
+  Widget _buildSaveButton(Data userData, String? file) {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -333,18 +340,16 @@ class _ProfileWidgetState extends State<ProfileWidget>
         child: ElevatedButton(
           onPressed: () async {
             if (mounted) {
-              debugPrint("Saving Profile Changes:");
-              debugPrint("Name: $name");
-              debugPrint("Email: $email");
-              debugPrint("Profile Image: $file");
-
               setState(() {
                 _isEditing = false;
                 _pickedImagePath = null;
               });
-              BlocProvider.of<ProfileCubit>(
-                context,
-              ).updateProfile(email: email, name: name, file: file);
+              BlocProvider.of<ProfileCubit>(context).updateProfile(
+                name: userData.firstName,
+                lastNam: userData.lastName,
+                email: userData.email,
+                file: file,
+              );
             }
           },
           style: ElevatedButton.styleFrom(
@@ -378,10 +383,8 @@ class _ProfileWidgetState extends State<ProfileWidget>
             height: 16,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(2),
-              image: const DecorationImage(
-                image: NetworkImage(
-                  'https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/1200px-Flag_of_India.svg.png',
-                ),
+              image: DecorationImage(
+                image: AssetImage(Assets.images.indianFlag.path),
                 fit: BoxFit.cover,
               ),
             ),

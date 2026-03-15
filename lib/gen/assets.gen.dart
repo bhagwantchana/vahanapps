@@ -14,6 +14,10 @@ import 'package:flutter/widgets.dart';
 class $AssetsImagesGen {
   const $AssetsImagesGen();
 
+  /// File path: assets/images/indian_flag.png
+  AssetGenImage get indianFlag =>
+      const AssetGenImage('assets/images/indian_flag.png');
+
   /// File path: assets/images/login_background.png
   AssetGenImage get loginBackground =>
       const AssetGenImage('assets/images/login_background.png');
@@ -22,7 +26,7 @@ class $AssetsImagesGen {
   AssetGenImage get map => const AssetGenImage('assets/images/map.png');
 
   /// List of all assets
-  List<AssetGenImage> get values => [loginBackground, map];
+  List<AssetGenImage> get values => [indianFlag, loginBackground, map];
 }
 
 class Assets {

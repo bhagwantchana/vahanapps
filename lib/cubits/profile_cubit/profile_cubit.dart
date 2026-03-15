@@ -1,3 +1,5 @@
+import 'package:fleet_monitor/constant/preferences.dart';
+import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
 import 'package:fleet_monitor/repositorys/profile_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -17,11 +19,20 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
-  void updateProfile({String? email, String? name, String? file}) async {
+  void updateProfile({String? name, lastNam, email, file}) async {
     emit(ProfileLoadingState());
     try {
-      final result = await _profileRepository.updateProfileData();
-      emit(ProfileLoggedInState(userProfileModel: result));
+      final result = await _profileRepository.updateProfileData(
+        name!,
+        lastNam!,
+        email!,
+        file,
+      );
+      await LocalStorage.setValue(
+        PreferencesKey.token,
+        result.data!.xAuthToken!,
+      );
+      await _initialize();
     } catch (ex) {
       emit(ProfileErrorState(ex.toString()));
     }

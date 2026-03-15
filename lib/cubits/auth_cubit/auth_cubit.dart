@@ -26,9 +26,8 @@ class AuthCubit extends Cubit<AuthState> {
     required AuthModel authModel,
   }) async {
     await LocalStorage.setValue(PreferencesKey.isLogin, isLogin);
-    await LocalStorage.setValue(PreferencesKey.authData, authModel.toString());
     await LocalStorage.setValue(
-      PreferencesKey.authData,
+      PreferencesKey.token,
       authModel.data!.xAuthToken!,
     );
     emit(AuthLoggedInState(isLogin));
