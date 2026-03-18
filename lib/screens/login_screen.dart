@@ -107,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         alignment: Alignment.center,
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: AppColors.accent,
+                          color: AppColors.primary,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: CustomText(

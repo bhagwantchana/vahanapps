@@ -1,87 +1,83 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  static const Color primary = Color(0xFF1E293B);
-  static const Color secondary = Color(0xFF64748B);
-  static const Color accent = Color(0xFF3B82F6);
-  static const Color scaffoldBackground = Color(0xFFF8FAFC);
-  static const Color cardBackground = Color(0xFFFFFFFF);
+  // Primary & Secondary
+  static const Color primary = Color(0xFF0A3D62);
+  static const Color secondary = Color(0xFF2ECC71);
+  static const Color alert = Color(0xFFF39C12);
+  
+  // Backgrounds
+  static const Color bgLight = Color(0xFFF5F5F7);
+  static const Color bgDark = Color(0xFF0B0E11);
+  
+  // Neutral
   static const Color white = Color(0xFFFFFFFF);
   static const Color grey = Color(0xFF94A3B8);
   static const Color lightGrey = Color(0xFFE2E8F0);
+  static const Color darkGrey = Color(0xFF1E293B);
 
-  static const Color green = Color(0xFF22C55E);
-  static const Color orange = Color(0xFFF59E0B);
-  static const Color red = Color(0xFFEF4444);
-
-  static const Color greenLight = Color(0xFFDCFCE7);
-  static const Color orangeLight = Color(0xFFFEF3C7);
-  static const Color redLight = Color(0xFFFEE2E2);
-  static const Color blueLight = Color(0xFFDBEAFE);
+  // Status Colors
+  static const Color moving = Color(0xFF2ECC71);
+  static const Color idle = Color(0xFFF39C12);
+  static const Color offline = Color(0xFFE74C3C);
 }
 
 class Themes {
-  static ThemeData defaultTheme = ThemeData(
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: AppColors.scaffoldBackground,
-    primaryColor: AppColors.accent,
+  static ThemeData lightTheme = _buildTheme(Brightness.light);
+  static ThemeData darkTheme = _buildTheme(Brightness.dark);
 
-    appBarTheme: AppBarTheme(
-      backgroundColor: AppColors.scaffoldBackground,
-      elevation: 0,
-      iconTheme: const IconThemeData(color: AppColors.primary),
-      titleTextStyle: const TextStyle(
-        color: AppColors.primary,
-        fontSize: 18,
-        fontWeight: FontWeight.w500,
+  static ThemeData _buildTheme(Brightness brightness) {
+    final isDark = brightness == Brightness.dark;
+    final bgColor = isDark ? AppColors.bgDark : AppColors.bgLight;
+    final cardColor = isDark ? AppColors.darkGrey : AppColors.white;
+    
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      scaffoldBackgroundColor: bgColor,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        brightness: brightness,
+        primary: AppColors.primary,
+        secondary: AppColors.secondary,
+        error: AppColors.alert,
+        surface: cardColor,
       ),
-    ),
-
-    colorScheme: const ColorScheme.light(
-      primary: AppColors.accent,
-      secondary: AppColors.accent,
-      surface: AppColors.cardBackground,
-    ),
-
-    cardTheme: CardThemeData(
-      color: AppColors.cardBackground,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: AppColors.lightGrey, width: 1),
+      textTheme: GoogleFonts.interTextTheme(
+        isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
       ),
-    ),
-  );
-}
+      appBarTheme: AppBarTheme(
+        backgroundColor: bgColor,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+          color: isDark ? AppColors.white : AppColors.primary,
+        ),
+        iconTheme: IconThemeData(
+          color: isDark ? AppColors.white : AppColors.primary,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: cardColor,
+        elevation: 2,
+        shadowColor: Colors.black12,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: cardColor,
+        indicatorColor: AppColors.primary.withOpacity(0.1),
+        labelTextStyle: WidgetStateProperty.all(
+          const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
 
-class TextStyles {
-  static const TextStyle heading1 = TextStyle(
-    fontWeight: FontWeight.bold,
-    color: AppColors.primary,
-    fontSize: 48,
-  );
-
-  static const TextStyle heading2 = TextStyle(
-    fontWeight: FontWeight.bold,
-    color: AppColors.primary,
-    fontSize: 32,
-  );
-
-  static const TextStyle heading3 = TextStyle(
-    fontWeight: FontWeight.bold,
-    color: AppColors.primary,
-    fontSize: 24,
-  );
-
-  static const TextStyle body1 = TextStyle(
-    fontWeight: FontWeight.normal,
-    color: AppColors.primary,
-    fontSize: 18,
-  );
-
-  static const TextStyle body2 = TextStyle(
-    fontWeight: FontWeight.normal,
-    color: AppColors.primary,
-    fontSize: 16,
-  );
+  // Keeping defaultTheme for backwards compatibility if needed, but we'll use light/dark
+  static ThemeData get defaultTheme => lightTheme;
 }

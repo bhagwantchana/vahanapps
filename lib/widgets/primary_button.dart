@@ -21,7 +21,7 @@ class PrimaryButton extends StatelessWidget {
       width: MediaQuery.of(context).size.width,
       child: CupertinoButton(
         onPressed: onPressed,
-        color: color ?? AppColors.accent,
+        color: color ?? AppColors.primary,
         child: Text(text, style: style),
       ),
     );

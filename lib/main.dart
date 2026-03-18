@@ -1,4 +1,6 @@
 import 'dart:developer';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:fleet_monitor/firebase_options.dart';
 import 'package:fleet_monitor/services/array_providers.dart';
 import 'package:fleet_monitor/routes.dart';
 import 'package:fleet_monitor/screens/splash_screen.dart';
@@ -8,6 +10,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   // LocalStorage.clearAll();
   Bloc.observer = MyBlocObserver();
   runApp(const MyApp());
@@ -21,7 +26,9 @@ class MyApp extends StatelessWidget {
       providers: ArrayProviders.providers,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: Themes.defaultTheme,
+        theme: Themes.lightTheme,
+        darkTheme: Themes.darkTheme,
+        themeMode: ThemeMode.system, // Supports both light and dark mode
         onGenerateRoute: Routes.onGenerateRoute,
         initialRoute: SplashScreen.routeName,
       ),
