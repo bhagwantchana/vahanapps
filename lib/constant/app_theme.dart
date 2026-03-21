@@ -6,11 +6,11 @@ class AppColors {
   static const Color primary = Color(0xFF0A3D62);
   static const Color secondary = Color(0xFF2ECC71);
   static const Color alert = Color(0xFFF39C12);
-  
+
   // Backgrounds
   static const Color bgLight = Color(0xFFF5F5F7);
   static const Color bgDark = Color(0xFF0B0E11);
-  
+
   // Neutral
   static const Color white = Color(0xFFFFFFFF);
   static const Color grey = Color(0xFF94A3B8);
@@ -21,63 +21,76 @@ class AppColors {
   static const Color moving = Color(0xFF2ECC71);
   static const Color idle = Color(0xFFF39C12);
   static const Color offline = Color(0xFFE74C3C);
+
+  static const Color accent = Color(0xFF3B82F6);
+  static const Color scaffoldBackground = Color(0xFFF8FAFC);
+  static const Color cardBackground = Color(0xFFFFFFFF);
+
+  static const Color green = Color(0xFF22C55E);
+  static const Color orange = Color(0xFFF59E0B);
+  static const Color red = Color(0xFFEF4444);
+
+  static const Color greenLight = Color(0xFFDCFCE7);
+  static const Color orangeLight = Color(0xFFFEF3C7);
+  static const Color redLight = Color(0xFFFEE2E2);
+  static const Color blueLight = Color(0xFFDBEAFE);
 }
 
-class Themes {
-  static ThemeData lightTheme = _buildTheme(Brightness.light);
-  static ThemeData darkTheme = _buildTheme(Brightness.dark);
+class AppTheme {
+  static const Color primaryBlue = Color(0xFF2D5C88);
+  static const Color primaryGreen = Color(0xFF7BC043);
+  static const Color background = Color(0xFFF5F7FA);
 
-  static ThemeData _buildTheme(Brightness brightness) {
-    final isDark = brightness == Brightness.dark;
-    final bgColor = isDark ? AppColors.bgDark : AppColors.bgLight;
-    final cardColor = isDark ? AppColors.darkGrey : AppColors.white;
-    
+  static ThemeData get lightTheme {
     return ThemeData(
-      useMaterial3: true,
-      brightness: brightness,
-      scaffoldBackgroundColor: bgColor,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primary,
-        brightness: brightness,
-        primary: AppColors.primary,
-        secondary: AppColors.secondary,
-        error: AppColors.alert,
-        surface: cardColor,
+      primaryColor: primaryBlue,
+      scaffoldBackgroundColor: background,
+      colorScheme: const ColorScheme.light(
+        primary: primaryBlue,
+        secondary: primaryGreen,
       ),
-      textTheme: GoogleFonts.interTextTheme(
-        isDark ? ThemeData.dark().textTheme : ThemeData.light().textTheme,
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: bgColor,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: isDark ? AppColors.white : AppColors.primary,
-        ),
-        iconTheme: IconThemeData(
-          color: isDark ? AppColors.white : AppColors.primary,
+      textTheme: GoogleFonts.interTextTheme(),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryGreen,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 2,
         ),
       ),
       cardTheme: CardThemeData(
-        color: cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 2,
         shadowColor: Colors.black12,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: primaryBlue, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
         ),
       ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: cardColor,
-        indicatorColor: AppColors.primary.withOpacity(0.1),
-        labelTextStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.white,
+        foregroundColor: primaryBlue,
+        elevation: 1,
+        shadowColor: Colors.black12,
+        centerTitle: true,
       ),
     );
   }
-
-  // Keeping defaultTheme for backwards compatibility if needed, but we'll use light/dark
-  static ThemeData get defaultTheme => lightTheme;
 }

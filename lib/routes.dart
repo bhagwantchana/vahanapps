@@ -1,5 +1,5 @@
 import 'package:fleet_monitor/providers/login_provider.dart';
-import 'package:fleet_monitor/screens/home_screen.dart';
+import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/screens/splash_screen.dart';
 import 'package:flutter/cupertino.dart';
@@ -15,13 +15,12 @@ class Routes {
             child: const LoginScreen(),
           ),
         );
-
       case SplashScreen.routeName:
         return CupertinoPageRoute(builder: (context) => const SplashScreen());
-
-      case HomeScreen.routeName:
-        return CupertinoPageRoute(builder: (context) => const HomeScreen());
-
+      case DashboardScreen.routeName:
+        return CupertinoPageRoute(
+          builder: (context) => const DashboardScreen(),
+        );
       default:
         return null;
     }

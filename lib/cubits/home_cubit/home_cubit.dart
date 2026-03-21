@@ -11,7 +11,7 @@ class HomeCubit extends Cubit<HomeState> {
     emit(HomeLoadingState());
     try {
       final result = await _homeRepository.vehicleListFetch();
-      emit(HomeLoggedInState(vechileListModel: result));
+      emit(HomeLoggedInState(dashboardModel: result));
     } catch (e) {
       emit(HomeErrorState(e.toString()));
     }

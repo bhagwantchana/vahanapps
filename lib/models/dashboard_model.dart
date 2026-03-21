@@ -1,30 +1,51 @@
-class VehicleListModel {
+class DashboardModel {
   int? flag;
-  List<Data>? data;
+  Data? data;
 
-  VehicleListModel({this.flag, this.data});
+  DashboardModel({this.flag, this.data});
 
-  VehicleListModel.fromJson(Map<String, dynamic> json) {
+  DashboardModel.fromJson(Map<String, dynamic> json) {
     flag = json['flag'];
-    if (json['data'] != null) {
-      data = <Data>[];
-      json['data'].forEach((v) {
-        data!.add(new Data.fromJson(v));
-      });
-    }
+    data = json['data'] != null ? new Data.fromJson(json['data']) : null;
   }
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = new Map<String, dynamic>();
     data['flag'] = this.flag;
     if (this.data != null) {
-      data['data'] = this.data!.map((v) => v.toJson()).toList();
+      data['data'] = this.data!.toJson();
     }
     return data;
   }
 }
 
 class Data {
+  List<VehicleList>? vehicleList;
+  String? mapsUrl;
+
+  Data({this.vehicleList, this.mapsUrl});
+
+  Data.fromJson(Map<String, dynamic> json) {
+    if (json['vehicleList'] != null) {
+      vehicleList = <VehicleList>[];
+      json['vehicleList'].forEach((v) {
+        vehicleList!.add(new VehicleList.fromJson(v));
+      });
+    }
+    mapsUrl = json['maps_url'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    if (this.vehicleList != null) {
+      data['vehicleList'] = this.vehicleList!.map((v) => v.toJson()).toList();
+    }
+    data['maps_url'] = this.mapsUrl;
+    return data;
+  }
+}
+
+class VehicleList {
   String? vRegistrationNo;
   String? vName;
   String? vModel;
@@ -42,7 +63,7 @@ class Data {
   String? vehicleIconUrl;
   String? trackingUrl;
 
-  Data({
+  VehicleList({
     this.vRegistrationNo,
     this.vName,
     this.vModel,
@@ -61,7 +82,7 @@ class Data {
     this.trackingUrl,
   });
 
-  Data.fromJson(Map<String, dynamic> json) {
+  VehicleList.fromJson(Map<String, dynamic> json) {
     vRegistrationNo = json['v_registration_no'];
     vName = json['v_name'];
     vModel = json['v_model'];

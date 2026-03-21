@@ -1,18 +1,18 @@
-import 'package:fleet_monitor/models/vechile_list_model.dart';
+import 'package:fleet_monitor/models/dashboard_model.dart';
 
 abstract class HomeState {
-  final VehicleListModel? vechileListModel;
-  HomeState({this.vechileListModel});
+  final DashboardModel? dashboardModel;
+  HomeState({this.dashboardModel});
 }
 
 class HomeInitialState extends HomeState {}
 
 class HomeLoadingState extends HomeState {
-  HomeLoadingState({super.vechileListModel});
+  HomeLoadingState({super.dashboardModel});
 }
 
 class HomeLoggedInState extends HomeState {
-  HomeLoggedInState({super.vechileListModel});
+  HomeLoggedInState({super.dashboardModel});
 }
 
 class HomeLoggedOutState extends HomeState {}

@@ -22,11 +22,23 @@ class $AssetsImagesGen {
   AssetGenImage get loginBackground =>
       const AssetGenImage('assets/images/login_background.png');
 
+  /// File path: assets/images/logo.png
+  AssetGenImage get logo => const AssetGenImage('assets/images/logo.png');
+
   /// File path: assets/images/map.png
   AssetGenImage get map => const AssetGenImage('assets/images/map.png');
 
+  /// File path: assets/images/mylogo.png
+  AssetGenImage get mylogo => const AssetGenImage('assets/images/mylogo.png');
+
   /// List of all assets
-  List<AssetGenImage> get values => [indianFlag, loginBackground, map];
+  List<AssetGenImage> get values => [
+    indianFlag,
+    loginBackground,
+    logo,
+    map,
+    mylogo,
+  ];
 }
 
 class Assets {

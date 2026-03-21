@@ -1,141 +1,222 @@
 import 'dart:async';
 import 'package:fleet_monitor/constant/app_theme.dart';
-import 'package:fleet_monitor/screens/home_screen.dart';
+import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-
-  static const String routeName = "splash";
-
+  static const String routeName = "splash_screen";
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
+class _SplashScreenState extends State<SplashScreen>
+    with TickerProviderStateMixin {
+  late AnimationController _carController;
+  late Animation<double> _carAnimation;
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _carController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(seconds: 2),
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    _carAnimation = Tween<double>(begin: -1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _carController, curve: Curves.easeOutCubic),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
     );
 
-    _controller.forward();
+    _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
 
-    Timer(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, HomeScreen.routeName);
-      }
+    _carController.forward().then((_) {
+      _pulseController.repeat(reverse: true);
+      Timer(const Duration(seconds: 2), () {
+        Navigator.of(context).pushReplacementNamed(LoginScreen.routeName);
+      });
     });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _carController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppColors.primary,
-              Color(0xFF041C2C), // Deeper navy
-            ],
-          ),
-        ),
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
+      backgroundColor: AppTheme.background,
+      body: Stack(
+        children: [
+          // Background grid pattern placeholder
+          Positioned.fill(child: CustomPaint(painter: GridPainter())),
+
+          Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo Section
-                Stack(
-                  alignment: Alignment.center,
+                // Logo placeholder
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.local_shipping_rounded,
-                        size: 80,
-                        color: AppColors.white,
-                      ),
+                    Icon(
+                      LucideIcons.map,
+                      color: AppTheme.primaryBlue,
+                      size: 48,
                     ),
-                    const Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Icon(
-                        Icons.location_on,
-                        size: 32,
-                        color: AppColors.secondary,
-                      ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'FleetMonitor360',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: AppTheme.primaryBlue,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        Text(
+                          'Global Fleet Intelligence',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.primaryGreen,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
-                // App Name
-                Text(
-                  "Fleet Monitor",
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: AppColors.white,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1.2,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                // Tagline
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(
-                    "Smart Fleet Monitoring & Real-Time Vehicle Tracking",
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.white.withOpacity(0.7),
-                          letterSpacing: 0.5,
-                        ),
-                  ),
-                ),
+
                 const SizedBox(height: 60),
-                // Loading Animation
-                const SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.secondary),
+
+                // Animation Area
+                SizedBox(
+                  height: 100,
+                  width: double.infinity,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([
+                      _carController,
+                      _pulseController,
+                    ]),
+                    builder: (context, child) {
+                      final carX = _carAnimation.value * (w / 2 + 50);
+
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // GPS tracking line behind car
+                          Positioned(
+                            left: 0,
+                            right: w / 2 - carX,
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppTheme.primaryGreen.withOpacity(0.1),
+                                    AppTheme.primaryGreen,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Car icon
+                          Transform.translate(
+                            offset: Offset(carX, 0),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              clipBehavior: Clip.none,
+                              children: [
+                                if (_carAnimation.isCompleted)
+                                  Positioned(
+                                    top: -30,
+                                    child: Transform.scale(
+                                      scale:
+                                          0.8 + (_pulseAnimation.value * 0.4),
+                                      child: Opacity(
+                                        opacity:
+                                            1.0 - (_pulseAnimation.value * 0.5),
+                                        child: Icon(
+                                          LucideIcons.radio,
+                                          color: AppTheme.primaryBlue,
+                                          size: 32,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.primaryBlue.withOpacity(
+                                          0.2,
+                                        ),
+                                        blurRadius: 15,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    LucideIcons.car,
+                                    color: AppTheme.primaryBlue,
+                                    size: 36,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+class GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    var paint = Paint()
+      ..color = Colors.grey.withOpacity(0.05)
+      ..strokeWidth = 1.0;
+
+    for (double i = 0; i < size.width; i += 40) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
+    }
+    for (double i = 0; i < size.height; i += 40) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
