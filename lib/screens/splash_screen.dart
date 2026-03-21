@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -58,7 +59,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.of(context).size.width;
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Stack(
@@ -71,40 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo placeholder
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      LucideIcons.map,
-                      color: AppTheme.primaryBlue,
-                      size: 48,
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'FleetMonitor360',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.primaryBlue,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        Text(
-                          'Global Fleet Intelligence',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.primaryGreen,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                Image.asset(Assets.images.mylogo.path, height: 40),
 
                 const SizedBox(height: 60),
 
@@ -132,7 +99,9 @@ class _SplashScreenState extends State<SplashScreen>
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
-                                    AppTheme.primaryGreen.withOpacity(0.1),
+                                    AppTheme.primaryGreen.withValues(
+                                      alpha: 0.1,
+                                    ),
                                     AppTheme.primaryGreen,
                                   ],
                                 ),
@@ -171,8 +140,8 @@ class _SplashScreenState extends State<SplashScreen>
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: AppTheme.primaryBlue.withOpacity(
-                                          0.2,
+                                        color: AppTheme.primaryBlue.withValues(
+                                          alpha: 0.2,
                                         ),
                                         blurRadius: 15,
                                         spreadRadius: 2,
@@ -206,7 +175,7 @@ class GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     var paint = Paint()
-      ..color = Colors.grey.withOpacity(0.05)
+      ..color = Colors.grey.withValues(alpha: 0.05)
       ..strokeWidth = 1.0;
 
     for (double i = 0; i < size.width; i += 40) {

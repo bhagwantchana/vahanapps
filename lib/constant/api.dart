@@ -6,4 +6,5 @@ class AppUrl {
   static const String vehicleList = "$baseUrl/vehicleList";
   static const String myProfile = "$baseUrl/myProfile";
   static const String updateProfile = "$baseUrl/profileUpdate";
+  static const String singleTrack = "$baseUrl/vehicleTrack";
 }

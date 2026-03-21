@@ -2,9 +2,11 @@ import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
+import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/gap_widget.dart';
+import 'package:fleet_monitor/widgets/help_sport.dart';
 import 'package:fleet_monitor/widgets/profile_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,7 +18,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Profile"),
+        title: Image.asset(Assets.images.mylogo.path, height: 30),
         actions: [
           IconButton(
             onPressed: () async {
@@ -27,6 +29,7 @@ class ProfileScreen extends StatelessWidget {
             },
             icon: const Icon(Icons.logout_rounded, color: AppColors.offline),
           ),
+          GapWidget(),
         ],
       ),
       body: SingleChildScrollView(
@@ -77,17 +80,13 @@ class ProfileScreen extends StatelessWidget {
                           radius: 50,
                           backgroundImage: NetworkImage(userData.image!),
                         ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          "Ashok Verma",
+                        SizedBox(height: 16),
+                        Text(
+                          "${userData.firstName!} ${userData.lastName!}",
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                           ),
-                        ),
-                        const Text(
-                          "Operations Manager",
-                          style: TextStyle(color: AppColors.grey),
                         ),
                       ],
                     ),
@@ -96,7 +95,7 @@ class ProfileScreen extends StatelessWidget {
                   _sectionHeader("Account Settings"),
                   _settingsItem(
                     Icons.person_outline_rounded,
-                    "Edit Profile",
+                    "View & Edit Profile",
                     "Change your basic info",
                     onTap: () {
                       Navigator.push(
@@ -120,6 +119,24 @@ class ProfileScreen extends StatelessWidget {
                     Icons.help_outline_rounded,
                     "Help & Support",
                     "Get in touch with us",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (_, __, ___) =>
+                              const HelpSupportScreen(),
+                          transitionsBuilder: (_, animation, __, child) {
+                            return SlideTransition(
+                              position: Tween(
+                                begin: const Offset(1, 0),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            );
+                          },
+                        ),
+                      );
+                    },
                   ),
                   GapWidget(size: 16),
                   Text(

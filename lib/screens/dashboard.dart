@@ -2,6 +2,7 @@ import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/screens/home_screen.dart';
 import 'package:fleet_monitor/screens/profile_screen.dart';
 import 'package:fleet_monitor/screens/vehicle_list.dart';
+import 'package:fleet_monitor/widgets/alerts_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -18,7 +19,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final List<Widget> _screens = [
     HomeScreen(),
     VehicleListWidget(),
-    Container(),
+    AlertsScreen(),
     ProfileScreen(),
   ];
 
