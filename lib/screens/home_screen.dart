@@ -20,6 +20,15 @@ class _HomeScreenState extends State<HomeScreen> {
   WebViewController? _controller;
   bool isLoading = true;
 
+  @override
+  void initState() {
+    super.initState();
+    final homeCubit = context.read<HomeCubit>();
+    if (homeCubit.state is! HomeLoggedInState) {
+      homeCubit.fetchHomeData();
+    }
+  }
+
   /// ================== STATS ==================
   Map<String, int> calculateStats(List data) {
     int running = 0;
@@ -102,6 +111,24 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context, state) {
           if (state is HomeLoadingState) {
             return const Center(child: CircularProgressIndicator());
+          }
+
+          if (state is HomeErrorState) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(LucideIcons.alertTriangle, color: Colors.red, size: 48),
+                  const SizedBox(height: 16),
+                  CustomText(text: state.message),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => context.read<HomeCubit>().fetchHomeData(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
           }
 
           final vehicleArray = state.dashboardModel?.data?.vehicleList ?? [];

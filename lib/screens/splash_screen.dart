@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/constant/functions.dart';
 import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:flutter/material.dart';
@@ -16,31 +17,27 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _carController;
   late Animation<double> _carAnimation;
-
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
     super.initState();
+    Functions.getDeviceTokenToSendNotification();
     _carController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-
     _carAnimation = Tween<double>(begin: -1.0, end: 0.0).animate(
       CurvedAnimation(parent: _carController, curve: Curves.easeOutCubic),
     );
-
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
     );
-
     _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-
     _carController.forward().then((_) {
       _pulseController.repeat(reverse: true);
       Timer(const Duration(seconds: 2), () {
@@ -65,16 +62,13 @@ class _SplashScreenState extends State<SplashScreen>
         children: [
           // Background grid pattern placeholder
           Positioned.fill(child: CustomPaint(painter: GridPainter())),
-
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // Logo placeholder
                 Image.asset(Assets.images.mylogo.path, height: 40),
-
                 const SizedBox(height: 60),
-
                 // Animation Area
                 SizedBox(
                   height: 100,
@@ -86,7 +80,6 @@ class _SplashScreenState extends State<SplashScreen>
                     ]),
                     builder: (context, child) {
                       final carX = _carAnimation.value * (w / 2 + 50);
-
                       return Stack(
                         alignment: Alignment.center,
                         children: [

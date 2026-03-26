@@ -1,5 +1,6 @@
 import 'package:fleet_monitor/cubits/auth_cubit/auth_cubit.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/providers/login_provider.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
@@ -24,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthLoggedInState) {
+          context.read<HomeCubit>().fetchHomeData();
           Navigator.popUntil(context, (route) => route.isFirst);
           Navigator.pushReplacementNamed(context, DashboardScreen.routeName);
         }

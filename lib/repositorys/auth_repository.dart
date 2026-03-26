@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/api.dart';
+import 'package:fleet_monitor/constant/functions.dart';
 import 'package:fleet_monitor/models/auth_model.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
 
@@ -11,7 +12,11 @@ class AuthRepository {
     required String pass,
   }) async {
     try {
-      FormData formData = FormData.fromMap({'email': email, 'password': pass});
+      FormData formData = FormData.fromMap({
+        'email': email,
+        'password': pass,
+        'fcm_token': fcmTokenGet,
+      });
 
       Response response = await _networkApi.sendRequest.post(
         AppUrl.login,

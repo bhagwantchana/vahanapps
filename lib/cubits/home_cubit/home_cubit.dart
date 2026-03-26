@@ -4,10 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 class HomeCubit extends Cubit<HomeState> {
   HomeCubit() : super(HomeInitialState()) {
-    _initialize();
+    fetchHomeData();
   }
   final HomeRepository _homeRepository = HomeRepository();
-  Future<void> _initialize() async {
+  Future<void> fetchHomeData() async {
     emit(HomeLoadingState());
     try {
       final result = await _homeRepository.vehicleListFetch();
