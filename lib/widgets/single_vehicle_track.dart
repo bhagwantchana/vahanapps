@@ -90,7 +90,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             children: [
               /// 🔥 MAP WEBVIEW
               Expanded(
-                flex: 3,
+                flex: 5,
                 child: Stack(
                   children: [
                     Container(

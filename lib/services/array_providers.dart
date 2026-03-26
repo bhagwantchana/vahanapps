@@ -12,9 +12,6 @@ class ArrayProviders {
     BlocProvider(create: (context) => VehicleCubit()),
     BlocProvider(create: (context) => ProfileCubit()),
     BlocProvider(create: (context) => HomeCubit()),
-    BlocProvider(
-      create: (context) =>
-          SingleTrackCubit(BlocProvider.of<VehicleCubit>(context)),
-    ),
+    BlocProvider(create: (context) => SingleTrackCubit()),
   ];
 }

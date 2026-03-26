@@ -1,4 +1,5 @@
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_state.dart';
 import 'package:fleet_monitor/gen/assets.gen.dart';
@@ -172,14 +173,17 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 ),
                 InkWell(
                   onTap: () {
+                    context.read<SingleTrackCubit>().fetchVehicleTrack(
+                      data.imei ?? "357803372358321",
+                    );
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => VehicleDetailScreen(),
+                        builder: (context) => const VehicleDetailScreen(),
                       ),
                     );
                   },
-                  child: _iconData(LucideIcons.map, '34%', Colors.orange),
+                  child: _iconData(LucideIcons.map, "Map", Colors.orange),
                 ),
                 _iconData(
                   LucideIcons.signalHigh,

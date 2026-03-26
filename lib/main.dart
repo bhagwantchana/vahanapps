@@ -5,12 +5,14 @@ import 'package:fleet_monitor/services/array_providers.dart';
 import 'package:fleet_monitor/routes.dart';
 import 'package:fleet_monitor/screens/splash_screen.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await CustomNotificationSoundService().initialize();
   // LocalStorage.clearAll();
   Bloc.observer = MyBlocObserver();
   runApp(const MyApp());

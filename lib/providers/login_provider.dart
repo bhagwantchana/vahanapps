@@ -52,6 +52,8 @@ class LoginProvider with ChangeNotifier {
   @override
   void dispose() {
     _userSubscription?.cancel();
+    emailController.dispose();
+    passwordController.dispose();
     super.dispose();
   }
 }
