@@ -1,42 +1,46 @@
+import 'package:fleet_monitor/models/model_helpers.dart';
+import 'package:fleet_monitor/models/user_profile_model.dart';
+
 class UserUpdateModel {
-  int? flag;
-  String? message;
-  Data? data;
+  final int flag;
+  final String message;
+  final UserUpdateData? data;
 
-  UserUpdateModel({this.flag, this.message, this.data});
+  const UserUpdateModel({
+    this.flag = 0,
+    this.message = '',
+    this.data,
+  });
 
-  UserUpdateModel.fromJson(Map<String, dynamic> json) {
-    flag = json['flag'];
-    message = json['message'];
-    data = json['data'] != null ? new Data.fromJson(json['data']) : null;
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['flag'] = this.flag;
-    data['message'] = this.message;
-    if (this.data != null) {
-      data['data'] = this.data!.toJson();
-    }
-    return data;
+  factory UserUpdateModel.fromJson(Map<String, dynamic> json) {
+    return UserUpdateModel(
+      flag: toInt(json['flag']),
+      message: toStringValue(json['message']),
+      data: json['data'] is Map<String, dynamic>
+          ? UserUpdateData.fromJson(json['data'] as Map<String, dynamic>)
+          : null,
+    );
   }
 }
 
-class Data {
-  String? rand;
-  String? xAuthToken;
+class UserUpdateData {
+  final String rand;
+  final String xAuthToken;
+  final UserProfileData? profile;
 
-  Data({this.rand, this.xAuthToken});
+  const UserUpdateData({
+    this.rand = '',
+    this.xAuthToken = '',
+    this.profile,
+  });
 
-  Data.fromJson(Map<String, dynamic> json) {
-    rand = json['rand'];
-    xAuthToken = json['X-Auth-Token'];
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['rand'] = this.rand;
-    data['X-Auth-Token'] = this.xAuthToken;
-    return data;
+  factory UserUpdateData.fromJson(Map<String, dynamic> json) {
+    return UserUpdateData(
+      rand: toStringValue(json['rand']),
+      xAuthToken: toStringValue(json['X-Auth-Token']),
+      profile: json['profile'] is Map<String, dynamic>
+          ? UserProfileData.fromJson(json['profile'] as Map<String, dynamic>)
+          : null,
+    );
   }
 }

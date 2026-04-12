@@ -9,58 +9,68 @@ import 'package:fleet_monitor/networks/network_api.dart';
 class ProfileRepository {
   final NetworkApi _networkApi = NetworkApi();
 
-  Future<UserProfileModel> vehicleListFetch() async {
-    final String token = await LocalStorage.readValue(PreferencesKey.token);
+  Future<String> _getToken() async {
+    return await LocalStorage.readValue(PreferencesKey.token) ?? '';
+  }
+
+  Future<UserProfileModel> fetchProfile() async {
     try {
-      final headers = {'X-Auth-Token': token};
-      Response response = await _networkApi.sendRequest.post(
+      final response = await _networkApi.sendRequest.post(
         AppUrl.myProfile,
-        options: Options(method: 'POST', headers: headers),
+        options: NetworkApi.buildOptions(authToken: await _getToken()),
       );
-      ApiResponse apiResponse = ApiResponse.fromResponse(response);
+
+      final apiResponse = ApiResponse.fromResponse(response);
       if (apiResponse.flag == 0) {
-        throw apiResponse.message.toString();
+        throw Exception(apiResponse.message);
       }
-      return UserProfileModel.fromJson(response.data);
-    } catch (e) {
-      rethrow;
+
+      return UserProfileModel.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
     }
   }
 
-  Future<UserUpdateModel> updateProfileData(
-    String name,
-    String lastName,
-    String email,
+  Future<UserUpdateModel> updateProfileData({
+    required UserProfileData currentProfile,
+    String? firstName,
+    String? lastName,
+    String? email,
     String? file,
-  ) async {
-    final String token = await LocalStorage.readValue(PreferencesKey.token);
+  }) async {
     try {
-      final headers = {
-        'X-Auth-Token': token,
-        'Content-Type': 'multipart/form-data',
-      };
-      FormData formData = FormData.fromMap({
-        'first_name': name,
-        'last_name': lastName,
-        'email': email,
+      final formData = FormData.fromMap(<String, dynamic>{
+        'first_name': firstName ?? currentProfile.firstName,
+        'last_name': lastName ?? currentProfile.lastName,
+        'email': email ?? currentProfile.email,
+        'address': currentProfile.address,
+        'country_id': currentProfile.countryId.toString(),
+        'state_id': currentProfile.stateId.toString(),
+        'city_id': currentProfile.cityId.toString(),
         if (file != null && file.isNotEmpty)
           'image': await MultipartFile.fromFile(
             file,
             filename: file.split('/').last,
           ),
       });
-      Response response = await _networkApi.sendRequest.post(
+
+      final response = await _networkApi.sendRequest.post(
         AppUrl.updateProfile,
-        options: Options(headers: headers),
         data: formData,
+        options: NetworkApi.buildOptions(
+          authToken: await _getToken(),
+          headers: <String, dynamic>{'Content-Type': 'multipart/form-data'},
+        ),
       );
-      ApiResponse apiResponse = ApiResponse.fromResponse(response);
+
+      final apiResponse = ApiResponse.fromResponse(response);
       if (apiResponse.flag == 0) {
-        throw apiResponse.message.toString();
+        throw Exception(apiResponse.message);
       }
-      return UserUpdateModel.fromJson(response.data);
-    } catch (e) {
-      rethrow;
+
+      return UserUpdateModel.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
     }
   }
 }

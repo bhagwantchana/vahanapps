@@ -1,50 +1,56 @@
-import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
-import 'package:fleet_monitor/models/auth_model.dart';
+import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
 import 'package:fleet_monitor/repositorys/auth_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class AuthCubit extends Cubit<AuthState> {
   AuthCubit() : super(AuthInitialState()) {
-    _initialize();
+    initialize();
   }
+
   final AuthRepository _authRepository = AuthRepository();
 
-  Future<void> _initialize() async {
+  Future<void> initialize() async {
     emit(AuthLoadingState());
-    String? isLogin = await LocalStorage.readValue(PreferencesKey.isLogin);
-    if (isLogin == null || isLogin != "islogin") {
-      emit(AuthLoggedOutState());
-    } else {
-      emit(AuthLoggedInState(isLogin));
+    final token = await LocalStorage.readValue(PreferencesKey.token);
+    final isLogin = await LocalStorage.readValue(PreferencesKey.isLogin);
+
+    if (token != null &&
+        token.trim().isNotEmpty &&
+        isLogin != null &&
+        isLogin == 'islogin') {
+      emit(AuthLoggedInState(token));
+      return;
     }
+
+    emit(AuthLoggedOutState());
   }
 
-  void _emitLoggedInState({
-    required String isLogin,
-    required AuthModel authModel,
+  Future<void> signIn({
+    required String email,
+    required String pass,
   }) async {
-    await LocalStorage.setValue(PreferencesKey.isLogin, isLogin);
-    await LocalStorage.setValue(
-      PreferencesKey.token,
-      authModel.data!.xAuthToken!,
-    );
-    emit(AuthLoggedInState(isLogin));
-  }
-
-  void signIn({required String email, required String pass}) async {
     emit(AuthLoadingState());
     try {
       final result = await _authRepository.loginRepo(email: email, pass: pass);
-      _emitLoggedInState(isLogin: "islogin", authModel: result);
-    } catch (ex) {
-      emit(AuthErrorState(ex.toString()));
+      final token = result.data?.xAuthToken ?? '';
+      if (token.isEmpty) {
+        throw Exception('Login token is missing from response');
+      }
+
+      await LocalStorage.setValue(PreferencesKey.isLogin, 'islogin');
+      await LocalStorage.setValue(PreferencesKey.token, token);
+      emit(AuthLoggedInState(token));
+    } catch (error) {
+      emit(AuthErrorState(error.toString().replaceFirst('Exception: ', '')));
     }
   }
 
-  void signOut() async {
-    await LocalStorage.clearAll();
+  Future<void> signOut() async {
+    final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+    await _authRepository.logoutRepo(token);
+    await LocalStorage.clearSession();
     emit(AuthLoggedOutState());
   }
 }

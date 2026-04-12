@@ -1,48 +1,85 @@
+import 'package:fleet_monitor/models/model_helpers.dart';
+
 class UserProfileModel {
-  int? flag;
-  Data? data;
+  final int flag;
+  final String message;
+  final UserProfileData? data;
 
-  UserProfileModel({this.flag, this.data});
+  const UserProfileModel({
+    this.flag = 0,
+    this.message = '',
+    this.data,
+  });
 
-  UserProfileModel.fromJson(Map<String, dynamic> json) {
-    flag = json['flag'];
-    data = json['data'] != null ? new Data.fromJson(json['data']) : null;
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['flag'] = this.flag;
-    if (this.data != null) {
-      data['data'] = this.data!.toJson();
-    }
-    return data;
+  factory UserProfileModel.fromJson(Map<String, dynamic> json) {
+    return UserProfileModel(
+      flag: toInt(json['flag']),
+      message: toStringValue(json['message']),
+      data: json['data'] is Map<String, dynamic>
+          ? UserProfileData.fromJson(json['data'] as Map<String, dynamic>)
+          : null,
+    );
   }
 }
 
-class Data {
-  String? firstName;
-  String? lastName;
-  String? email;
-  String? phone;
-  String? image;
+class UserProfileData {
+  int id;
+  String firstName;
+  String lastName;
+  String email;
+  String phone;
+  String username;
+  String address;
+  int countryId;
+  int stateId;
+  int cityId;
+  String image;
+  String imageUrl;
+  String multiMapUrl;
 
-  Data({this.firstName, this.lastName, this.email, this.phone, this.image});
+  UserProfileData({
+    this.id = 0,
+    this.firstName = '',
+    this.lastName = '',
+    this.email = '',
+    this.phone = '',
+    this.username = '',
+    this.address = '',
+    this.countryId = 0,
+    this.stateId = 0,
+    this.cityId = 0,
+    this.image = '',
+    this.imageUrl = '',
+    this.multiMapUrl = '',
+  });
 
-  Data.fromJson(Map<String, dynamic> json) {
-    firstName = json['first_name'];
-    lastName = json['last_name'];
-    email = json['email'];
-    phone = json['phone'];
-    image = json['image'];
+  factory UserProfileData.fromJson(Map<String, dynamic> json) {
+    return UserProfileData(
+      id: toInt(json['id']),
+      firstName: toStringValue(json['first_name']),
+      lastName: toStringValue(json['last_name']),
+      email: toStringValue(json['email']),
+      phone: toStringValue(json['phone']),
+      username: toStringValue(json['username']),
+      address: toStringValue(json['address']),
+      countryId: toInt(json['country_id']),
+      stateId: toInt(json['state_id']),
+      cityId: toInt(json['city_id']),
+      image: toStringValue(json['image']),
+      imageUrl: toStringValue(json['image_url']),
+      multiMapUrl: toStringValue(json['multi_map_url']),
+    );
   }
 
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['first_name'] = this.firstName;
-    data['last_name'] = this.lastName;
-    data['email'] = this.email;
-    data['phone'] = this.phone;
-    data['image'] = this.image;
-    return data;
+  String get fullName => '${firstName.trim()} ${lastName.trim()}'.trim();
+
+  String get avatarUrl {
+    if (imageUrl.isNotEmpty) {
+      return imageUrl;
+    }
+    if (image.startsWith('http')) {
+      return image;
+    }
+    return '';
   }
 }

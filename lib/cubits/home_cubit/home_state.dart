@@ -19,5 +19,5 @@ class HomeLoggedOutState extends HomeState {}
 
 class HomeErrorState extends HomeState {
   final String message;
-  HomeErrorState(this.message);
+  HomeErrorState(this.message, {super.dashboardModel});
 }

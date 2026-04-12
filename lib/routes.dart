@@ -6,20 +6,25 @@ import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
 class Routes {
-  static Route? onGenerateRoute(RouteSettings settings) {
+  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case LoginScreen.routeName:
-        return CupertinoPageRoute(
-          builder: (context) => ChangeNotifierProvider(
+        return CupertinoPageRoute<dynamic>(
+          builder: (context) => ChangeNotifierProvider<LoginProvider>(
             create: (context) => LoginProvider(context),
             child: const LoginScreen(),
           ),
         );
       case SplashScreen.routeName:
-        return CupertinoPageRoute(builder: (context) => const SplashScreen());
+        return CupertinoPageRoute<dynamic>(
+          builder: (context) => const SplashScreen(),
+        );
       case DashboardScreen.routeName:
-        return CupertinoPageRoute(
-          builder: (context) => const DashboardScreen(),
+        final initialIndex = settings.arguments is int
+            ? settings.arguments as int
+            : 0;
+        return CupertinoPageRoute<dynamic>(
+          builder: (context) => DashboardScreen(initialIndex: initialIndex),
         );
       default:
         return null;

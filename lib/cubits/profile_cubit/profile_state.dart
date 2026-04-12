@@ -21,5 +21,5 @@ class ProfileLoggedOutState extends ProfileState {}
 
 class ProfileErrorState extends ProfileState {
   final String message;
-  ProfileErrorState(this.message);
+  ProfileErrorState(this.message, {super.userProfileModel, super.userUpdateModel});
 }

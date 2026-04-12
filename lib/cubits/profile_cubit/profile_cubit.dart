@@ -1,40 +1,62 @@
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
+import 'package:fleet_monitor/models/user_profile_model.dart';
 import 'package:fleet_monitor/repositorys/profile_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
-  ProfileCubit() : super(ProfileInitialState()) {
-    _initialize();
-  }
+  ProfileCubit() : super(ProfileInitialState());
+
   final ProfileRepository _profileRepository = ProfileRepository();
-  Future<void> _initialize() async {
-    emit(ProfileLoadingState());
+
+  Future<void> fetchProfile() async {
+    emit(ProfileLoadingState(userProfileModel: state.userProfileModel));
     try {
-      final result = await _profileRepository.vehicleListFetch();
+      final result = await _profileRepository.fetchProfile();
       emit(ProfileLoggedInState(userProfileModel: result));
-    } catch (e) {
-      emit(ProfileErrorState(e.toString()));
+    } catch (error) {
+      emit(
+        ProfileErrorState(
+          error.toString().replaceFirst('Exception: ', ''),
+          userProfileModel: state.userProfileModel,
+        ),
+      );
     }
   }
 
-  void updateProfile({String? name, lastNam, email, file}) async {
-    emit(ProfileLoadingState());
+  Future<bool> updateProfile({
+    required UserProfileData currentProfile,
+    String? name,
+    String? lastName,
+    String? email,
+    String? file,
+  }) async {
+    emit(ProfileLoadingState(userProfileModel: state.userProfileModel));
     try {
       final result = await _profileRepository.updateProfileData(
-        name!,
-        lastNam!,
-        email!,
-        file,
+        currentProfile: currentProfile,
+        firstName: name,
+        lastName: lastName,
+        email: email,
+        file: file,
       );
-      await LocalStorage.setValue(
-        PreferencesKey.token,
-        result.data!.xAuthToken!,
+
+      final token = result.data?.xAuthToken;
+      if (token != null && token.trim().isNotEmpty) {
+        await LocalStorage.setValue(PreferencesKey.token, token);
+      }
+
+      await fetchProfile();
+      return true;
+    } catch (error) {
+      emit(
+        ProfileErrorState(
+          error.toString().replaceFirst('Exception: ', ''),
+          userProfileModel: state.userProfileModel,
+        ),
       );
-      await _initialize();
-    } catch (ex) {
-      emit(ProfileErrorState(ex.toString()));
+      return false;
     }
   }
 }

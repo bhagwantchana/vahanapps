@@ -3,17 +3,22 @@ import 'package:fleet_monitor/repositorys/vehicle_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class VehicleCubit extends Cubit<VehicleState> {
-  VehicleCubit() : super(VehicleInitialState()) {
-    _initialize();
-  }
+  VehicleCubit() : super(VehicleInitialState());
+
   final VehicleRepository _vehicleRepository = VehicleRepository();
-  Future<void> _initialize() async {
-    emit(VehicleLoadingState());
+
+  Future<void> fetchVehicles() async {
+    emit(VehicleLoadingState(vechileListModel: state.vechileListModel));
     try {
-      final result = await _vehicleRepository.vehicleListFetch();
+      final result = await _vehicleRepository.fetchVehicles();
       emit(VehicleLoggedInState(vechileListModel: result));
-    } catch (e) {
-      emit(VehicleErrorState(e.toString()));
+    } catch (error) {
+      emit(
+        VehicleErrorState(
+          error.toString().replaceFirst('Exception: ', ''),
+          vechileListModel: state.vechileListModel,
+        ),
+      );
     }
   }
 }

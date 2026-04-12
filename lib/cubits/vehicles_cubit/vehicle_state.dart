@@ -19,5 +19,5 @@ class VehicleLoggedOutState extends VehicleState {}
 
 class VehicleErrorState extends VehicleState {
   final String message;
-  VehicleErrorState(this.message);
+  VehicleErrorState(this.message, {super.vechileListModel});
 }

@@ -1,103 +1,34 @@
+import 'package:fleet_monitor/models/model_helpers.dart';
+import 'package:fleet_monitor/models/vehicle_record.dart';
+
 class VehicleListModel {
-  int? flag;
-  List<Data>? data;
+  final int flag;
+  final int count;
+  final String message;
+  final List<VehicleRecord> data;
 
-  VehicleListModel({this.flag, this.data});
-
-  VehicleListModel.fromJson(Map<String, dynamic> json) {
-    flag = json['flag'];
-    if (json['data'] != null) {
-      data = <Data>[];
-      json['data'].forEach((v) {
-        data!.add(new Data.fromJson(v));
-      });
-    }
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['flag'] = this.flag;
-    if (this.data != null) {
-      data['data'] = this.data!.map((v) => v.toJson()).toList();
-    }
-    return data;
-  }
-}
-
-class Data {
-  String? vRegistrationNo;
-  String? vName;
-  String? vModel;
-  String? imei;
-  String? deviceId;
-  String? lastTripFinished;
-  String? lastLatitude;
-  String? lastLongitude;
-  String? lastSpeed;
-  String? vehicleTypeId;
-  String? vehicleIcon;
-  String? deviceSpeed;
-  String? lastTripId;
-  int? speed;
-  String? vehicleIconUrl;
-  String? trackingUrl;
-
-  Data({
-    this.vRegistrationNo,
-    this.vName,
-    this.vModel,
-    this.imei,
-    this.deviceId,
-    this.lastTripFinished,
-    this.lastLatitude,
-    this.lastLongitude,
-    this.lastSpeed,
-    this.vehicleTypeId,
-    this.vehicleIcon,
-    this.deviceSpeed,
-    this.lastTripId,
-    this.speed,
-    this.vehicleIconUrl,
-    this.trackingUrl,
+  const VehicleListModel({
+    this.flag = 0,
+    this.count = 0,
+    this.message = '',
+    this.data = const <VehicleRecord>[],
   });
 
-  Data.fromJson(Map<String, dynamic> json) {
-    vRegistrationNo = json['v_registration_no'];
-    vName = json['v_name'];
-    vModel = json['v_model'];
-    imei = json['imei'];
-    deviceId = json['device_id'];
-    lastTripFinished = json['last_trip_finished'];
-    lastLatitude = json['last_latitude'];
-    lastLongitude = json['last_longitude'];
-    lastSpeed = json['last_speed'];
-    vehicleTypeId = json['vehicle_type_id'];
-    vehicleIcon = json['vehicle_icon'];
-    deviceSpeed = json['device_speed'];
-    lastTripId = json['last_trip_id'];
-    speed = json['speed'];
-    vehicleIconUrl = json['vehicle_icon_url'];
-    trackingUrl = json['tracking_url'];
-  }
+  factory VehicleListModel.fromJson(Map<String, dynamic> json) {
+    final vehicles = <VehicleRecord>[];
+    if (json['data'] is List) {
+      for (final item in json['data'] as List<dynamic>) {
+        if (item is Map<String, dynamic>) {
+          vehicles.add(VehicleRecord.fromJson(item));
+        }
+      }
+    }
 
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['v_registration_no'] = this.vRegistrationNo;
-    data['v_name'] = this.vName;
-    data['v_model'] = this.vModel;
-    data['imei'] = this.imei;
-    data['device_id'] = this.deviceId;
-    data['last_trip_finished'] = this.lastTripFinished;
-    data['last_latitude'] = this.lastLatitude;
-    data['last_longitude'] = this.lastLongitude;
-    data['last_speed'] = this.lastSpeed;
-    data['vehicle_type_id'] = this.vehicleTypeId;
-    data['vehicle_icon'] = this.vehicleIcon;
-    data['device_speed'] = this.deviceSpeed;
-    data['last_trip_id'] = this.lastTripId;
-    data['speed'] = this.speed;
-    data['vehicle_icon_url'] = this.vehicleIconUrl;
-    data['tracking_url'] = this.trackingUrl;
-    return data;
+    return VehicleListModel(
+      flag: toInt(json['flag']),
+      count: toInt(json['count'], fallback: vehicles.length),
+      message: toStringValue(json['message']),
+      data: vehicles,
+    );
   }
 }

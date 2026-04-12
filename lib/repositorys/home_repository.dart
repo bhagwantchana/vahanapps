@@ -8,22 +8,23 @@ import 'package:fleet_monitor/networks/network_api.dart';
 class HomeRepository {
   final NetworkApi _networkApi = NetworkApi();
 
-  Future<DashboardModel> vehicleListFetch() async {
-    final String token = await LocalStorage.readValue(PreferencesKey.token);
+  Future<DashboardModel> fetchDashboard() async {
+    final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+
     try {
-      // FormData formData = FormData.fromMap({'email': email, 'password': pass});
-      final headers = {'X-Auth-Token': token};
-      Response response = await _networkApi.sendRequest.post(
+      final response = await _networkApi.sendRequest.post(
         AppUrl.dashboard,
-        options: Options(method: 'POST', headers: headers),
+        options: NetworkApi.buildOptions(authToken: token),
       );
-      ApiResponse apiResponse = ApiResponse.fromResponse(response);
+
+      final apiResponse = ApiResponse.fromResponse(response);
       if (apiResponse.flag == 0) {
-        throw apiResponse.message.toString();
+        throw Exception(apiResponse.message);
       }
-      return DashboardModel.fromJson(response.data);
-    } catch (e) {
-      rethrow;
+
+      return DashboardModel.fromJson(response.data as Map<String, dynamic>);
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
     }
   }
 }

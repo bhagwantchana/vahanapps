@@ -3,17 +3,22 @@ import 'package:fleet_monitor/repositorys/home_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class HomeCubit extends Cubit<HomeState> {
-  HomeCubit() : super(HomeInitialState()) {
-    fetchHomeData();
-  }
+  HomeCubit() : super(HomeInitialState());
+
   final HomeRepository _homeRepository = HomeRepository();
+
   Future<void> fetchHomeData() async {
-    emit(HomeLoadingState());
+    emit(HomeLoadingState(dashboardModel: state.dashboardModel));
     try {
-      final result = await _homeRepository.vehicleListFetch();
+      final result = await _homeRepository.fetchDashboard();
       emit(HomeLoggedInState(dashboardModel: result));
-    } catch (e) {
-      emit(HomeErrorState(e.toString()));
+    } catch (error) {
+      emit(
+        HomeErrorState(
+          error.toString().replaceFirst('Exception: ', ''),
+          dashboardModel: state.dashboardModel,
+        ),
+      );
     }
   }
 }

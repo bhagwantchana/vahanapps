@@ -1,39 +1,49 @@
+import 'package:fleet_monitor/models/model_helpers.dart';
+import 'package:fleet_monitor/models/user_profile_model.dart';
+
 class AuthModel {
-  int? flag;
-  Data? data;
-  String? message;
+  final int flag;
+  final String message;
+  final AuthData? data;
 
-  AuthModel({this.flag, this.data, this.message});
+  const AuthModel({
+    this.flag = 0,
+    this.message = '',
+    this.data,
+  });
 
-  AuthModel.fromJson(Map<String, dynamic> json) {
-    flag = json['flag'];
-    data = json['data'] != null ? new Data.fromJson(json['data']) : null;
-    message = json['message'];
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['flag'] = this.flag;
-    if (this.data != null) {
-      data['data'] = this.data!.toJson();
-    }
-    data['message'] = this.message;
-    return data;
+  factory AuthModel.fromJson(Map<String, dynamic> json) {
+    return AuthModel(
+      flag: toInt(json['flag']),
+      message: toStringValue(json['message']),
+      data: json['data'] is Map<String, dynamic>
+          ? AuthData.fromJson(json['data'] as Map<String, dynamic>)
+          : null,
+    );
   }
 }
 
-class Data {
-  String? xAuthToken;
+class AuthData {
+  final String xAuthToken;
+  final String mapsUrl;
+  final String legacyMapsUrl;
+  final UserProfileData? profile;
 
-  Data({this.xAuthToken});
+  const AuthData({
+    this.xAuthToken = '',
+    this.mapsUrl = '',
+    this.legacyMapsUrl = '',
+    this.profile,
+  });
 
-  Data.fromJson(Map<String, dynamic> json) {
-    xAuthToken = json['X-Auth-Token'];
-  }
-
-  Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = new Map<String, dynamic>();
-    data['X-Auth-Token'] = this.xAuthToken;
-    return data;
+  factory AuthData.fromJson(Map<String, dynamic> json) {
+    return AuthData(
+      xAuthToken: toStringValue(json['X-Auth-Token']),
+      mapsUrl: toStringValue(json['maps_url']),
+      legacyMapsUrl: toStringValue(json['legacy_maps_url']),
+      profile: json['profile'] is Map<String, dynamic>
+          ? UserProfileData.fromJson(json['profile'] as Map<String, dynamic>)
+          : null,
+    );
   }
 }
