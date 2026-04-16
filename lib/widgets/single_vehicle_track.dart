@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_state.dart';
@@ -89,7 +88,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         );
   }
 
-  Future<List<DriverRecordModel>> _getVehicleDrivers(VehicleRecord vehicle) async {
+  Future<List<DriverRecordModel>> _getVehicleDrivers(
+    VehicleRecord vehicle,
+  ) async {
     if (_availableDrivers.isEmpty) {
       _availableDrivers = await _driverRepository.fetchDrivers();
     }
@@ -99,7 +100,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     }
 
     final scopedDrivers = _availableDrivers
-        .where((driver) => driver.vendorId == 0 || driver.vendorId == vehicle.vendorId)
+        .where(
+          (driver) =>
+              driver.vendorId == 0 || driver.vendorId == vehicle.vendorId,
+        )
         .toList();
 
     return scopedDrivers.isNotEmpty ? scopedDrivers : _availableDrivers;
@@ -132,7 +136,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         return;
       }
 
-      final vehicle = context.read<SingleTrackCubit>().state.singleTrackModel?.data;
+      final vehicle = context
+          .read<SingleTrackCubit>()
+          .state
+          .singleTrackModel
+          ?.data;
       if (vehicle == null) {
         return;
       }
@@ -142,11 +150,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 
   int _trailWindowMinutes(VehicleSettingsModel settings) {
-    return settings.mobileMapTrailMinutes > 0 ? settings.mobileMapTrailMinutes : 120;
+    return settings.mobileMapTrailMinutes > 0
+        ? settings.mobileMapTrailMinutes
+        : 120;
   }
 
   int _trailPointLimit(VehicleSettingsModel settings) {
-    return settings.mobileMapTrailPoints > 0 ? settings.mobileMapTrailPoints : 25;
+    return settings.mobileMapTrailPoints > 0
+        ? settings.mobileMapTrailPoints
+        : 25;
   }
 
   Future<List<LatLng>> _loadRouteTrail(
@@ -212,8 +224,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
 
   Future<void> _toggleNotifications(VehicleRecord vehicle) async {
     final settings = _resolveSettings(vehicle).copyWith(
-      notificationEnabled:
-          _resolveSettings(vehicle).notificationEnabled == 1 ? 0 : 1,
+      notificationEnabled: _resolveSettings(vehicle).notificationEnabled == 1
+          ? 0
+          : 1,
     );
     final saved = await context.read<SingleTrackCubit>().updateVehicleSettings(
       vehicle: vehicle,
@@ -263,8 +276,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 
   Future<void> _sendEngineCommand(VehicleRecord vehicle, String action) async {
-    final commandLabel = action == 'immobilize' ? 'Engine Stop' : 'Engine Start';
-    final shouldProceed = await showDialog<bool>(
+    final commandLabel = action == 'immobilize'
+        ? 'Engine Stop'
+        : 'Engine Start';
+    final shouldProceed =
+        await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(commandLabel),
@@ -292,9 +308,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     }
 
     final saved = await context.read<SingleTrackCubit>().sendEngineCommand(
-          vehicle: vehicle,
-          action: action,
-        );
+      vehicle: vehicle,
+      action: action,
+    );
     if (!mounted) {
       return;
     }
@@ -332,7 +348,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Live map is not available for this vehicle')),
+        const SnackBar(
+          content: Text('Live map is not available for this vehicle'),
+        ),
       );
       return;
     }
@@ -340,10 +358,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => VehicleLiveMapScreen(
-          title: vehicle.displayName,
-          url: liveUrl,
-        ),
+        builder: (_) =>
+            VehicleLiveMapScreen(title: vehicle.displayName, url: liveUrl),
       ),
     );
   }
@@ -406,7 +422,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       value: notificationsEnabled,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Push Notifications'),
-                      subtitle: const Text('Receive ignition, overspeed, and radius alerts'),
+                      subtitle: const Text(
+                        'Receive ignition, overspeed, and radius alerts',
+                      ),
                       onChanged: (value) {
                         setModalState(() => notificationsEnabled = value);
                       },
@@ -415,7 +433,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       value: guardEnabled,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Parking Guard'),
-                      subtitle: const Text('Alert when the parked vehicle moves away'),
+                      subtitle: const Text(
+                        'Alert when the parked vehicle moves away',
+                      ),
                       onChanged: (value) {
                         setModalState(() => guardEnabled = value);
                       },
@@ -424,7 +444,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       value: nightLockEnabled,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Night Lock'),
-                      subtitle: const Text('Auto queue engine stop in the configured night window'),
+                      subtitle: const Text(
+                        'Auto queue engine stop in the configured night window',
+                      ),
                       onChanged: (value) {
                         setModalState(() => nightLockEnabled = value);
                       },
@@ -476,17 +498,21 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                             guardActive: guardEnabled ? 1 : 0,
                             parkingGuard: guardEnabled ? 1 : 0,
                             overspeedLimit:
-                                int.tryParse(overspeedController.text.trim()) ?? 0,
+                                int.tryParse(overspeedController.text.trim()) ??
+                                0,
                             geofenceRadius:
                                 int.tryParse(radiusController.text.trim()) ?? 0,
                             nightLockEnabled: nightLockEnabled ? 1 : 0,
-                            nightLockStart: nightLockStartController.text.trim().isEmpty
+                            nightLockStart:
+                                nightLockStartController.text.trim().isEmpty
                                 ? settings.nightLockStart
                                 : nightLockStartController.text.trim(),
-                            nightLockEnd: nightLockEndController.text.trim().isEmpty
+                            nightLockEnd:
+                                nightLockEndController.text.trim().isEmpty
                                 ? settings.nightLockEnd
                                 : nightLockEndController.text.trim(),
-                            nightLockTimezone: nightLockTimezoneController.text.trim().isEmpty
+                            nightLockTimezone:
+                                nightLockTimezoneController.text.trim().isEmpty
                                 ? settings.nightLockTimezone
                                 : nightLockTimezoneController.text.trim(),
                           );
@@ -507,14 +533,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     ? 'Vehicle settings updated'
                                     : 'Unable to update vehicle settings',
                               ),
-                              backgroundColor:
-                                  saved ? AppTheme.primaryGreen : AppColors.red,
+                              backgroundColor: saved
+                                  ? AppTheme.primaryGreen
+                                  : AppColors.red,
                             ),
                           );
                         },
                         child: const Text(
                           'Save Settings',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
@@ -570,9 +600,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         return;
       }
       await _refreshVehicleState(vehicle);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -629,7 +659,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       builder: (modalContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final hasSelection = (selectedDriverId != null && selectedDriverId! > 0) ||
+            final hasSelection =
+                (selectedDriverId != null && selectedDriverId! > 0) ||
                 identifierController.text.trim().isNotEmpty;
 
             return Padding(
@@ -689,7 +720,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         controller: identifierController,
                         decoration: const InputDecoration(
                           labelText: 'Driver Code / Phone (optional)',
-                          helperText: 'Use this if you want to start by identifier instead',
+                          helperText:
+                              'Use this if you want to start by identifier instead',
                         ),
                         onChanged: (_) => setModalState(() {}),
                       ),
@@ -708,14 +740,22 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           labelText: 'Identification Method',
                         ),
                         items: const <DropdownMenuItem<String>>[
-                          DropdownMenuItem(value: 'manual', child: Text('Manual')),
+                          DropdownMenuItem(
+                            value: 'manual',
+                            child: Text('Manual'),
+                          ),
                           DropdownMenuItem(value: 'pin', child: Text('PIN')),
                           DropdownMenuItem(value: 'qr', child: Text('QR')),
-                          DropdownMenuItem(value: 'nfc', child: Text('NFC / RFID')),
+                          DropdownMenuItem(
+                            value: 'nfc',
+                            child: Text('NFC / RFID'),
+                          ),
                           DropdownMenuItem(value: 'api', child: Text('API')),
                         ],
                         onChanged: (value) {
-                          setModalState(() => identificationMethod = value ?? 'manual');
+                          setModalState(
+                            () => identificationMethod = value ?? 'manual',
+                          );
                         },
                       ),
                       const SizedBox(height: 14),
@@ -737,10 +777,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       SwitchListTile(
                         value: assignToVehicle,
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Assign selected driver to this vehicle'),
-                        subtitle: const Text('Updates the default driver mapping too'),
+                        title: const Text(
+                          'Assign selected driver to this vehicle',
+                        ),
+                        subtitle: const Text(
+                          'Updates the default driver mapping too',
+                        ),
                         onChanged: selectedDriverId != null
-                            ? (value) => setModalState(() => assignToVehicle = value)
+                            ? (value) =>
+                                  setModalState(() => assignToVehicle = value)
                             : null,
                       ),
                       const SizedBox(height: 16),
@@ -752,17 +797,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               : () async {
                                   setModalState(() => isSubmitting = true);
                                   try {
-                                    final message = await _driverRepository.startDriverSession(
-                                      vehicleId: vehicle.id,
-                                      driverId: selectedDriverId,
-                                      driverIdentifier: identifierController.text.trim(),
-                                      driverPin: pinController.text.trim(),
-                                      identificationMethod: identificationMethod,
-                                      sessionCode: sessionCodeController.text.trim(),
-                                      notes: notesController.text.trim(),
-                                    );
+                                    final message = await _driverRepository
+                                        .startDriverSession(
+                                          vehicleId: vehicle.id,
+                                          driverId: selectedDriverId,
+                                          driverIdentifier: identifierController
+                                              .text
+                                              .trim(),
+                                          driverPin: pinController.text.trim(),
+                                          identificationMethod:
+                                              identificationMethod,
+                                          sessionCode: sessionCodeController
+                                              .text
+                                              .trim(),
+                                          notes: notesController.text.trim(),
+                                        );
 
-                                    if (assignToVehicle && selectedDriverId != null) {
+                                    if (assignToVehicle &&
+                                        selectedDriverId != null) {
                                       await _driverRepository.assignDriver(
                                         driverId: selectedDriverId!,
                                         vehicleId: vehicle.id,
@@ -775,17 +827,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
 
                                     Navigator.pop(modalContext);
                                     await _refreshVehicleState(vehicle);
-                                    ScaffoldMessenger.of(rootContext).showSnackBar(
+                                    ScaffoldMessenger.of(
+                                      rootContext,
+                                    ).showSnackBar(
                                       SnackBar(content: Text(message)),
                                     );
                                   } catch (error) {
                                     if (!context.mounted) {
                                       return;
                                     }
-                                    ScaffoldMessenger.of(rootContext).showSnackBar(
+                                    ScaffoldMessenger.of(
+                                      rootContext,
+                                    ).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                          error.toString().replaceFirst('Exception: ', ''),
+                                          error.toString().replaceFirst(
+                                            'Exception: ',
+                                            '',
+                                          ),
                                         ),
                                         backgroundColor: AppColors.red,
                                       ),
@@ -806,7 +865,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   ),
                                 )
                               : const Icon(LucideIcons.playCircle),
-                          label: Text(isSubmitting ? 'Starting...' : 'Start Session'),
+                          label: Text(
+                            isSubmitting ? 'Starting...' : 'Start Session',
+                          ),
                         ),
                       ),
                     ],
@@ -848,7 +909,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               : vehicle.googleTrackingUrl;
           final useNativeMap = settings.mobileMapMode.toLowerCase() == 'native';
           final routeTrailFuture = _resolveRouteTrail(vehicle, settings);
-          if (!useNativeMap && trackingUrl.isNotEmpty && trackingUrl != _loadedUrl) {
+          if (!useNativeMap &&
+              trackingUrl.isNotEmpty &&
+              trackingUrl != _loadedUrl) {
             _loadWebLink(trackingUrl);
           }
 
@@ -885,17 +948,28 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                           'Native map is enabled from superadmin settings',
                                       followFocusedVehicle: true,
                                     ),
-                                    if (snapshot.connectionState == ConnectionState.waiting)
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting)
                                       Positioned(
                                         right: 12,
                                         bottom: 12,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.92),
-                                            borderRadius: BorderRadius.circular(16),
+                                            color: Colors.white.withValues(
+                                              alpha: 0.92,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
                                             boxShadow: const <BoxShadow>[
-                                              BoxShadow(color: Colors.black12, blurRadius: 8),
+                                              BoxShadow(
+                                                color: Colors.black12,
+                                                blurRadius: 8,
+                                              ),
                                             ],
                                           ),
                                           child: const Row(
@@ -904,7 +978,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                               SizedBox(
                                                 width: 12,
                                                 height: 12,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
                                               ),
                                               SizedBox(width: 8),
                                               Text(
@@ -923,8 +1000,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               },
                             )
                           : (_controller == null
-                              ? const Center(child: Text('Map link not available'))
-                              : WebViewWidget(controller: _controller!)),
+                                ? const Center(
+                                    child: Text('Map link not available'),
+                                  )
+                                : WebViewWidget(controller: _controller!)),
                     ),
                     Positioned.fill(
                       child: Material(
@@ -987,7 +1066,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           children: <Widget>[
                             CircleAvatar(
                               radius: 28,
-                              backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                              backgroundColor: AppTheme.primaryBlue.withValues(
+                                alpha: 0.1,
+                              ),
                               child: const Icon(
                                 LucideIcons.car,
                                 size: 28,
@@ -1026,7 +1107,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: _statusColor(vehicle).withValues(alpha: 0.1),
+                                color: _statusColor(
+                                  vehicle,
+                                ).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -1050,22 +1133,35 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           child: Column(
                             children: <Widget>[
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
                                 children: <Widget>[
-                                  _buildStatItem('Speed', '${vehicle.speed.round()} km/h'),
+                                  _buildStatItem(
+                                    'Speed',
+                                    '${vehicle.speed.round()} km/h',
+                                  ),
                                   _buildStatDivider(),
-                                  _buildStatItem('Battery', '${vehicle.battery}%'),
+                                  _buildStatItem(
+                                    'Battery',
+                                    '${vehicle.battery}%',
+                                  ),
                                   _buildStatDivider(),
-                                  _buildStatItem('Engine', vehicle.engineOn ? 'ON' : 'OFF'),
+                                  _buildStatItem(
+                                    'Engine',
+                                    vehicle.engineOn ? 'ON' : 'OFF',
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 16),
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceAround,
                                 children: <Widget>[
                                   _buildStatItem(
                                     'Alerts',
-                                    settings.notificationEnabled == 1 ? 'ON' : 'OFF',
+                                    settings.notificationEnabled == 1
+                                        ? 'ON'
+                                        : 'OFF',
                                   ),
                                   _buildStatDivider(),
                                   _buildStatItem(
@@ -1099,7 +1195,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                             ),
                             child: Row(
                               children: <Widget>[
-                                const Icon(LucideIcons.mapPin, color: AppTheme.primaryBlue),
+                                const Icon(
+                                  LucideIcons.mapPin,
+                                  color: AppTheme.primaryBlue,
+                                ),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
@@ -1114,7 +1213,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                             ),
                           ),
                         const SizedBox(height: 20),
-                        if (settings.allowNotifications == 1 || settings.allowParkingGuard == 1)
+                        if (settings.allowNotifications == 1 ||
+                            settings.allowParkingGuard == 1)
                           Row(
                             children: <Widget>[
                               if (settings.allowNotifications == 1)
@@ -1132,7 +1232,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     onTap: () => _toggleNotifications(vehicle),
                                   ),
                                 ),
-                              if (settings.allowNotifications == 1 && settings.allowParkingGuard == 1)
+                              if (settings.allowNotifications == 1 &&
+                                  settings.allowParkingGuard == 1)
                                 const SizedBox(width: 12),
                               if (settings.allowParkingGuard == 1)
                                 Expanded(
@@ -1151,9 +1252,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ),
                             ],
                           ),
-                        if (settings.allowNotifications == 1 || settings.allowParkingGuard == 1)
+                        if (settings.allowNotifications == 1 ||
+                            settings.allowParkingGuard == 1)
                           const SizedBox(height: 12),
-                        if (settings.allowEngineControl == 1 && settings.engineCutoff == 1)
+                        if (settings.allowEngineControl == 1 &&
+                            settings.engineCutoff == 1)
                           Row(
                             children: <Widget>[
                               Expanded(
@@ -1170,11 +1273,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   onTap: vehicle.isImmobilizerBusy
                                       ? null
                                       : () => _sendEngineCommand(
-                                            vehicle,
-                                            vehicle.isImmobilized
-                                                ? 'restore'
-                                                : 'immobilize',
-                                          ),
+                                          vehicle,
+                                          vehicle.isImmobilized
+                                              ? 'restore'
+                                              : 'immobilize',
+                                        ),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -1184,8 +1287,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   label: vehicle.isImmobilizerBusy
                                       ? 'Pending'
                                       : vehicle.immobilizerState
-                                          .replaceAll('_', ' ')
-                                          .toUpperCase(),
+                                            .replaceAll('_', ' ')
+                                            .toUpperCase(),
                                   color: vehicle.isImmobilizerBusy
                                       ? Colors.orange
                                       : AppTheme.primaryBlue,
@@ -1194,9 +1297,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               ),
                             ],
                           ),
-                        if (settings.allowEngineControl == 1 && settings.engineCutoff == 1)
+                        if (settings.allowEngineControl == 1 &&
+                            settings.engineCutoff == 1)
                           const SizedBox(height: 12),
-                        if (settings.allowHistory == 1 || settings.allowConfig == 1)
+                        if (settings.allowHistory == 1 ||
+                            settings.allowConfig == 1)
                           Row(
                             children: <Widget>[
                               if (settings.allowHistory == 1)
@@ -1206,11 +1311,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     label: 'History',
                                     color: AppTheme.primaryBlue,
                                     onTap: settings.historyUrl.isNotEmpty
-                                        ? () => _launchHistory(settings.historyUrl)
+                                        ? () => _launchHistory(
+                                            settings.historyUrl,
+                                          )
                                         : null,
                                   ),
                                 ),
-                              if (settings.allowHistory == 1 && settings.allowConfig == 1)
+                              if (settings.allowHistory == 1 &&
+                                  settings.allowConfig == 1)
                                 const SizedBox(width: 12),
                               if (settings.allowConfig == 1)
                                 Expanded(
@@ -1223,9 +1331,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ),
                             ],
                           ),
-                        if (settings.allowHistory == 1 || settings.allowConfig == 1)
+                        if (settings.allowHistory == 1 ||
+                            settings.allowConfig == 1)
                           const SizedBox(height: 12),
-                        if (settings.allowDriverSessions == 1 || settings.allowDocuments == 1)
+                        if (settings.allowDriverSessions == 1 ||
+                            settings.allowDocuments == 1)
                           Row(
                             children: <Widget>[
                               if (settings.allowDriverSessions == 1)
@@ -1236,10 +1346,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     color: AppTheme.primaryBlue,
                                     onTap: _isSessionBusy
                                         ? null
-                                        : () => _showDriverSessionSheet(vehicle),
+                                        : () =>
+                                              _showDriverSessionSheet(vehicle),
                                   ),
                                 ),
-                              if (settings.allowDriverSessions == 1 && settings.allowDocuments == 1)
+                              if (settings.allowDriverSessions == 1 &&
+                                  settings.allowDocuments == 1)
                                 const SizedBox(width: 12),
                               if (settings.allowDocuments == 1)
                                 Expanded(
@@ -1327,7 +1439,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: (hasActiveDriver ? AppColors.green : AppColors.orange)
                       .withValues(alpha: 0.12),
@@ -1353,18 +1468,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                 _driverChip(
                   icon: LucideIcons.scanLine,
                   label: activeDriver!.identificationMethod.isNotEmpty
-                      ? activeDriver!.identificationMethod.toUpperCase()
+                      ? activeDriver.identificationMethod.toUpperCase()
                       : 'MANUAL',
                 ),
                 _driverChip(
                   icon: LucideIcons.hash,
-                  label: activeDriver!.driverCode.isNotEmpty
-                      ? activeDriver!.driverCode
+                  label: activeDriver.driverCode.isNotEmpty
+                      ? activeDriver.driverCode
                       : 'No code',
                 ),
                 _driverChip(
                   icon: LucideIcons.clock3,
-                  label: _formatUpdatedAt(activeDriver!.identifiedAt),
+                  label: _formatUpdatedAt(activeDriver.identifiedAt),
                 ),
               ],
             ),
@@ -1419,7 +1534,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           ),
                         )
                       : Icon(
-                          hasActiveDriver ? LucideIcons.logOut : LucideIcons.playCircle,
+                          hasActiveDriver
+                              ? LucideIcons.logOut
+                              : LucideIcons.playCircle,
                         ),
                   label: Text(
                     hasActiveDriver ? 'End Session' : 'Start Session',
@@ -1644,9 +1761,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                 SizedBox(
                   width: itemWidth,
                   child: _buildDetailTile(
-                    icon: vehicle.isImmobilized ? LucideIcons.lock : LucideIcons.unlock,
+                    icon: vehicle.isImmobilized
+                        ? LucideIcons.lock
+                        : LucideIcons.unlock,
                     label: 'Immobilizer',
-                    value: vehicle.immobilizerState.replaceAll('_', ' ').toUpperCase(),
+                    value: vehicle.immobilizerState
+                        .replaceAll('_', ' ')
+                        .toUpperCase(),
                   ),
                 ),
                 SizedBox(
@@ -1691,7 +1812,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                   ),
                 );
               }
-              if (vehicle.showBatteryVoltage == 1 && vehicle.batteryVoltage > 0) {
+              if (vehicle.showBatteryVoltage == 1 &&
+                  vehicle.batteryVoltage > 0) {
                 tiles.add(
                   SizedBox(
                     width: itemWidth,
@@ -1703,7 +1825,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                   ),
                 );
               }
-              if (vehicle.showDtcCodes == 1 && vehicle.dtcCodes.trim().isNotEmpty) {
+              if (vehicle.showDtcCodes == 1 &&
+                  vehicle.dtcCodes.trim().isNotEmpty) {
                 tiles.add(
                   SizedBox(
                     width: itemWidth,
@@ -1728,11 +1851,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                 );
               }
 
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: tiles,
-              );
+              return Wrap(spacing: 12, runSpacing: 12, children: tiles);
             },
           ),
         ],
@@ -1810,11 +1929,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(
-                icon,
-                size: 15,
-                color: AppTheme.primaryBlue,
-              ),
+              Icon(icon, size: 15, color: AppTheme.primaryBlue),
               const SizedBox(width: 6),
               Text(
                 label,
@@ -1831,10 +1946,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
-  Widget _buildMapInfoChip({
-    required IconData icon,
-    required String label,
-  }) {
+  Widget _buildMapInfoChip({required IconData icon, required String label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(

@@ -61,16 +61,16 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     // _startAutoRefresh();
   }
 
-  void _startAutoRefresh() {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
-      if (!mounted || _isAutoRefreshing) {
-        return;
-      }
-      _isAutoRefreshing = true;
-      unawaited(_refreshVehicles());
-    });
-  }
+  // void _startAutoRefresh() {
+  //   _autoRefreshTimer?.cancel();
+  //   _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+  //     if (!mounted || _isAutoRefreshing) {
+  //       return;
+  //     }
+  //     _isAutoRefreshing = true;
+  //     unawaited(_refreshVehicles());
+  //   });
+  // }
 
   Future<void> _refreshVehicles() async {
     try {
