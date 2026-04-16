@@ -58,7 +58,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     if (cubit.state.vechileListModel == null) {
       cubit.fetchVehicles();
     }
-    _startAutoRefresh();
+    // _startAutoRefresh();
   }
 
   void _startAutoRefresh() {
@@ -272,8 +272,9 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                           : LucideIcons.power,
                       value: vehicle.engineOn ? 'ON' : 'OFF',
                       label: 'ACC',
-                      color:
-                          vehicle.engineOn ? AppTheme.primaryGreen : Colors.red,
+                      color: vehicle.engineOn
+                          ? AppTheme.primaryGreen
+                          : Colors.red,
                     ),
                   ],
                 ),
@@ -305,16 +306,17 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                         onTap: vehicle.isImmobilizerBusy
                             ? null
                             : () => _sendEngineCommand(
-                                  vehicle,
-                                  vehicle.isImmobilized
-                                      ? 'restore'
-                                      : 'immobilize',
-                                ),
+                                vehicle,
+                                vehicle.isImmobilized
+                                    ? 'restore'
+                                    : 'immobilize',
+                              ),
                         icon: vehicle.isImmobilized
                             ? LucideIcons.playCircle
                             : LucideIcons.stopCircle,
-                        label:
-                            vehicle.isImmobilized ? 'Start Engine' : 'Stop Engine',
+                        label: vehicle.isImmobilized
+                            ? 'Start Engine'
+                            : 'Stop Engine',
                         color: vehicle.isImmobilized
                             ? AppTheme.primaryGreen
                             : Colors.red,
@@ -475,7 +477,9 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
       decoration: BoxDecoration(
         color: AppTheme.primaryGreen.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.15)),
+        border: Border.all(
+          color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+        ),
       ),
       child: Row(
         children: <Widget>[
@@ -485,8 +489,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
               color: AppTheme.primaryGreen,
               shape: BoxShape.circle,
             ),
-            child:
-                const Icon(LucideIcons.user, size: 14, color: Colors.white),
+            child: const Icon(LucideIcons.user, size: 14, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -542,7 +545,9 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
           foregroundColor: effectiveColor,
           side: BorderSide(color: effectiveColor),
           padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
         ),
       );
@@ -602,5 +607,4 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     }
     return '${parsed.day.toString().padLeft(2, '0')}/${parsed.month.toString().padLeft(2, '0')} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
   }
-
 }

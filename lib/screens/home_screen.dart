@@ -28,14 +28,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const Duration _autoRefreshInterval = Duration(seconds: 3);
+  // static const Duration _autoRefreshInterval = Duration(seconds: 3);
   final AssignedVehicleReminderService _vehicleCareService =
       AssignedVehicleReminderService();
   WebViewController? _controller;
   bool isLoading = true;
   String _loadedUrl = '';
   Timer? _autoRefreshTimer;
-  bool _isAutoRefreshing = false;
+  // bool _isAutoRefreshing = false;
 
   @override
   void initState() {
@@ -50,25 +50,25 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _startAutoRefresh() {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
-      if (!mounted || _isAutoRefreshing) {
-        return;
-      }
+  // void _startAutoRefresh() {
+  //   _autoRefreshTimer?.cancel();
+  //   _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+  //     if (!mounted || _isAutoRefreshing) {
+  //       return;
+  //     }
 
-      _isAutoRefreshing = true;
-      unawaited(_refreshHomeSnapshot());
-    });
-  }
+  //     _isAutoRefreshing = true;
+  //     unawaited(_refreshHomeSnapshot());
+  //   });
+  // }
 
-  Future<void> _refreshHomeSnapshot() async {
-    try {
-      await context.read<HomeCubit>().fetchHomeData();
-    } finally {
-      _isAutoRefreshing = false;
-    }
-  }
+  // Future<void> _refreshHomeSnapshot() async {
+  //   try {
+  //     await context.read<HomeCubit>().fetchHomeData();
+  //   } finally {
+  //     _isAutoRefreshing = false;
+  //   }
+  // }
 
   Future<void> _syncVehicleCareReminders() async {
     try {

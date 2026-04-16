@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/api.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
