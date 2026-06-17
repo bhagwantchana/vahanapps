@@ -28,16 +28,12 @@ class $AssetsImagesGen {
   /// File path: assets/images/map.png
   AssetGenImage get map => const AssetGenImage('assets/images/map.png');
 
-  /// File path: assets/images/mylogo.png
-  AssetGenImage get mylogo => const AssetGenImage('assets/images/mylogo.png');
-
   /// List of all assets
   List<AssetGenImage> get values => [
     indianFlag,
     loginBackground,
     logo,
     map,
-    mylogo,
   ];
 }
 

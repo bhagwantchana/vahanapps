@@ -1,9 +1,37 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-<uses-permission android:name="android.permission.INTERNET"/>
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-<uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+    <!-- Required so FCM can wake the device and play notification sounds
+         even when the screen is off. Without WAKE_LOCK + VIBRATE alerts
+         arrive silently on Android 10+. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- CAMERA is needed for the "take photo" picker path. The image_picker
+         plugin's gallery path uses the Android 13+ system photo picker, which
+         does NOT require broad media permissions. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Optional foreground location for live tracking. The runtime
+         permission prompt still controls access at use time. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
+    <!-- Play Console policy: apps with infrequent / one-time photo access
+         must NOT request READ_MEDIA_IMAGES / READ_MEDIA_VIDEO; they have to
+         use the system photo picker instead. The image_picker / file_picker
+         plugins merge these permissions in automatically at build time, so
+         we strip them with tools:node="remove" — gallery selection still
+         works via the system photo picker which needs zero permissions. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
     <application
-        android:label="Fleetmonitor360"
+        android:label="Vahan Connect"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -24,17 +52,27 @@
               android:resource="@style/NormalTheme"
               />
 
+            <!-- Must match CustomNotificationSoundService._channelId in
+                 lib/services/local_notification.dart. FCM uses this as the
+                 fallback channel for messages that don't carry an explicit
+                 android_channel_id in their data payload. The previous "_v2"
+                 channel was bumped to "_v3" when notification sounds were
+                 reworked — without this update, FCM would drop alerts into
+                 a phantom channel the app never created. -->
             <meta-data
                 android:name="com.google.firebase.messaging.default_notification_channel_id"
-                android:value="fleet_monitor_alert_channel_v2" />
+                android:value="fleet_monitor_alert_channel_v3" />
 
             <meta-data
                 android:name="com.google.firebase.messaging.default_notification_icon"
                 android:resource="@mipmap/ic_launcher" />
 
+            <!-- Reference must match a file under res/raw/ minus the extension.
+                 res/raw/default_sound.wav is the canonical default sound the
+                 Dart layer also points to (see _defaultAndroidSoundName). -->
             <meta-data
                 android:name="com.google.firebase.messaging.default_notification_sound"
-                android:resource="@raw/sound" />
+                android:resource="@raw/default_sound" />
 
 
             <intent-filter>

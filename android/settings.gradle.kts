@@ -22,6 +22,12 @@ plugins {
     id("com.android.application") version "8.12.3" apply false
     // START: FlutterFire Configuration
     id("com.google.gms.google-services") version("4.3.15") apply false
+    // Firebase Crashlytics Gradle plugin — uploads ProGuard mapping +
+    // native symbols on release builds so the crash dashboard shows
+    // readable stack traces instead of obfuscated frames. Version 3.0.x
+    // is required to match the firebase_crashlytics 5.x Dart plugin;
+    // older 2.9.x is incompatible and produces opaque build failures.
+    id("com.google.firebase.crashlytics") version("3.0.2") apply false
     // END: FlutterFire Configuration
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }

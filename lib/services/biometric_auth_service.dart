@@ -32,7 +32,7 @@ class BiometricAuthService {
   }
 
   static Future<bool> authenticate({
-    String reason = 'Authenticate to access Fleet Monitor',
+    String reason = 'Authenticate to access VahanConnect',
   }) async {
     try {
       final supported = await isSupported();

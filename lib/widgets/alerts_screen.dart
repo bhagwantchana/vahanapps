@@ -4,10 +4,10 @@ import 'package:fleet_monitor/cubits/alerts_cubit/alerts_state.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
-import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/models/alert_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/repositorys/alerts_repository.dart';
+import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -35,30 +35,36 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Future<void> _refreshAlerts() async {
-    await context.read<AlertsCubit>().fetchAlerts(unreadOnly: _unreadOnly);
-    await context.read<HomeCubit>().fetchHomeData();
+    // Cache the cubits before awaiting — once we suspend, the widget can
+    // unmount and `context.read` after that point throws.
+    final alertsCubit = context.read<AlertsCubit>();
+    final homeCubit = context.read<HomeCubit>();
+    await alertsCubit.fetchAlerts(unreadOnly: _unreadOnly);
+    await homeCubit.fetchHomeData();
   }
 
   Future<void> _openAlert(AlertItem alert) async {
+    final alertsCubit = context.read<AlertsCubit>();
+    final homeCubit = context.read<HomeCubit>();
+    final trackCubit = context.read<SingleTrackCubit>();
+
     if (!alert.isRead) {
-      await context.read<AlertsCubit>().markAsRead(alert.id);
-      await context.read<HomeCubit>().fetchHomeData();
+      await alertsCubit.markAsRead(alert.id);
+      await homeCubit.fetchHomeData();
     }
 
     if (alert.imei.isEmpty) {
       return;
     }
 
-    await context.read<SingleTrackCubit>().fetchVehicleTrack(alert.imei);
+    await trackCubit.fetchVehicleTrack(alert.imei);
     if (!mounted) {
       return;
     }
 
     Navigator.push(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => const VehicleDetailScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const VehicleDetailScreen()),
     );
   }
 
@@ -72,10 +78,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
       return;
     }
 
-    final vehicles = vehicleCubit.state.vechileListModel?.data ?? <VehicleRecord>[];
+    final vehicles =
+        vehicleCubit.state.vechileListModel?.data ?? <VehicleRecord>[];
     if (vehicles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No vehicle found to trigger panic alert')),
+        const SnackBar(
+          content: Text('No vehicle found to trigger panic alert'),
+        ),
       );
       return;
     }
@@ -114,7 +123,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
-                    value: selectedVehicle.id,
+                    initialValue: selectedVehicle.id,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Vehicle'),
                     items: vehicles
@@ -130,8 +139,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         return;
                       }
                       setSheetState(() {
-                        selectedVehicle =
-                            vehicles.firstWhere((vehicle) => vehicle.id == value);
+                        selectedVehicle = vehicles.firstWhere(
+                          (vehicle) => vehicle.id == value,
+                        );
                       });
                     },
                   ),
@@ -183,22 +193,28 @@ class _AlertsScreenState extends State<AlertsScreen> {
       final message = await _alertsRepository.sendPanicAlert(
         vehicleId: selectedVehicle.id,
         note: noteController.text,
-        latitude: selectedVehicle.latitude == 0 ? null : selectedVehicle.latitude,
-        longitude: selectedVehicle.longitude == 0 ? null : selectedVehicle.longitude,
+        latitude: selectedVehicle.latitude == 0
+            ? null
+            : selectedVehicle.latitude,
+        longitude: selectedVehicle.longitude == 0
+            ? null
+            : selectedVehicle.longitude,
       );
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
       await _refreshAlerts();
     } catch (error) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
       );
     } finally {
       if (mounted) {
@@ -210,8 +226,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: Image.asset(Assets.images.mylogo.path, height: 30)),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(title: const AppLogo()),
       body: Column(
         children: <Widget>[
           Padding(
@@ -295,9 +311,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       children: <Widget>[
                         SizedBox(
                           height: MediaQuery.of(context).size.height * 0.5,
-                          child: const Center(
-                            child: Text('No alerts yet'),
-                          ),
+                          child: const Center(child: Text('No alerts yet')),
                         ),
                       ],
                     ),
@@ -432,7 +446,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           fontSize: 13,
                         ),
                       ),
-                      if (alert.latitude != 0 || alert.longitude != 0) ...<Widget>[
+                      if (alert.latitude != 0 ||
+                          alert.longitude != 0) ...<Widget>[
                         const SizedBox(height: 8),
                         Row(
                           children: <Widget>[
@@ -493,6 +508,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         return AppColors.green;
       case 'ignition_off':
         return AppColors.red;
+      case 'geofence_enter':
       case 'geofence_exit':
       case 'parking_guard':
         return AppColors.orange;

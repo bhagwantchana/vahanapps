@@ -1,4 +1,5 @@
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/home_screen.dart';
 import 'package:fleet_monitor/screens/profile_screen.dart';
 import 'package:fleet_monitor/screens/reports_screen.dart';
@@ -38,17 +39,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final screens = <Widget>[
       HomeScreen(onSelectTab: _selectTab),
-      const VehicleListWidget(),
+      VehicleListWidget(onSelectTab: _selectTab),
       const AlertsScreen(),
       const ReportsScreen(),
       const ProfileScreen(),
     ];
 
+    final strings = AppStrings.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).cardTheme.color ??
+              (isDark ? AppTheme.darkSurface : Colors.white),
           indicatorColor: AppTheme.primaryGreen.withValues(alpha: 0.14),
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             final selected = states.contains(WidgetState.selected);
@@ -80,26 +84,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             selectedIndex: _currentIndex,
             onDestinationSelected: _selectTab,
             height: 72,
-            destinations: const <NavigationDestination>[
+            destinations: <NavigationDestination>[
               NavigationDestination(
-                icon: Icon(LucideIcons.home),
-                label: 'Home',
+                icon: const Icon(LucideIcons.home),
+                label: strings.t('tab_home'),
               ),
               NavigationDestination(
-                icon: Icon(LucideIcons.car),
-                label: 'Vehicles',
+                icon: const Icon(LucideIcons.car),
+                label: strings.t('tab_vehicles'),
               ),
               NavigationDestination(
-                icon: Icon(LucideIcons.bell),
-                label: 'Alerts',
+                icon: const Icon(LucideIcons.bell),
+                label: strings.t('tab_alerts'),
               ),
               NavigationDestination(
-                icon: Icon(Icons.bar_chart),
-                label: 'Reports',
+                icon: const Icon(Icons.bar_chart),
+                label: strings.t('tab_reports'),
               ),
               NavigationDestination(
-                icon: Icon(LucideIcons.user),
-                label: 'Profile',
+                icon: const Icon(LucideIcons.user),
+                label: strings.t('tab_profile'),
               ),
             ],
           ),

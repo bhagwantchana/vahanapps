@@ -56,15 +56,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           // Logo
                           const SizedBox(height: 16),
-
                           Image.asset(
-                            Assets.images.mylogo.path,
-                            height: 40,
-                            width: 40,
+                            Assets.images.logo.path,
+                            height: 48,
+                            width: 48,
                           ),
-
                           const SizedBox(height: 48),
-
                           // Login Card
                           Form(
                             key: provider.formKey,
@@ -79,10 +76,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
-                                    TextField(
+                                    TextFormField(
                                       controller: provider.emailController,
+                                      validator: provider.validateEmail,
                                       decoration: InputDecoration(
-                                        labelText: 'Username or Mobile Number',
+                                        labelText: 'Email or Username',
+                                        helperText: 'Either works — primary or sub-user',
                                         prefixIcon: Icon(
                                           LucideIcons.user,
                                           color: Colors.grey.shade600,
@@ -90,8 +89,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 20),
-                                    TextField(
+                                    TextFormField(
                                       controller: provider.passwordController,
+                                      validator: provider.validatePassword,
                                       obscureText: true,
                                       decoration: InputDecoration(
                                         labelText: 'Password',
@@ -115,6 +115,50 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                       ),
                                     ),
+                                    // Inline error banner. The AuthCubit
+                                    // pushes an AuthErrorState when the API
+                                    // returns "wrong username/password" and
+                                    // the provider captures the message into
+                                    // `provider.error`. Before this banner
+                                    // existed, login silently failed — the
+                                    // button just snapped back to its idle
+                                    // state with no feedback.
+                                    if (provider.error.isNotEmpty) ...[
+                                      const SizedBox(height: 16),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: Colors.red.shade200,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: <Widget>[
+                                            Icon(
+                                              LucideIcons.alertCircle,
+                                              color: Colors.red.shade700,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Text(
+                                                provider.error,
+                                                style: TextStyle(
+                                                  color: Colors.red.shade800,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 24),
 
                                     // Gradient Button

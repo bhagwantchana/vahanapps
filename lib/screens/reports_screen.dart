@@ -5,7 +5,9 @@ import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/models/report_model.dart';
 import 'package:fleet_monitor/models/model_helpers.dart';
 import 'package:fleet_monitor/repositorys/report_repository.dart';
+import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -23,8 +25,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   ReportData? _reportData;
   String _reportKey = 'daily_running';
   String _period = 'daily';
-  String _groupBy = 'vehicle';
-  String _dueStatus = 'all';
+  final String _groupBy = 'vehicle';
+  final String _dueStatus = 'all';
   int _vehicleId = 0;
   bool _isLoading = false;
   bool _isExporting = false;
@@ -115,18 +117,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final meta = report?.meta ?? const ReportMeta();
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Reports'),
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: const AppLogo(),
         actions: <Widget>[
           IconButton(
             icon: _isExporting
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryBlue),
                   )
-                : const Icon(Icons.file_download_outlined),
+                : Icon(LucideIcons.download, color: Color(0xFF1A1A1A), size: 20),
             onPressed: _isExporting ? null : () => _fetchReport(includeExport: true),
           ),
         ],
@@ -135,26 +139,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: <Widget>[
-                _buildFilters(meta),
+                _buildModernFilterHub(meta),
                 if (_error.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text(
-                      _error,
-                      style: const TextStyle(color: AppColors.red),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.alertCircle, size: 16, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(_error, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
                     ),
                   ),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: _fetchReport,
                     child: ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                       children: <Widget>[
-                        _buildSummaryCards(report?.summaryCards ?? const <ReportSummaryCard>[]),
-                        const SizedBox(height: 16),
-                        _buildChartCard(report?.chart ?? const ReportChart()),
-                        const SizedBox(height: 16),
-                        _buildRows(report?.rows ?? const <Map<String, dynamic>>[]),
+                        _buildPremiumSummary(report?.summaryCards ?? const <ReportSummaryCard>[]),
+                        const SizedBox(height: 24),
+                        _buildPremiumChart(report?.chart ?? const ReportChart()),
+                        const SizedBox(height: 24),
+                        _buildModernTable(report?.rows ?? const <Map<String, dynamic>>[]),
                       ],
                     ),
                   ),
@@ -164,194 +175,139 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildFilters(ReportMeta meta) {
-    final reportOptions = meta.reportOptions.isNotEmpty
-        ? meta.reportOptions
-        : const <ReportOption>[
-            ReportOption(key: 'trip', label: 'Trip Report'),
-            ReportOption(key: 'daily_running', label: 'Daily Running'),
-            ReportOption(key: 'ignition', label: 'Ignition'),
-            ReportOption(key: 'overspeed', label: 'Over Speed'),
-            ReportOption(key: 'idle', label: 'Idle Time'),
-            ReportOption(key: 'distance', label: 'Distance'),
-            ReportOption(key: 'maintenance_due', label: 'Maintenance Due'),
-          ];
-    final periodOptions = meta.periodOptions.isNotEmpty
-        ? meta.periodOptions
-        : const <ReportOption>[
-            ReportOption(key: 'daily', label: 'Daily'),
-            ReportOption(key: 'weekly', label: 'Weekly'),
-            ReportOption(key: 'monthly', label: 'Monthly'),
-          ];
-    final dueStatusOptions = meta.dueStatusOptions.isNotEmpty
-        ? meta.dueStatusOptions
-        : const <ReportOption>[ReportOption(key: 'all', label: 'All')];
-    final groupOptions = meta.groupOptions.isNotEmpty
-        ? meta.groupOptions
-        : const <ReportOption>[ReportOption(key: 'vehicle', label: 'Vehicle')];
-
+  Widget _buildModernFilterHub(ReportMeta meta) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Wrap(
-        runSpacing: 10,
-        spacing: 10,
-        children: <Widget>[
-          _dropdownBox(
-            label: 'Report',
-            value: _reportKey,
-            options: reportOptions
-                .map((option) => DropdownMenuItem<String>(
-                      value: option.key,
-                      child: Text(option.label),
-                    ))
-                .toList(),
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() => _reportKey = value);
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            _filterBubble('Report', _reportKey, meta.reportOptions, (val) {
+              setState(() => _reportKey = val);
               _fetchReport();
-            },
-          ),
-          _dropdownBox(
-            label: 'Period',
-            value: _period,
-            options: periodOptions
-                .map((option) => DropdownMenuItem<String>(
-                      value: option.key,
-                      child: Text(option.label),
-                    ))
-                .toList(),
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() => _period = value);
+            }),
+            const SizedBox(width: 10),
+            _filterBubble('Period', _period, meta.periodOptions, (val) {
+              setState(() => _period = val);
               _fetchReport();
-            },
-          ),
-          _dropdownBox(
-            label: 'Vehicle',
-            value: _vehicleId.toString(),
-            options: <DropdownMenuItem<String>>[
-              const DropdownMenuItem<String>(value: '0', child: Text('All')),
-              ...meta.vehicleOptions.map(
-                (vehicle) => DropdownMenuItem<String>(
-                  value: vehicle.id.toString(),
-                  child: Text(vehicle.label),
-                ),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() => _vehicleId = int.tryParse(value ?? '0') ?? 0);
+            }),
+            const SizedBox(width: 10),
+            _filterBubble('Vehicle', _vehicleId.toString(), [
+              const ReportOption(key: '0', label: 'All Vehicles'),
+              ...meta.vehicleOptions.map((v) => ReportOption(key: v.id.toString(), label: v.label)),
+            ], (val) {
+              setState(() => _vehicleId = int.parse(val));
               _fetchReport();
-            },
-          ),
-          _dropdownBox(
-            label: 'Group',
-            value: _groupBy,
-            options: groupOptions
-                .map((option) => DropdownMenuItem<String>(
-                      value: option.key,
-                      child: Text(option.label),
-                    ))
-                .toList(),
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() => _groupBy = value);
-              _fetchReport();
-            },
-          ),
-          _dropdownBox(
-            label: 'Due',
-            value: _dueStatus,
-            options: dueStatusOptions
-                .map((option) => DropdownMenuItem<String>(
-                      value: option.key,
-                      child: Text(option.label),
-                    ))
-                .toList(),
-            onChanged: (value) {
-              if (value == null) {
-                return;
-              }
-              setState(() => _dueStatus = value);
-              _fetchReport();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _dropdownBox({
-    required String label,
-    required String value,
-    required List<DropdownMenuItem<String>> options,
-    required ValueChanged<String?> onChanged,
-  }) {
-    return SizedBox(
-      width: 160,
-      child: DropdownButtonFormField<String>(
-        value: options.any((item) => item.value == value) ? value : options.first.value,
-        isExpanded: true,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            }),
+          ],
         ),
-        items: options,
       ),
     );
   }
 
-  Widget _buildSummaryCards(List<ReportSummaryCard> cards) {
-    if (cards.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  Widget _filterBubble(String label, String current, List<ReportOption> options, Function(String) onSelect) {
+    final selectedLabel = options.firstWhere((o) => o.key == current, orElse: () => options.first).label;
+    return GestureDetector(
+      onTap: () => _showFilterPicker(label, options, current, onSelect),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F4F8),
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Text('$label: ', style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+            Text(selectedLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+            const SizedBox(width: 4),
+            Icon(LucideIcons.chevronDown, size: 14, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFilterPicker(String title, List<ReportOption> options, String current, Function(String) onSelect) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Select $title', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, i) {
+                  final opt = options[i];
+                  final isSelected = opt.key == current;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(opt.label, style: TextStyle(fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.primaryBlue : Colors.black87)),
+                    trailing: isSelected ? Icon(LucideIcons.check, color: AppTheme.primaryBlue, size: 20) : null,
+                    onTap: () {
+                      onSelect(opt.key);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+
+  Widget _buildPremiumSummary(List<ReportSummaryCard> cards) {
+    if (cards.isEmpty) return const SizedBox.shrink();
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: cards.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 1.2,
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 2.2,
       ),
       itemBuilder: (context, index) {
         final card = cards[index];
+        final colors = [const Color(0xFF003366), Colors.green, Colors.orange, Colors.purple, Colors.blue];
+        final color = colors[index % colors.length];
         return Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Text(
-                card.label,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+                child: Icon(_getIconForLabel(card.label), color: color, size: 18),
               ),
-              const SizedBox(height: 6),
-              Text(
-                card.value,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.primaryBlue,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(card.label, style: TextStyle(color: Colors.grey.shade500, fontSize: 10, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+                    Text(card.value, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 16, fontWeight: FontWeight.w900)),
+                  ],
                 ),
               ),
             ],
@@ -361,29 +317,43 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Widget _buildChartCard(ReportChart chart) {
+  IconData _getIconForLabel(String label) {
+    final lower = label.toLowerCase();
+    if (lower.contains('distance') || lower.contains('km')) return LucideIcons.mapPin;
+    if (lower.contains('fuel')) return LucideIcons.fuel;
+    if (lower.contains('speed')) return LucideIcons.gauge;
+    if (lower.contains('time') || lower.contains('idle')) return LucideIcons.clock;
+    if (lower.contains('cost')) return LucideIcons.indianRupee;
+    return LucideIcons.barChart;
+  }
+
+  Widget _buildPremiumChart(ReportChart chart) {
     final hasData = chart.series.any((series) => series.data.isNotEmpty);
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Visual Graph',
-            style: TextStyle(
-              color: AppTheme.primaryBlue,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Visual Analytics', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: AppTheme.primaryBlue.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
+                child: Text(chart.type.toUpperCase(), style: const TextStyle(color: AppTheme.primaryBlue, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
           SizedBox(
-            height: 210,
-            child: hasData ? _chartWidget(chart) : const Center(child: Text('No chart data')),
+            height: 220,
+            child: hasData ? _chartWidget(chart) : const Center(child: Text('No chart data available')),
           ),
         ],
       ),
@@ -510,63 +480,45 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return PieChart(PieChartData(sections: sections, centerSpaceRadius: 30));
   }
 
-  Widget _buildRows(List<Map<String, dynamic>> rows) {
-    if (rows.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Text('No report rows'),
-      );
-    }
+  Widget _buildModernTable(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return const SizedBox.shrink();
 
     final columns = rows.first.keys.toList(growable: false);
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(vertical: 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Report Data',
-            style: TextStyle(
-              color: AppTheme.primaryBlue,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text('Detailed Report Data', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 16),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
+              headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F4F8)),
+              horizontalMargin: 20,
+              columnSpacing: 30,
+              headingRowHeight: 48,
+              dataRowMinHeight: 48,
+              dataRowMaxHeight: 56,
+              border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade100, width: 1)),
               columns: columns
-                  .map(
-                    (column) => DataColumn(
-                      label: Text(
-                        humanizeSnakeCase(column),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  )
+                  .map((column) => DataColumn(
+                        label: Text(humanizeSnakeCase(column), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF4A688A))),
+                      ))
                   .toList(),
               rows: rows
-                  .take(20)
-                  .map(
-                    (row) => DataRow(
-                      cells: columns
-                          .map(
-                            (column) => DataCell(
-                              Text((row[column] ?? '').toString()),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  )
+                  .take(30)
+                  .map((row) => DataRow(
+                        cells: columns.map((column) => DataCell(Text((row[column] ?? '').toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))))).toList(),
+                      ))
                   .toList(),
             ),
           ),

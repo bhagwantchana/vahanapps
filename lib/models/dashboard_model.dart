@@ -31,6 +31,11 @@ class DashboardData {
   final String mapsUrl;
   final String legacyMapsUrl;
   final String mobileMapMode;
+  /// Universal map engine ('maplibre' | 'google'). Set in superadmin
+  /// Settings → "Default Map Engine". NativeVehicleMap swaps its tile
+  /// URL template at runtime based on this value so the WHOLE fleet uses
+  /// one consistent map style.
+  final String mobileMapProvider;
   final int mobileMapTrailMinutes;
   final int mobileMapTrailPoints;
   final UserProfileData? profile;
@@ -44,6 +49,7 @@ class DashboardData {
     this.mapsUrl = '',
     this.legacyMapsUrl = '',
     this.mobileMapMode = 'native',
+    this.mobileMapProvider = 'maplibre',
     this.mobileMapTrailMinutes = 120,
     this.mobileMapTrailPoints = 25,
     this.profile,
@@ -77,6 +83,7 @@ class DashboardData {
       mapsUrl: toStringValue(json['maps_url']),
       legacyMapsUrl: toStringValue(json['legacy_maps_url']),
       mobileMapMode: toStringValue(json['mobile_map_mode'], fallback: 'native'),
+      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'maplibre'),
       mobileMapTrailMinutes: toInt(json['mobile_map_trail_minutes'], fallback: 120),
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
       profile: json['profile'] is Map<String, dynamic>

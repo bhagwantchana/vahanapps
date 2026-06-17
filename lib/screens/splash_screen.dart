@@ -8,6 +8,7 @@ import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
+import 'package:fleet_monitor/services/force_update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -36,10 +37,9 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-    _carAnimation = Tween<double>(
-      begin: -1.0,
-      end: 0.0,
-    ).animate(CurvedAnimation(parent: _carController, curve: Curves.easeOutCubic));
+    _carAnimation = Tween<double>(begin: -1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _carController, curve: Curves.easeOutCubic),
+    );
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 1),
@@ -47,10 +47,17 @@ class _SplashScreenState extends State<SplashScreen>
     _pulseAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _carController.forward().then((_) => _pulseController.repeat(reverse: true));
+    _carController.forward().then(
+      (_) => _pulseController.repeat(reverse: true),
+    );
   }
 
   Future<void> _bootstrap() async {
+    // Check Play Store for a mandatory update before anything else.
+    // If an update is found, a full-screen blocking UI appears and
+    // the app restarts automatically after install.
+    await ForceUpdateService.checkAndForceUpdate();
+
     await Functions.getDeviceTokenToSendNotification();
     await Future<void>.delayed(const Duration(seconds: 3));
 
@@ -66,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (hasSession && biometricEnabled) {
       final authenticated = await BiometricAuthService.authenticate(
-        reason: 'Use system biometrics to unlock Fleet Monitor',
+        reason: 'Use system biometrics to unlock VahanConnect',
       );
       if (!mounted) {
         return;
@@ -101,7 +108,7 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Image.asset(Assets.images.mylogo.path, height: 40),
+                Image.asset(Assets.images.logo.path, height: 48),
                 const SizedBox(height: 60),
                 SizedBox(
                   height: 100,
@@ -141,10 +148,12 @@ class _SplashScreenState extends State<SplashScreen>
                                   Positioned(
                                     top: -30,
                                     child: Transform.scale(
-                                      scale: 0.8 + (_pulseAnimation.value * 0.4),
+                                      scale:
+                                          0.8 + (_pulseAnimation.value * 0.4),
                                       child: Opacity(
-                                        opacity: 1.0 - (_pulseAnimation.value * 0.5),
-                                        child: const Icon(
+                                        opacity:
+                                            1.0 - (_pulseAnimation.value * 0.5),
+                                        child: Icon(
                                           LucideIcons.radio,
                                           color: AppTheme.primaryBlue,
                                           size: 32,
@@ -165,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen>
                                       ),
                                     ],
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     LucideIcons.car,
                                     color: AppTheme.primaryBlue,
                                     size: 36,

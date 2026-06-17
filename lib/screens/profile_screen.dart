@@ -2,9 +2,11 @@ import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
-import 'package:fleet_monitor/gen/assets.gen.dart';
+import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
+import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/gap_widget.dart';
 import 'package:fleet_monitor/widgets/help_sport.dart';
@@ -57,9 +59,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
       setState(() => _biometricEnabled = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric login disabled')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Biometric login disabled')));
       return;
     }
 
@@ -82,10 +84,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (authenticated) {
       await BiometricAuthService.setEnabled(true);
+      // setEnabled is async — re-check mounted before touching context.
+      if (!mounted) return;
       setState(() => _biometricEnabled = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric login enabled')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Biometric login enabled')));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Biometric verification was cancelled')),
@@ -110,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Image.asset(Assets.images.mylogo.path, height: 30),
+        title: const AppLogo(),
         actions: <Widget>[
           IconButton(
             onPressed: _logout,
@@ -123,7 +127,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(20),
         child: BlocBuilder<ProfileCubit, ProfileState>(
           builder: (context, state) {
-            if (state is ProfileLoadingState && state.userProfileModel == null) {
+            if (state is ProfileLoadingState &&
+                state.userProfileModel == null) {
               return const Center(child: CircularProgressIndicator());
             }
             if (state is ProfileErrorState && state.userProfileModel == null) {
@@ -132,7 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             final userData = state.userProfileModel?.data;
             if (userData == null) {
-              return const Center(child: CustomText(text: 'No profile found'));
+              return Center(child: CustomText(text: AppStrings.of(context).t('no_profile_found')));
             }
 
             return Padding(
@@ -158,7 +163,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          userData.fullName.isEmpty ? 'Fleet User' : userData.fullName,
+                          userData.fullName.isEmpty
+                              ? AppStrings.of(context).t('fleet_user')
+                              : userData.fullName,
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -178,11 +185,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   GapWidget(size: 16),
-                  _sectionHeader('Account Settings'),
+                  _sectionHeader(AppStrings.of(context).t('account_settings')),
                   _settingsItem(
                     Icons.person_outline_rounded,
-                    'View & Edit Profile',
-                    'Change your basic info',
+                    AppStrings.of(context).t('view_edit_profile'),
+                    AppStrings.of(context).t('change_basic_info'),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -193,21 +200,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                   ),
                   GapWidget(size: 8),
-                  _sectionHeader('Security'),
+                  _sectionHeader(AppStrings.of(context).t('security')),
                   _settingsSwitch(
                     Icons.fingerprint_rounded,
-                    'System biometric login',
+                    AppStrings.of(context).t('biometric_login'),
                     _biometricSupported
-                        ? 'Use Face ID or fingerprint to unlock the app'
-                        : 'Biometric login is not available on this device',
+                        ? AppStrings.of(context).t('biometric_login_subtitle')
+                        : AppStrings.of(context).t('biometric_unsupported'),
                     value: _biometricEnabled,
                     enabled: _biometricSupported && !_biometricBusy,
                     onChanged: _toggleBiometricLogin,
                   ),
                   _settingsItem(
                     Icons.help_outline_rounded,
-                    'Help & Support',
-                    'Get in touch with us',
+                    AppStrings.of(context).t('help_support'),
+                    AppStrings.of(context).t('help_support_subtitle'),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -217,9 +224,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       );
                     },
                   ),
+                  GapWidget(size: 8),
+                  _sectionHeader(AppStrings.of(context).t('preferences')),
+                  _buildLanguageTile(),
+                  _buildThemeTile(),
                   GapWidget(size: 16),
                   Text(
-                    'App Version 1.0.0',
+                    '${AppStrings.of(context).t('app_version')} 1.0.0',
                     style: TextStyle(
                       color: AppColors.grey.withValues(alpha: 0.5),
                       fontSize: 12,
@@ -261,7 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color ?? Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: ListTile(
@@ -283,6 +294,160 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const Icon(Icons.chevron_right_rounded, color: AppColors.grey),
         onTap: onTap,
       ),
+    );
+  }
+
+  Widget _buildLanguageTile() {
+    return BlocBuilder<SettingsCubit, SettingsState>(
+      builder: (context, settings) {
+        final strings = AppStrings.of(context);
+        final label = _localeLabel(strings, settings.locale);
+        return _settingsItem(
+          Icons.language_rounded,
+          strings.t('language'),
+          label,
+          onTap: _showLanguagePicker,
+        );
+      },
+    );
+  }
+
+  Widget _buildThemeTile() {
+    return BlocBuilder<SettingsCubit, SettingsState>(
+      builder: (context, settings) {
+        final strings = AppStrings.of(context);
+        return _settingsItem(
+          Icons.brightness_6_rounded,
+          strings.t('theme'),
+          _themeLabel(strings, settings.themeMode),
+          onTap: _showThemePicker,
+        );
+      },
+    );
+  }
+
+  String _localeLabel(AppStrings strings, Locale? locale) {
+    if (locale == null) return strings.t('language_system');
+    switch (locale.languageCode) {
+      case 'hi':
+        return strings.t('language_hindi');
+      case 'pa':
+        return strings.t('language_punjabi');
+      default:
+        return strings.t('language_english');
+    }
+  }
+
+  String _themeLabel(AppStrings strings, ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return strings.t('theme_light');
+      case ThemeMode.dark:
+        return strings.t('theme_dark');
+      case ThemeMode.system:
+        return strings.t('theme_system');
+    }
+  }
+
+  Future<void> _showLanguagePicker() async {
+    final cubit = context.read<SettingsCubit>();
+    final current = cubit.state.locale?.languageCode;
+    final strings = AppStrings.of(context);
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _languageOption(sheetCtx, 'system', strings.t('language_system'), current == null),
+              _languageOption(sheetCtx, 'en', strings.t('language_english'), current == 'en'),
+              _languageOption(sheetCtx, 'hi', strings.t('language_hindi'), current == 'hi'),
+              _languageOption(sheetCtx, 'pa', strings.t('language_punjabi'), current == 'pa'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    if (selected == 'system') {
+      await cubit.setLocale(null);
+    } else {
+      await cubit.setLocale(Locale(selected));
+    }
+  }
+
+  Widget _languageOption(BuildContext ctx, String code, String label, bool selected) {
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        color: selected ? AppColors.primary : AppColors.grey,
+      ),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      onTap: () => Navigator.pop(ctx, code),
+    );
+  }
+
+  Future<void> _showThemePicker() async {
+    final cubit = context.read<SettingsCubit>();
+    final current = cubit.state.themeMode;
+    final strings = AppStrings.of(context);
+    final selected = await showModalBottomSheet<ThemeMode>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _themeOption(sheetCtx, ThemeMode.system, strings.t('theme_system'), current),
+              _themeOption(sheetCtx, ThemeMode.light, strings.t('theme_light'), current),
+              _themeOption(sheetCtx, ThemeMode.dark, strings.t('theme_dark'), current),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    await cubit.setThemeMode(selected);
+  }
+
+  Widget _themeOption(BuildContext ctx, ThemeMode mode, String label, ThemeMode current) {
+    final selected = mode == current;
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        color: selected ? AppColors.primary : AppColors.grey,
+      ),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      onTap: () => Navigator.pop(ctx, mode),
     );
   }
 
@@ -316,7 +481,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           subtitle,
           style: const TextStyle(fontSize: 12, color: AppColors.grey),
         ),
-        activeColor: AppColors.primary,
+        activeThumbColor: AppColors.primary,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       ),
     );

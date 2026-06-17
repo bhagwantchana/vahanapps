@@ -172,7 +172,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () => _openFile(document),
-                    icon: const Icon(LucideIcons.externalLink),
+                    icon: Icon(LucideIcons.externalLink),
                     label: const Text('Open Document'),
                   ),
                 ),
@@ -196,7 +196,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
             child: Column(
               children: <Widget>[
                 DropdownButtonFormField<String>(
-                  value: _ownerType,
+                  initialValue: _ownerType,
                   items: _ownerOptions.entries
                       .map(
                         (entry) => DropdownMenuItem<String>(
@@ -213,7 +213,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _aiStatus,
+                  initialValue: _aiStatus,
                   items: _aiStatusOptions.entries
                       .map(
                         (entry) => DropdownMenuItem<String>(
@@ -306,7 +306,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                                       if (document.fileUrl.isNotEmpty)
                                         IconButton(
                                           onPressed: () => _openFile(document),
-                                          icon: const Icon(LucideIcons.externalLink),
+                                          icon: Icon(LucideIcons.externalLink),
                                         ),
                                     ],
                                   ),

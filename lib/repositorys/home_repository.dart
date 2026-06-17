@@ -7,12 +7,13 @@ import 'package:fleet_monitor/networks/network_api.dart';
 class HomeRepository {
   final NetworkApi _networkApi = NetworkApi();
 
-  Future<DashboardModel> fetchDashboard() async {
+  Future<DashboardModel> fetchDashboard({String? date}) async {
     final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
 
     try {
       final response = await _networkApi.sendRequest.post(
         AppUrl.dashboard,
+        data: (date != null && date.isNotEmpty) ? {'date': date} : null,
         options: NetworkApi.buildOptions(authToken: token),
       );
 

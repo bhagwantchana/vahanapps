@@ -28,12 +28,20 @@ class AuthData {
   final String mapsUrl;
   final String legacyMapsUrl;
   final UserProfileData? profile;
+  // Sub-user lineage (added 2026-05-29). isSubUser=true → app runs in
+  // read-only mode (no engine commands, no edits, no settings writes).
+  final bool isSubUser;
+  final int parentUserId;
+  final String username;
 
   const AuthData({
     this.xAuthToken = '',
     this.mapsUrl = '',
     this.legacyMapsUrl = '',
     this.profile,
+    this.isSubUser = false,
+    this.parentUserId = 0,
+    this.username = '',
   });
 
   factory AuthData.fromJson(Map<String, dynamic> json) {
@@ -44,6 +52,9 @@ class AuthData {
       profile: json['profile'] is Map<String, dynamic>
           ? UserProfileData.fromJson(json['profile'] as Map<String, dynamic>)
           : null,
+      isSubUser: toInt(json['is_sub_user']) == 1,
+      parentUserId: toInt(json['parent_user_id']),
+      username: toStringValue(json['username']),
     );
   }
 }

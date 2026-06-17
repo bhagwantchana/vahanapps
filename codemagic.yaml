@@ -1,0 +1,66 @@
+# ============================================================================
+# Codemagic CI — builds the iOS app on a cloud Mac and uploads it to TestFlight,
+# so you can ship iOS WITHOUT owning a Mac. Drive it from any machine (Windows).
+#
+# ONE-TIME SETUP in the Codemagic web UI (https://codemagic.io):
+#   1. Sign up (free), connect the Git repo that holds this fleet_monitor project
+#      (push it to a PRIVATE GitHub/GitLab/Bitbucket repo first).
+#   2. Team settings → Integrations → "App Store Connect": add an API key.
+#      (App Store Connect → Users and Access → Integrations → App Store Connect
+#       API → generate a key with "App Manager" role; download the .p8, note the
+#       Key ID + Issuer ID, paste into Codemagic.) Give the key a NAME, then put
+#       that exact name below at:  app_store_connect: <YOUR_KEY_NAME>
+#   3. In App Store Connect → My Apps → "+" → create the app with bundle id
+#      com.globynix.fleetMonitor. Copy its numeric "Apple ID" → set APP_STORE_APPLE_ID below.
+#   4. (Push/sound) Upload the APNs Auth Key (.p8) to the Firebase project in the
+#      Firebase console — this is the still-pending step for iOS notifications.
+#
+# Then: open the workflow in Codemagic and press "Start new build". Codemagic
+# fetches the signing profile automatically (no manual certificates needed).
+# ============================================================================
+workflows:
+  ios-testflight:
+    name: Fleet Monitor — iOS → TestFlight
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    integrations:
+      # ↓↓↓ replace with the NAME you gave the App Store Connect API key in Codemagic UI
+      app_store_connect: FleetMonitorAppStoreKey
+    environment:
+      ios_signing:
+        distribution_type: app_store          # builds a signed App Store / TestFlight build
+        bundle_identifier: com.globynix.fleetMonitor
+      vars:
+        # ↓↓↓ the numeric "Apple ID" of the app from App Store Connect (App Information)
+        APP_STORE_APPLE_ID: 0000000000
+        BUNDLE_ID: "com.globynix.fleetMonitor"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Set up code signing (fetch & install the App Store profile)
+        script: |
+          xcode-project use-profiles
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Install CocoaPods dependencies (the iOS equivalent of gradle deps)
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+      - name: Build signed IPA (auto-increment the TestFlight build number)
+        script: |
+          # Next build number = latest TestFlight build + 1 (or 1 on the very first build).
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          NEXT=$(( ${LATEST:-0} + 1 ))
+          flutter build ipa --release \
+            --build-number=$NEXT \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true            # uploads to TestFlight automatically
+        # To auto-submit to App Store review instead, add: submit_to_app_store: true

@@ -1,115 +1,155 @@
+import 'package:fleet_monitor/constant/api.dart';
+import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/constant/preferences.dart';
+import 'package:fleet_monitor/constant/preferences_key.dart';
+import 'package:fleet_monitor/networks/network_api.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fleet_monitor/constant/app_theme.dart';
 
-class HelpSupportScreen extends StatelessWidget {
+/// Help & Support — pulls live email / phone contacts from the server so
+/// the admin can change them via superadmin → Settings → Help & Support
+/// Contacts WITHOUT shipping a new app build. Falls back to a hard-coded
+/// default if the network request fails (so the screen is never empty).
+class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({super.key});
 
-  static const String email = "globynixsolutions@gmail.com";
-  static const String phone = "9803171511";
+  @override
+  State<HelpSupportScreen> createState() => _HelpSupportScreenState();
+}
+
+class _HelpSupportScreenState extends State<HelpSupportScreen> {
+  // Fallback values — only used if the API call fails AND the cache is
+  // empty (first install + offline). Once the API loads, the live list
+  // replaces these.
+  static const _fallbackEmail = 'globynixsolutions@gmail.com';
+  static const _fallbackPhone = '9803171511';
+
+  bool _loading = true;
+  List<_Contact> _emails = const [];
+  List<_Contact> _phones = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+      final res = await NetworkApi().sendRequest.post(
+        AppUrl.supportContacts,
+        options: NetworkApi.buildOptions(authToken: token),
+      );
+      final raw = res.data;
+      if (raw is Map &&
+          raw['flag'] == 1 &&
+          raw['data'] is Map) {
+        final data = Map<String, dynamic>.from(raw['data']);
+        final emails = (data['emails'] is List ? data['emails'] as List : [])
+            .whereType<Map>()
+            .map((e) => _Contact.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        final phones = (data['phones'] is List ? data['phones'] as List : [])
+            .whereType<Map>()
+            .map((e) => _Contact.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        if (mounted) {
+          setState(() {
+            _emails = emails;
+            _phones = phones;
+            _loading = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {/* fall through to fallback below */}
+    if (mounted) {
+      setState(() {
+        _emails = const [_Contact(value: _fallbackEmail, label: '')];
+        _phones = const [_Contact(value: _fallbackPhone, label: '')];
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _launch(String scheme, String value) async {
+    final uri = Uri.parse('$scheme:$value');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Help & Support")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            /// 🔹 HEADER
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, Color(0xFF2563EB)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                children: const [
-                  Icon(Icons.support_agent, color: Colors.white, size: 40),
-                  SizedBox(height: 10),
-                  Text(
-                    "How can we help you?",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+      appBar: AppBar(title: const Text('Help & Support')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.primary, Color(0xFF2563EB)],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      children: const [
+                        Icon(Icons.support_agent, color: Colors.white, size: 40),
+                        SizedBox(height: 10),
+                        Text(
+                          'How can we help you?',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text('Contact us anytime for assistance',
+                            style: TextStyle(color: Colors.white70)),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 6),
-                  Text(
-                    "Contact us anytime for assistance",
-                    style: TextStyle(color: Colors.white70),
-                  ),
+                  const SizedBox(height: 20),
+                  for (final e in _emails)
+                    _contactCard(
+                      icon: Icons.email_outlined,
+                      title: e.label.isEmpty ? 'Email Support' : e.label,
+                      subtitle: e.value,
+                      onTap: () => _launch('mailto', e.value),
+                    ),
+                  for (final p in _phones)
+                    _contactCard(
+                      icon: Icons.phone_outlined,
+                      title: p.label.isEmpty ? 'Call Us' : p.label,
+                      subtitle: p.value,
+                      onTap: () => _launch('tel', p.value),
+                    ),
+                  const SizedBox(height: 20),
+                  _sectionTitle('Frequently Asked Questions'),
+                  _faqItem('How to track vehicle?',
+                      'Go to dashboard and select your vehicle to track live location.'),
+                  _faqItem('Why location not updating?',
+                      'Check device internet connection and GPS status.'),
+                  _faqItem('How to reset password?',
+                      'Use \'Forgot Password\' option on login screen.'),
+                  const SizedBox(height: 20),
+                  Text('We’re here to help you 24/7 🚀',
+                      style: TextStyle(color: AppColors.grey.withValues(alpha: 0.7))),
                 ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            /// 🔹 CONTACT OPTIONS
-            _contactCard(
-              icon: Icons.email_outlined,
-              title: "Email Support",
-              subtitle: email,
-              onTap: () => _launchEmail(),
-            ),
-
-            _contactCard(
-              icon: Icons.phone_outlined,
-              title: "Call Us",
-              subtitle: phone,
-              onTap: () => _launchCall(),
-            ),
-
-            const SizedBox(height: 20),
-
-            /// 🔹 FAQ
-            _sectionTitle("Frequently Asked Questions"),
-
-            _faqItem(
-              "How to track vehicle?",
-              "Go to dashboard and select your vehicle to track live location.",
-            ),
-
-            _faqItem(
-              "Why location not updating?",
-              "Check device internet connection and GPS status.",
-            ),
-
-            _faqItem(
-              "How to reset password?",
-              "Use 'Forgot Password' option on login screen.",
-            ),
-
-            const SizedBox(height: 20),
-
-            /// 🔹 FOOTER
-            Text(
-              "We’re here to help you 24/7 🚀",
-              style: TextStyle(color: AppColors.grey.withValues(alpha: 0.7)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  /// 📞 CALL
-  void _launchCall() async {
-    final Uri url = Uri.parse("tel:$phone");
-    await launchUrl(url);
-  }
-
-  /// 📧 EMAIL
-  void _launchEmail() async {
-    final Uri url = Uri.parse("mailto:$email");
-    await launchUrl(url);
-  }
-
-  /// 🔹 CONTACT CARD
   Widget _contactCard({
     required IconData icon,
     required String title,
@@ -137,34 +177,35 @@ class HelpSupportScreen extends StatelessWidget {
     );
   }
 
-  /// 🔹 FAQ ITEM
   Widget _faqItem(String question, String answer) {
     return ExpansionTile(
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(bottom: 10),
-      title: Text(
-        question,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
+      title: Text(question, style: const TextStyle(fontWeight: FontWeight.w600)),
       children: [Text(answer, style: TextStyle(color: Colors.grey.shade600))],
     );
   }
 
-  /// 🔹 SECTION TITLE
   Widget _sectionTitle(String title) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-            color: AppColors.primary,
-          ),
-        ),
+        child: Text(title,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: AppColors.primary)),
       ),
     );
   }
+}
+
+class _Contact {
+  final String value;
+  final String label;
+  const _Contact({required this.value, this.label = ''});
+
+  factory _Contact.fromJson(Map<String, dynamic> json) =>
+      _Contact(value: '${json['value'] ?? ''}', label: '${json['label'] ?? ''}');
 }

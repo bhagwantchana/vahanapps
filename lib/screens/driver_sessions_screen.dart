@@ -256,7 +256,7 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
                                   onPressed: session.imei.isNotEmpty
                                       ? () => _openVehicle(session)
                                       : null,
-                                  icon: const Icon(LucideIcons.map),
+                                  icon: Icon(LucideIcons.map),
                                   label: const Text('Open Vehicle'),
                                 ),
                               ),
@@ -275,7 +275,7 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
                                             color: Colors.white,
                                           ),
                                         )
-                                      : const Icon(LucideIcons.logOut),
+                                      : Icon(LucideIcons.logOut),
                                   label: Text(
                                     _workingSessionId == session.id
                                         ? 'Ending...'

@@ -5,6 +5,8 @@ import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+enum LoginMode { username, mobile }
+
 class LoginProvider with ChangeNotifier {
   final BuildContext context;
 
@@ -15,13 +17,15 @@ class LoginProvider with ChangeNotifier {
 
   bool isLoading = false;
   String error = '';
+  LoginMode loginMode = LoginMode.username;
 
-  final emailController = TextEditingController(
-    text: "bhagwant.chana@gmail.com",
-  );
-  final passwordController = TextEditingController(
-    text: "Admin@fleetmonitor360.com",
-  );
+  void setLoginMode(LoginMode mode) {
+    loginMode = mode;
+    notifyListeners();
+  }
+
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
   final formKey = GlobalKey<FormState>();
 
   StreamSubscription<AuthState>? _userSubscription;

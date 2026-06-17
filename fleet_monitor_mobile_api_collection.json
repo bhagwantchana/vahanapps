@@ -1,0 +1,490 @@
+{
+  "info": {
+    "name": "FleetMonitor360 Mobile Module API Collection",
+    "description": "API collection used by the Flutter mobile module in fleet_monitor. Includes live app endpoints, sample payloads, and demo values based on repository calls in lib/repositorys/*.dart.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication & Profile",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "email", "value": "driver01@fleetmonitor360.com", "type": "text" },
+                { "key": "password", "value": "Fleet@12345", "type": "text" },
+                { "key": "fcm_token", "value": "demo_fcm_token_abc123", "type": "text" },
+                { "key": "platform", "value": "android", "type": "text" },
+                { "key": "device_type", "value": "android", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}login" }
+          }
+        },
+        {
+          "name": "Save FCM Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "fcm_token", "value": "demo_fcm_token_abc123", "type": "text" },
+                { "key": "platform", "value": "android", "type": "text" },
+                { "key": "device_type", "value": "android", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}saveFcmToken" }
+          }
+        },
+        {
+          "name": "My Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}myProfile" }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "first_name", "value": "Rahul", "type": "text" },
+                { "key": "last_name", "value": "Sharma", "type": "text" },
+                { "key": "email", "value": "rahul.sharma@fleetmonitor360.com", "type": "text" },
+                { "key": "address", "value": "Fleet Office, New Delhi", "type": "text" },
+                { "key": "country_id", "value": "1", "type": "text" },
+                { "key": "state_id", "value": "10", "type": "text" },
+                { "key": "city_id", "value": "101", "type": "text" },
+                { "key": "image", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}profileUpdate" }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}logout" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard & Vehicles",
+      "item": [
+        {
+          "name": "Dashboard Summary",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}dashboard" }
+          }
+        },
+        {
+          "name": "Vehicle List",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}vehicleList" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tracking & Vehicle Settings",
+      "item": [
+        {
+          "name": "Track Vehicle Live",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "imei", "value": "863456789012345", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}vehicleTrack" }
+          }
+        },
+        {
+          "name": "Trip History Trail",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "imei", "value": "863456789012345", "type": "text" },
+                { "key": "from_date", "value": "2026-04-11T00:00:00.000Z", "type": "text" },
+                { "key": "to_date", "value": "2026-04-12T00:00:00.000Z", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}tripHistory" }
+          }
+        },
+        {
+          "name": "Update Vehicle Settings",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "imei", "value": "863456789012345", "type": "text" },
+                { "key": "v_notification", "value": "1", "type": "text" },
+                { "key": "v_overspeed", "value": "80", "type": "text" },
+                { "key": "geofence_radius", "value": "250", "type": "text" },
+                { "key": "geofence_lat", "value": "28.613900", "type": "text" },
+                { "key": "geofence_lng", "value": "77.209000", "type": "text" },
+                { "key": "guard_active", "value": "0", "type": "text" },
+                { "key": "guard_lat", "value": "0.000000", "type": "text" },
+                { "key": "guard_lng", "value": "0.000000", "type": "text" },
+                { "key": "night_lock_enabled", "value": "0", "type": "text" },
+                { "key": "night_lock_start", "value": "22:00:00", "type": "text" },
+                { "key": "night_lock_end", "value": "06:00:00", "type": "text" },
+                { "key": "night_lock_timezone", "value": "Asia/Calcutta", "type": "text" },
+                { "key": "allow_engine_control", "value": "1", "type": "text" },
+                { "key": "allow_history", "value": "1", "type": "text" },
+                { "key": "allow_documents", "value": "1", "type": "text" },
+                { "key": "allow_driver_sessions", "value": "1", "type": "text" },
+                { "key": "allow_config", "value": "1", "type": "text" },
+                { "key": "allow_parking_guard", "value": "1", "type": "text" },
+                { "key": "allow_notifications", "value": "1", "type": "text" },
+                { "key": "show_engine_rpm", "value": "0", "type": "text" },
+                { "key": "show_battery_voltage", "value": "0", "type": "text" },
+                { "key": "show_dtc_codes", "value": "0", "type": "text" },
+                { "key": "show_ecu_mileage", "value": "0", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}updateVehicleSettings" }
+          }
+        },
+        {
+          "name": "Engine Command",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "imei", "value": "863456789012345", "type": "text" },
+                { "key": "action", "value": "immobilize", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}engineCommand" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts & Safety",
+      "item": [
+        {
+          "name": "Get Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}alerts",
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" },
+                { "key": "vehicle_id", "value": "12" },
+                { "key": "is_read", "value": "0" },
+                { "key": "alert_type", "value": "ignition_on" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Alert Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "alert_id", "value": "901", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}markAlertRead" }
+          }
+        },
+        {
+          "name": "Send Panic Alert",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "message", "value": "Emergency alert from mobile app", "type": "text" },
+                { "key": "latitude", "value": "28.613900", "type": "text" },
+                { "key": "longitude", "value": "77.209000", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}panicAlert" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drivers & Sessions",
+      "item": [
+        {
+          "name": "Drivers List",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}drivers" }
+          }
+        },
+        {
+          "name": "Driver Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}driverSessions",
+              "query": [
+                { "key": "vehicle_id", "value": "12" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start Driver Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "identification_method", "value": "manual", "type": "text" },
+                { "key": "driver_id", "value": "45", "type": "text" },
+                { "key": "driver_identifier", "value": "", "type": "text" },
+                { "key": "driver_pin", "value": "", "type": "text" },
+                { "key": "session_code", "value": "DRV-20260412-01", "type": "text" },
+                { "key": "notes", "value": "Morning shift assignment", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}startDriverSession" }
+          }
+        },
+        {
+          "name": "End Driver Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "session_id", "value": "1001", "type": "text" },
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "imei", "value": "863456789012345", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}endDriverSession" }
+          }
+        },
+        {
+          "name": "Assign Driver",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "driver_id", "value": "45", "type": "text" },
+                { "key": "vehicle_id", "value": "12", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}assignDriver" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents & Maintenance",
+      "item": [
+        {
+          "name": "Get Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}documents",
+              "query": [
+                { "key": "vehicle_id", "value": "12" },
+                { "key": "owner_type", "value": "vehicle" },
+                { "key": "ai_status", "value": "" },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Upload Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "owner_type", "value": "vehicle", "type": "text" },
+                { "key": "category_key", "value": "insurance", "type": "text" },
+                { "key": "title", "value": "Vehicle Insurance", "type": "text" },
+                { "key": "document_number", "value": "INS-2026-001", "type": "text" },
+                { "key": "issuing_authority", "value": "National Insurance Co.", "type": "text" },
+                { "key": "issued_on", "value": "2026-04-01", "type": "text" },
+                { "key": "expiry_date", "value": "2027-04-01", "type": "text" },
+                { "key": "notes", "value": "Annual policy document", "type": "text" },
+                { "key": "document_file", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}documents" }
+          }
+        },
+        {
+          "name": "Maintenance Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}maintenance",
+              "query": [
+                { "key": "vehicle_id", "value": "12" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Maintenance Log",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "service_type_key", "value": "general_service", "type": "text" },
+                { "key": "service_date", "value": "2026-04-12", "type": "text" },
+                { "key": "odometer", "value": "12500", "type": "text" },
+                { "key": "cost", "value": "1500", "type": "text" },
+                { "key": "status", "value": "completed", "type": "text" },
+                { "key": "description", "value": "Regular service and inspection", "type": "text" },
+                { "key": "next_service_date", "value": "2026-10-12", "type": "text" },
+                { "key": "next_service_odometer", "value": "17500", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}maintenance" }
+          }
+        },
+        {
+          "name": "Vehicle Care Meta",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "url": { "raw": "{{base_url}}vehicleCareMeta" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Reports",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Auth-Token", "value": "{{auth_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "report_key", "value": "fleet_summary", "type": "text" },
+                { "key": "period", "value": "daily", "type": "text" },
+                { "key": "vehicle_id", "value": "12", "type": "text" },
+                { "key": "due_status", "value": "all", "type": "text" },
+                { "key": "group_by", "value": "vehicle", "type": "text" },
+                { "key": "include_export", "value": "0", "type": "text" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}reports" }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "https://vahanconnect.com/api/", "type": "string" },
+    { "key": "auth_token", "value": "PASTE_YOUR_AUTH_TOKEN_HERE", "type": "string" },
+    { "key": "fcm_token", "value": "PASTE_YOUR_FCM_TOKEN_HERE", "type": "string" }
+  ]
+}

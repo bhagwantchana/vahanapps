@@ -1,45 +1,60 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+# ============================================================
+#  fleet_monitor (Flutter customer app) — .gitignore
+# ============================================================
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# ----- Flutter / Dart build output --------------------------
+build/
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
+.metadata
+*.g.dart
+*.freezed.dart
 
-# Symbolication related
-app.*.symbols
+# ----- Android build & credentials -------------------------
+android/.gradle/
+android/local.properties
 
-# Obfuscation related
-app.*.map.json
+# !!! KEYSTORE — NEVER COMMIT !!!
+android/app/*.jks
+android/app/*.keystore
+android/key.properties
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# Firebase (add to server env / CI secret instead)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# ----- iOS build artifacts ----------------------------------
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+
+# ----- macOS build artifacts --------------------------------
+macos/Pods/
+macos/.symlinks/
+macos/Flutter/ephemeral/
+
+# ----- Linux / Windows / Web build artifacts ----------------
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# ----- Build helper scripts (local only) --------------------
+build_release_apk.bat
+build_release_apk.ps1
+
+# ----- Generated analysis reports ---------------------------
+analysis_report.txt
+analysis_report_utf8.txt
+
+# ----- Release ZIPs (distribute via Drive/Play) -------------
+*.zip
+
+# ----- IDE / OS noise ---------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.iml
+*.sublime-workspace

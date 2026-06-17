@@ -1,4 +1,4 @@
-﻿import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/repositorys/document_repository.dart';
 import 'package:fleet_monitor/repositorys/maintenance_repository.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
@@ -186,7 +186,13 @@ class _AssignedVehicleMaintenanceScreenState
                 if (!mounted) {
                   return;
                 }
-                Navigator.pop(sheetContext);
+                // `sheetContext` is the modal bottom sheet's own context,
+                // not this State's. The outer `mounted` only guards the
+                // State — the sheet can be dismissed independently while
+                // we awaited. Check its own mounted flag before popping.
+                if (sheetContext.mounted) {
+                  Navigator.pop(sheetContext);
+                }
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Maintenance log added successfully'),
@@ -246,7 +252,7 @@ class _AssignedVehicleMaintenanceScreenState
                         ),
                         const SizedBox(height: 20),
                         DropdownButtonFormField<String>(
-                          value: selectedServiceKey,
+                          initialValue: selectedServiceKey,
                           items: serviceOptions
                               .map(
                                 (item) => DropdownMenuItem<String>(
@@ -273,7 +279,7 @@ class _AssignedVehicleMaintenanceScreenState
                             labelText: 'Service Date',
                             suffixIcon: IconButton(
                               onPressed: pickServiceDate,
-                              icon: const Icon(LucideIcons.calendarDays),
+                              icon: Icon(LucideIcons.calendarDays),
                             ),
                           ),
                           onTap: pickServiceDate,
@@ -300,7 +306,7 @@ class _AssignedVehicleMaintenanceScreenState
                         ),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: selectedStatus,
+                          initialValue: selectedStatus,
                           items: (_vehicleCareMeta.maintenanceStatuses.isNotEmpty
                                   ? _vehicleCareMeta.maintenanceStatuses
                                   : const <VehicleCareOption>[
@@ -357,7 +363,7 @@ class _AssignedVehicleMaintenanceScreenState
                                     '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
                                 setSheetState(() {});
                               },
-                              icon: const Icon(LucideIcons.calendarDays),
+                              icon: Icon(LucideIcons.calendarDays),
                             ),
                           ),
                         ),
@@ -391,7 +397,7 @@ class _AssignedVehicleMaintenanceScreenState
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Icon(LucideIcons.wrench),
+                                : Icon(LucideIcons.wrench),
                             label: Text(
                               isSaving ? 'Saving...' : 'Save Maintenance',
                             ),
@@ -431,7 +437,7 @@ class _AssignedVehicleMaintenanceScreenState
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 ListTile(
-                  leading: const Icon(LucideIcons.folderOpen),
+                  leading: Icon(LucideIcons.folderOpen),
                   title: const Text('Open Documents'),
                   subtitle: const Text('View all linked files'),
                   onTap: () {
@@ -440,7 +446,7 @@ class _AssignedVehicleMaintenanceScreenState
                   },
                 ),
                 ListTile(
-                  leading: const Icon(LucideIcons.uploadCloud),
+                  leading: Icon(LucideIcons.uploadCloud),
                   title: const Text('Upload Insurance Document'),
                   subtitle: const Text('Add new insurance file for this vehicle'),
                   onTap: () {
@@ -539,7 +545,10 @@ class _AssignedVehicleMaintenanceScreenState
                 if (!mounted) {
                   return;
                 }
-                Navigator.pop(sheetContext);
+                // Same modal-vs-state context check as above.
+                if (sheetContext.mounted) {
+                  Navigator.pop(sheetContext);
+                }
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Insurance document uploaded')),
                 );
@@ -598,7 +607,7 @@ class _AssignedVehicleMaintenanceScreenState
                         const SizedBox(height: 14),
                         OutlinedButton.icon(
                           onPressed: pickFile,
-                          icon: const Icon(LucideIcons.fileUp),
+                          icon: Icon(LucideIcons.fileUp),
                           label: Text(
                             fileName.isNotEmpty
                                 ? fileName
@@ -629,7 +638,7 @@ class _AssignedVehicleMaintenanceScreenState
                             labelText: 'Expiry Date',
                             suffixIcon: IconButton(
                               onPressed: pickExpiryDate,
-                              icon: const Icon(LucideIcons.calendarDays),
+                              icon: Icon(LucideIcons.calendarDays),
                             ),
                           ),
                           onTap: pickExpiryDate,
@@ -656,7 +665,7 @@ class _AssignedVehicleMaintenanceScreenState
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Icon(LucideIcons.uploadCloud),
+                                : Icon(LucideIcons.uploadCloud),
                             label: Text(isUploading ? 'Uploading...' : 'Upload'),
                           ),
                         ),
@@ -932,7 +941,7 @@ class _AssignedVehicleMaintenanceScreenState
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: () => _showAddMaintenanceSheet(snapshot),
-                    icon: const Icon(LucideIcons.plusCircle, size: 16),
+                    icon: Icon(LucideIcons.plusCircle, size: 16),
                     label: const Text(
                       'Add Maintenance',
                       maxLines: 1,
@@ -951,7 +960,7 @@ class _AssignedVehicleMaintenanceScreenState
                       visualDensity: VisualDensity.compact,
                     ),
                     onPressed: () => _showDocumentActions(snapshot),
-                    icon: const Icon(LucideIcons.folderOpen, size: 16),
+                    icon: Icon(LucideIcons.folderOpen, size: 16),
                     label: const Text(
                       'Open Documents',
                       maxLines: 1,
@@ -1072,7 +1081,7 @@ class _VehicleCareErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            const Icon(LucideIcons.alertTriangle, color: AppColors.red, size: 44),
+            Icon(LucideIcons.alertTriangle, color: AppColors.red, size: 44),
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center),
             const SizedBox(height: 16),

@@ -10,13 +10,17 @@ import 'package:fleet_monitor/repositorys/driver_repository.dart';
 import 'package:fleet_monitor/repositorys/single_track_repository.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
 import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
+import 'package:fleet_monitor/screens/trip_replay_screen.dart';
+import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
+import 'package:fleet_monitor/widgets/live_address_text.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class VehicleDetailScreen extends StatefulWidget {
@@ -27,14 +31,13 @@ class VehicleDetailScreen extends StatefulWidget {
 }
 
 class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
-  static const Duration _liveRefreshInterval = Duration(seconds: 3);
+
   final DriverRepository _driverRepository = DriverRepository();
   final SingleTrackRepository _trackRepository = SingleTrackRepository();
 
   WebViewController? _controller;
   bool isLoading = true;
   bool _isSessionBusy = false;
-  bool _isRefreshingLiveTrack = false;
   String _loadedUrl = '';
   List<DriverRecordModel> _availableDrivers = <DriverRecordModel>[];
   Future<List<LatLng>>? _routeTrailFuture;
@@ -110,43 +113,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 
   Future<void> _refreshVehicleState(VehicleRecord vehicle) async {
-    await context.read<SingleTrackCubit>().fetchVehicleTrack(vehicle.imei);
-    await context.read<VehicleCubit>().fetchVehicles();
+    // Cache cubits before await so context isn't read after a possible unmount.
+    final trackCubit = context.read<SingleTrackCubit>();
+    final vehicleCubit = context.read<VehicleCubit>();
+    await trackCubit.fetchVehicleTrack(vehicle.imei);
+    await vehicleCubit.fetchVehicles();
     _routeTrailFuture = null;
-  }
-
-  Future<void> _refreshLiveTrack(VehicleRecord vehicle) async {
-    if (_isRefreshingLiveTrack) {
-      return;
-    }
-
-    _isRefreshingLiveTrack = true;
-    try {
-      await context.read<SingleTrackCubit>().fetchVehicleTrack(vehicle.imei);
-      _routeTrailFuture = null;
-    } finally {
-      _isRefreshingLiveTrack = false;
-    }
-  }
-
-  void _startLiveRefresh() {
-    _liveRefreshTimer?.cancel();
-    _liveRefreshTimer = Timer.periodic(_liveRefreshInterval, (_) {
-      if (!mounted) {
-        return;
-      }
-
-      final vehicle = context
-          .read<SingleTrackCubit>()
-          .state
-          .singleTrackModel
-          ?.data;
-      if (vehicle == null) {
-        return;
-      }
-
-      unawaited(_refreshLiveTrack(vehicle));
-    });
   }
 
   int _trailWindowMinutes(VehicleSettingsModel settings) {
@@ -213,7 +185,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _startLiveRefresh();
   }
 
   @override
@@ -279,6 +250,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     final commandLabel = action == 'immobilize'
         ? 'Engine Stop'
         : 'Engine Start';
+    // Cache the cubit before awaiting the confirm dialog — context.read
+    // after the await can throw if the widget was disposed mid-dialog.
+    final trackCubit = context.read<SingleTrackCubit>();
     final shouldProceed =
         await showDialog<bool>(
           context: context,
@@ -307,7 +281,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       return;
     }
 
-    final saved = await context.read<SingleTrackCubit>().sendEngineCommand(
+    final saved = await trackCubit.sendEngineCommand(
       vehicle: vehicle,
       action: action,
     );
@@ -329,13 +303,20 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     }
   }
 
-  Future<void> _launchHistory(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null) {
-      return;
-    }
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _openHistory(VehicleRecord vehicle) async {
+    // In-app trip playback (defaults to TODAY; the screen has its own date /
+    // range picker). Replaces the old external-browser history URL.
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => TripReplayScreen(initialVehicle: vehicle),
+      ),
+    );
   }
+
+  /// Safely reduce a "HH:mm:ss" (or shorter) time string to "HH:mm" without
+  /// throwing RangeError when the server sends a short value like "6:00".
+  String _hhmm(String t) => t.length >= 5 ? t.substring(0, 5) : t;
 
   Future<void> _openLiveMap(VehicleRecord vehicle) async {
     final liveUrl = vehicle.primaryMapUrl.isNotEmpty
@@ -376,10 +357,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     var guardEnabled = settings.guardActive == 1;
     var nightLockEnabled = settings.nightLockEnabled == 1;
     final nightLockStartController = TextEditingController(
-      text: settings.nightLockStart.substring(0, 5),
+      text: _hhmm(settings.nightLockStart),
     );
     final nightLockEndController = TextEditingController(
-      text: settings.nightLockEnd.substring(0, 5),
+      text: _hhmm(settings.nightLockEnd),
     );
     final nightLockTimezoneController = TextEditingController(
       text: settings.nightLockTimezone,
@@ -589,6 +570,44 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       return;
     }
 
+    // Ask before ending — this is irreversible from the app side (the driver
+    // would have to be re-checked-in afterwards), so we don't want a stray
+    // tap to drop an active driver mid-trip.
+    final driverName = activeDriver.name.trim().isNotEmpty
+        ? activeDriver.name
+        : 'this driver';
+    final shouldProceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'End Driver Session',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'End the active session for $driverName on ${vehicle.name}? '
+          'You can start a new session at any time.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'End Session',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldProceed != true || !mounted) {
+      return;
+    }
+
     setState(() => _isSessionBusy = true);
     try {
       final message = await _driverRepository.endDriverSession(
@@ -600,6 +619,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         return;
       }
       await _refreshVehicleState(vehicle);
+      // _refreshVehicleState is async — re-verify we're still alive
+      // before reaching for ScaffoldMessenger via context.
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -699,7 +721,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       const SizedBox(height: 18),
                       if (drivers.isNotEmpty)
                         DropdownButtonFormField<int>(
-                          value: selectedDriverId,
+                          initialValue: selectedDriverId,
                           decoration: const InputDecoration(
                             labelText: 'Select Driver',
                           ),
@@ -735,7 +757,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       ),
                       const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
-                        value: identificationMethod,
+                        initialValue: identificationMethod,
                         decoration: const InputDecoration(
                           labelText: 'Identification Method',
                         ),
@@ -821,12 +843,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                       );
                                     }
 
+                                    // Two contexts in play here: the outer
+                                    // State's mounted (this), the modal's
+                                    // own context, and the parent screen's
+                                    // rootContext. The modal can be torn
+                                    // down independently of the state if
+                                    // the user swipes it away mid-await,
+                                    // so each context needs its own check
+                                    // before we touch it.
                                     if (!mounted) {
                                       return;
                                     }
-
-                                    Navigator.pop(modalContext);
+                                    if (modalContext.mounted) {
+                                      Navigator.pop(modalContext);
+                                    }
                                     await _refreshVehicleState(vehicle);
+                                    if (!rootContext.mounted) {
+                                      return;
+                                    }
                                     ScaffoldMessenger.of(
                                       rootContext,
                                     ).showSnackBar(
@@ -864,7 +898,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(LucideIcons.playCircle),
+                              : Icon(LucideIcons.playCircle),
                           label: Text(
                             isSubmitting ? 'Starting...' : 'Start Session',
                           ),
@@ -881,11 +915,82 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
+  void _showFullAddressModal(VehicleRecord vehicle) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    LucideIcons.mapPin,
+                    color: AppTheme.primaryBlue,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Text(
+                  'Vehicle Location',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryBlue,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            LiveAddressText(
+              latitude: vehicle.latitude,
+              longitude: vehicle.longitude,
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                height: 1.5,
+              ),
+              maxLines: 10,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Coordinates: ${vehicle.latitude.toStringAsFixed(6)}, ${vehicle.longitude.toStringAsFixed(6)}',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const CustomText(text: 'Vehicle Detail')),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(LucideIcons.chevronLeft),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const AppLogo(),
+      ),
       body: BlocBuilder<SingleTrackCubit, SingleTrackState>(
         builder: (context, state) {
           final vehicle = state.singleTrackModel?.data;
@@ -1003,7 +1108,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ? const Center(
                                     child: Text('Map link not available'),
                                   )
-                                : WebViewWidget(controller: _controller!)),
+                                : WebViewWidget(
+                                    controller: _controller!,
+                                    // Same fix as home_screen: claim all
+                                    // touch gestures eagerly so the parent
+                                    // SingleChildScrollView doesn't steal
+                                    // pinch-out and break zoom-out.
+                                    gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                                      Factory<EagerGestureRecognizer>(
+                                        () => EagerGestureRecognizer(),
+                                      ),
+                                    },
+                                  )),
                     ),
                     Positioned.fill(
                       child: Material(
@@ -1062,6 +1178,153 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
+                        // Persistent address card — sits DIRECTLY below the
+                        // map (first child of the scroll area) so the user
+                        // sees the resolved street address without having
+                        // to scroll past metrics. Uses the same
+                        // LiveAddressText coord-keyed cache as the list +
+                        // map popup so the rendered string is identical
+                        // across all three surfaces.
+                        if (vehicle.hasLiveLocation) ...<Widget>[
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                                width: 1,
+                              ),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Row(
+                                  children: <Widget>[
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryBlue
+                                            .withValues(alpha: 0.10),
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(
+                                        LucideIcons.mapPin,
+                                        size: 16,
+                                        color: AppTheme.primaryBlue,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    const Text(
+                                      'CURRENT LOCATION',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.6,
+                                        color: AppTheme.primaryBlue,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    GestureDetector(
+                                      onTap: () =>
+                                          _showFullAddressModal(vehicle),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryBlue
+                                              .withValues(alpha: 0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          LucideIcons.maximize2,
+                                          size: 14,
+                                          color: AppTheme.primaryBlue,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                LiveAddressText(
+                                  latitude: vehicle.latitude,
+                                  longitude: vehicle.longitude,
+                                  style: TextStyle(
+                                    color: Colors.grey.shade800,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                    height: 1.35,
+                                  ),
+                                  maxLines: 3,
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: <Widget>[
+                                    Icon(
+                                      LucideIcons.clock,
+                                      size: 13,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        vehicle.createdAt.isNotEmpty
+                                            ? 'Last updated: ${vehicle.createdAt}'
+                                            : 'Last updated: —',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: vehicle.isMoving
+                                            ? AppTheme.primaryGreen
+                                                .withValues(alpha: 0.12)
+                                            : (vehicle.isIdle
+                                                ? Colors.orange
+                                                    .withValues(alpha: 0.12)
+                                                : Colors.red
+                                                    .withValues(alpha: 0.10)),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        vehicle.statusLabel.toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.4,
+                                          color: vehicle.isMoving
+                                              ? AppTheme.primaryGreen
+                                              : (vehicle.isIdle
+                                                  ? Colors.orange.shade800
+                                                  : Colors.red.shade700),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         Row(
                           children: <Widget>[
                             CircleAvatar(
@@ -1101,269 +1364,186 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ],
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
+                            // Status badge removed here — the address card
+                            // directly above already shows the live status
+                            // pill (MOVING/IDLE/STOPPED). Two badges on
+                            // one screen looked unprofessional.
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(child: _buildMetricBox(LucideIcons.gauge, '${vehicle.speed.round()}', 'km/h', 'Speed', Colors.green)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildMetricBox(LucideIcons.battery, '${vehicle.battery}', '%', 'Battery', Colors.blue)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildMetricBox(LucideIcons.power, vehicle.engineOn ? 'ON' : 'OFF', '', 'Engine', vehicle.engineOn ? Colors.green : Colors.red)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _buildMetricBox(LucideIcons.bell, settings.notificationEnabled == 1 ? 'ON' : 'OFF', '', 'Alerts', settings.notificationEnabled == 1 ? Colors.green : Colors.grey)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildMetricBox(LucideIcons.shieldCheck, settings.guardActive == 1 ? 'ON' : 'OFF', '', 'Guard', settings.guardActive == 1 ? Colors.orange : Colors.grey)),
+                            const SizedBox(width: 8),
+                            Expanded(child: _buildMetricBox(LucideIcons.mapPin, vehicle.hasLiveLocation ? 'LIVE' : 'FIX', '', 'GPS', vehicle.hasLiveLocation ? Colors.green : Colors.red)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Protocol-level live data surfaced from the device
+                        // heartbeat: GSM signal (0-4), GPS satellites locked
+                        // (typically 4-12 at a solid fix), and total
+                        // odometer. These were captured in
+                        // tbl_device_last_location but invisible in the app
+                        // — operators were guessing why "no live update"
+                        // was happening (weak cell? no GPS lock?). Now
+                        // diagnostic at a glance.
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: _buildMetricBox(
+                                LucideIcons.wifi,
+                                _gsmBarsLabel(vehicle.gsmSignal),
+                                '/4',
+                                'Signal',
+                                _gsmColor(vehicle.gsmSignal),
                               ),
-                              decoration: BoxDecoration(
-                                color: _statusColor(
-                                  vehicle,
-                                ).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(20),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricBox(
+                                LucideIcons.satellite,
+                                vehicle.satellites > 0
+                                    ? '${vehicle.satellites}'
+                                    : '—',
+                                'sats',
+                                'GPS Lock',
+                                vehicle.satellites >= 5
+                                    ? Colors.green
+                                    : (vehicle.satellites >= 3
+                                        ? Colors.orange
+                                        : Colors.red),
                               ),
-                              child: Text(
-                                vehicle.statusLabel,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: _statusColor(vehicle),
-                                ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricBox(
+                                LucideIcons.activity,
+                                vehicle.currentOdometer > 0
+                                    ? vehicle.currentOdometer
+                                        .toStringAsFixed(0)
+                                    : '0',
+                                'km',
+                                'Odometer',
+                                Colors.purple,
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.grey.shade200),
-                          ),
-                          child: Column(
-                            children: <Widget>[
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: <Widget>[
-                                  _buildStatItem(
-                                    'Speed',
-                                    '${vehicle.speed.round()} km/h',
-                                  ),
-                                  _buildStatDivider(),
-                                  _buildStatItem(
-                                    'Battery',
-                                    '${vehicle.battery}%',
-                                  ),
-                                  _buildStatDivider(),
-                                  _buildStatItem(
-                                    'Engine',
-                                    vehicle.engineOn ? 'ON' : 'OFF',
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: <Widget>[
-                                  _buildStatItem(
-                                    'Alerts',
-                                    settings.notificationEnabled == 1
-                                        ? 'ON'
-                                        : 'OFF',
-                                  ),
-                                  _buildStatDivider(),
-                                  _buildStatItem(
-                                    'Guard',
-                                    settings.guardActive == 1 ? 'ON' : 'OFF',
-                                  ),
-                                  _buildStatDivider(),
-                                  _buildStatItem(
-                                    'GPS',
-                                    vehicle.hasLiveLocation ? 'LIVE' : 'NO FIX',
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
                         ),
                         const SizedBox(height: 16),
                         _buildVehicleMetaCard(vehicle),
                         const SizedBox(height: 16),
                         _buildDriverCard(vehicle),
-                        const SizedBox(height: 16),
-                        if (vehicle.hasLiveLocation)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              children: <Widget>[
-                                const Icon(
-                                  LucideIcons.mapPin,
-                                  color: AppTheme.primaryBlue,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    '${vehicle.latitude.toStringAsFixed(5)}, ${vehicle.longitude.toStringAsFixed(5)}',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade700,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         const SizedBox(height: 20),
-                        if (settings.allowNotifications == 1 ||
-                            settings.allowParkingGuard == 1)
-                          Row(
-                            children: <Widget>[
-                              if (settings.allowNotifications == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: settings.notificationEnabled == 1
-                                        ? LucideIcons.bell
-                                        : LucideIcons.bellOff,
-                                    label: settings.notificationEnabled == 1
-                                        ? 'Alerts On'
-                                        : 'Alerts Off',
-                                    color: settings.notificationEnabled == 1
-                                        ? AppTheme.primaryGreen
-                                        : Colors.red,
-                                    onTap: () => _toggleNotifications(vehicle),
-                                  ),
-                                ),
-                              if (settings.allowNotifications == 1 &&
-                                  settings.allowParkingGuard == 1)
-                                const SizedBox(width: 12),
-                              if (settings.allowParkingGuard == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: settings.guardActive == 1
-                                        ? LucideIcons.shieldAlert
-                                        : LucideIcons.shield,
-                                    label: settings.guardActive == 1
-                                        ? 'Guard On'
-                                        : 'Guard Off',
-                                    color: settings.guardActive == 1
-                                        ? Colors.orange
-                                        : AppTheme.primaryBlue,
-                                    onTap: () => _toggleGuardMode(vehicle),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        if (settings.allowNotifications == 1 ||
-                            settings.allowParkingGuard == 1)
-                          const SizedBox(height: 12),
-                        if (settings.allowEngineControl == 1 &&
-                            settings.engineCutoff == 1)
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _buildActionButton(
-                                  icon: vehicle.isImmobilized
-                                      ? LucideIcons.unlock
-                                      : LucideIcons.lock,
-                                  label: vehicle.isImmobilized
-                                      ? 'Engine Start'
-                                      : 'Engine Stop',
-                                  color: vehicle.isImmobilized
-                                      ? AppTheme.primaryGreen
-                                      : Colors.red,
-                                  onTap: vehicle.isImmobilizerBusy
-                                      ? null
-                                      : () => _sendEngineCommand(
-                                          vehicle,
-                                          vehicle.isImmobilized
-                                              ? 'restore'
-                                              : 'immobilize',
-                                        ),
-                                ),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            if (settings.allowNotifications == 1)
+                              _buildFixedActionButton(
+                                icon: settings.notificationEnabled == 1
+                                    ? LucideIcons.bell
+                                    : LucideIcons.bellOff,
+                                label: settings.notificationEnabled == 1
+                                    ? 'Alerts On'
+                                    : 'Alerts Off',
+                                color: settings.notificationEnabled == 1
+                                    ? AppTheme.primaryGreen
+                                    : Colors.red,
+                                onTap: () => _toggleNotifications(vehicle),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildActionButton(
-                                  icon: LucideIcons.lock,
-                                  label: vehicle.isImmobilizerBusy
-                                      ? 'Pending'
-                                      : vehicle.immobilizerState
-                                            .replaceAll('_', ' ')
-                                            .toUpperCase(),
-                                  color: vehicle.isImmobilizerBusy
-                                      ? Colors.orange
-                                      : AppTheme.primaryBlue,
-                                  onTap: null,
-                                ),
+                            if (settings.allowParkingGuard == 1)
+                              _buildFixedActionButton(
+                                icon: settings.guardActive == 1
+                                    ? LucideIcons.shieldAlert
+                                    : LucideIcons.shield,
+                                label: settings.guardActive == 1
+                                    ? 'Guard On'
+                                    : 'Guard Off',
+                                color: settings.guardActive == 1
+                                    ? Colors.orange
+                                    : AppTheme.primaryBlue,
+                                onTap: () => _toggleGuardMode(vehicle),
                               ),
-                            ],
-                          ),
-                        if (settings.allowEngineControl == 1 &&
-                            settings.engineCutoff == 1)
-                          const SizedBox(height: 12),
-                        if (settings.allowHistory == 1 ||
-                            settings.allowConfig == 1)
-                          Row(
-                            children: <Widget>[
-                              if (settings.allowHistory == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: LucideIcons.history,
-                                    label: 'History',
-                                    color: AppTheme.primaryBlue,
-                                    onTap: settings.historyUrl.isNotEmpty
-                                        ? () => _launchHistory(
-                                            settings.historyUrl,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                              if (settings.allowHistory == 1 &&
-                                  settings.allowConfig == 1)
-                                const SizedBox(width: 12),
-                              if (settings.allowConfig == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: LucideIcons.settings,
-                                    label: 'Config',
-                                    color: Colors.grey.shade700,
-                                    onTap: () => _showConfigModal(vehicle),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        if (settings.allowHistory == 1 ||
-                            settings.allowConfig == 1)
-                          const SizedBox(height: 12),
-                        if (settings.allowDriverSessions == 1 ||
-                            settings.allowDocuments == 1)
-                          Row(
-                            children: <Widget>[
-                              if (settings.allowDriverSessions == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: LucideIcons.badgeCheck,
-                                    label: 'Driver',
-                                    color: AppTheme.primaryBlue,
-                                    onTap: _isSessionBusy
-                                        ? null
-                                        : () =>
-                                              _showDriverSessionSheet(vehicle),
-                                  ),
-                                ),
-                              if (settings.allowDriverSessions == 1 &&
-                                  settings.allowDocuments == 1)
-                                const SizedBox(width: 12),
-                              if (settings.allowDocuments == 1)
-                                Expanded(
-                                  child: _buildActionButton(
-                                    icon: LucideIcons.folderOpen,
-                                    label: 'Documents',
-                                    color: Colors.deepPurple,
-                                    onTap: () => _openDocuments(vehicle),
-                                  ),
-                                ),
-                            ],
-                          ),
+                            if (settings.allowEngineControl == 1 &&
+                                settings.engineCutoff == 1)
+                              _buildFixedActionButton(
+                                icon: vehicle.isImmobilized
+                                    ? LucideIcons.unlock
+                                    : LucideIcons.lock,
+                                label: vehicle.isImmobilized
+                                    ? 'Engine Start'
+                                    : 'Engine Stop',
+                                color: vehicle.isImmobilized
+                                    ? AppTheme.primaryGreen
+                                    : Colors.red,
+                                onTap: vehicle.isImmobilizerBusy
+                                    ? null
+                                    : () => _sendEngineCommand(
+                                        vehicle,
+                                        vehicle.isImmobilized
+                                            ? 'restore'
+                                            : 'immobilize',
+                                      ),
+                              ),
+                            if (settings.allowEngineControl == 1 &&
+                                settings.engineCutoff == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.info,
+                                label: vehicle.isImmobilizerBusy
+                                    ? 'Pending'
+                                    : vehicle.immobilizerState
+                                          .split('_')[0]
+                                          .toUpperCase(),
+                                color: vehicle.isImmobilizerBusy
+                                    ? Colors.orange
+                                    : AppTheme.primaryBlue,
+                                onTap: null,
+                              ),
+                            if (settings.allowHistory == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.history,
+                                label: 'History',
+                                color: AppTheme.primaryBlue,
+                                onTap: () => _openHistory(vehicle),
+                              ),
+                            if (settings.allowConfig == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.settings,
+                                label: 'Config',
+                                color: Colors.grey.shade700,
+                                onTap: () => _showConfigModal(vehicle),
+                              ),
+                            if (settings.allowDriverSessions == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.badgeCheck,
+                                label: 'Driver',
+                                color: AppTheme.primaryBlue,
+                                onTap: _isSessionBusy
+                                    ? null
+                                    : () =>
+                                          _showDriverSessionSheet(vehicle),
+                              ),
+                            if (settings.allowDocuments == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.folderOpen,
+                                label: 'Documents',
+                                color: Colors.deepPurple,
+                                onTap: () => _openDocuments(vehicle),
+                              ),
+                          ],
+                        ),
                         if (state is SingleTrackErrorState) ...<Widget>[
                           const SizedBox(height: 14),
                           Text(
@@ -1374,6 +1554,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                             ),
                           ),
                         ],
+                        const SizedBox(height: 40),
                       ],
                     ),
                   ),
@@ -1499,7 +1680,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: () => _openDriverSessions(vehicle),
-                  icon: const Icon(LucideIcons.list),
+                  icon: Icon(LucideIcons.list),
                   label: const Text(
                     'Sessions',
                     maxLines: 1,
@@ -1579,278 +1760,177 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
-  Color _statusColor(VehicleRecord vehicle) {
-    if (vehicle.isMoving) {
-      return AppColors.green;
-    }
-    if (vehicle.isIdle) {
-      return AppColors.orange;
-    }
-    return AppColors.red;
+  /// GT06/PT06 reports CSQ on a 0-4 scale (0 = no signal, 4 = excellent).
+  /// Render as bars for the diagnostic tile.
+  String _gsmBarsLabel(int gsm) {
+    if (gsm <= 0) return '0';
+    if (gsm >= 4) return '4';
+    return gsm.toString();
   }
 
-  Widget _buildStatItem(String label, String value) {
-    return Column(
-      children: <Widget>[
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade500,
-            fontWeight: FontWeight.w600,
+  Color _gsmColor(int gsm) {
+    if (gsm >= 3) return Colors.green;
+    if (gsm == 2) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildMetricBox(IconData icon, String val, String unit, String label, Color color) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 80),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF1F4F8), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 14,
-            color: AppTheme.primaryBlue,
-            fontWeight: FontWeight.w800,
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(val, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A))),
+              if (unit.isNotEmpty) ...[
+                const SizedBox(width: 1),
+                Text(unit, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey)),
+              ],
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(fontSize: 7.5, color: Colors.grey.shade500, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStatDivider() {
-    return Container(height: 30, width: 1, color: Colors.grey.shade300);
-  }
-
-  Widget _buildActionButton({
+  Widget _buildFixedActionButton({
     required IconData icon,
     required String label,
     required Color color,
     required VoidCallback? onTap,
   }) {
     final isDisabled = onTap == null;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isDisabled
-              ? Colors.grey.shade200
-              : color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isDisabled
-                ? Colors.grey.shade300
-                : color.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Icon(
-              icon,
-              color: isDisabled ? Colors.grey.shade500 : color,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: isDisabled ? Colors.grey.shade600 : color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+    final baseColor = isDisabled ? Colors.grey : color;
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate width to fit 3 items per row with 10px spacing
+        final itemWidth = (MediaQuery.of(context).size.width - 72) / 3; 
+        
+        return Container(
+          width: itemWidth,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              if (!isDisabled)
+                BoxShadow(
+                  color: color.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            ],
+          ),
+          child: Material(
+            color: isDisabled ? const Color(0xFFF5F7FA) : Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            elevation: isDisabled ? 0 : 0.5,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(15),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(
+                    color: isDisabled ? Colors.transparent : color.withValues(alpha: 0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: baseColor.withValues(alpha: 0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 18, color: baseColor),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        color: isDisabled ? Colors.grey.shade600 : const Color(0xFF1A1A1A),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildVehicleMetaCard(VehicleRecord vehicle) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text(
-            'Vehicle Details',
-            style: TextStyle(
-              color: AppTheme.primaryBlue,
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-            ),
-          ),
-          const SizedBox(height: 14),
+          const Text('Vehicle Overview', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
+          const SizedBox(height: 20),
           LayoutBuilder(
             builder: (context, constraints) {
               final itemWidth = (constraints.maxWidth - 12) / 2;
               final tiles = <Widget>[
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.pin_outlined,
-                    label: 'Registration',
-                    value: vehicle.registrationNumber,
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.directions_car_outlined,
-                    label: 'Vehicle Name',
-                    value: vehicle.name,
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.category_outlined,
-                    label: 'Vehicle Type',
-                    value: vehicle.typeName,
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.inventory_2_outlined,
-                    label: 'Model',
-                    value: vehicle.model,
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.memory_rounded,
-                    label: 'Device',
-                    value: vehicle.deviceModel.isNotEmpty
-                        ? vehicle.deviceModel
-                        : 'Not available',
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.settings_ethernet_rounded,
-                    label: 'Protocol / Port',
-                    value: _formatProtocol(vehicle),
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: LucideIcons.gauge,
-                    label: 'Overspeed Limit',
-                    value: '${vehicle.overspeedLimit} km/h',
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.center_focus_weak_rounded,
-                    label: 'Radius Alert',
-                    value: '${vehicle.geofenceRadius} m',
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: vehicle.isImmobilized
-                        ? LucideIcons.lock
-                        : LucideIcons.unlock,
-                    label: 'Immobilizer',
-                    value: vehicle.immobilizerState
-                        .replaceAll('_', ' ')
-                        .toUpperCase(),
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.nightlight_round,
-                    label: 'Night Lock',
-                    value: vehicle.nightLockEnabled == 1
-                        ? '${vehicle.nightLockStart.substring(0, 5)} - ${vehicle.nightLockEnd.substring(0, 5)} (${vehicle.nightLockTimezone})'
-                        : 'Disabled',
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.place_outlined,
-                    label: 'Coordinates',
-                    value: vehicle.hasLiveLocation
-                        ? '${vehicle.latitude.toStringAsFixed(5)}, ${vehicle.longitude.toStringAsFixed(5)}'
-                        : 'No live location',
-                  ),
-                ),
-                SizedBox(
-                  width: itemWidth,
-                  child: _buildDetailTile(
-                    icon: Icons.access_time_rounded,
-                    label: 'Last Update',
-                    value: _formatUpdatedAt(vehicle.createdAt),
-                  ),
-                ),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.badgeCheck, label: 'Reg. Number', value: vehicle.registrationNumber)),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.car, label: 'Vehicle Name', value: vehicle.name)),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.layers, label: 'Type', value: vehicle.typeName)),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.cpu, label: 'Model', value: vehicle.model)),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.info, label: 'Device ID', value: vehicle.imei)),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.gauge, label: 'Speed Limit', value: '${vehicle.overspeedLimit} km/h')),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.shieldAlert, label: 'Radius Alert', value: '${vehicle.geofenceRadius} m')),
+                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.history, label: 'Odometer', value: '${(vehicle.currentOdometer > 0 ? vehicle.currentOdometer : 0).toStringAsFixed(0)} km')),
               ];
 
               if (vehicle.showEngineRpm == 1 && vehicle.engineRpm > 0) {
                 tiles.add(
-                  SizedBox(
-                    width: itemWidth,
-                    child: _buildDetailTile(
-                      icon: LucideIcons.gauge,
-                      label: 'Engine RPM',
-                      value: vehicle.engineRpm.toStringAsFixed(0),
-                    ),
-                  ),
+                  SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.gauge, label: 'Engine RPM', value: vehicle.engineRpm.toStringAsFixed(0))),
                 );
               }
-              if (vehicle.showBatteryVoltage == 1 &&
-                  vehicle.batteryVoltage > 0) {
+              if (vehicle.showBatteryVoltage == 1 && vehicle.batteryVoltage > 0) {
                 tiles.add(
-                  SizedBox(
-                    width: itemWidth,
-                    child: _buildDetailTile(
-                      icon: LucideIcons.batteryCharging,
-                      label: 'Battery Voltage',
-                      value: '${vehicle.batteryVoltage.toStringAsFixed(1)} V',
-                    ),
-                  ),
+                  SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.batteryCharging, label: 'Battery Voltage', value: '${vehicle.batteryVoltage.toStringAsFixed(1)} V')),
                 );
               }
-              if (vehicle.showDtcCodes == 1 &&
-                  vehicle.dtcCodes.trim().isNotEmpty) {
-                tiles.add(
-                  SizedBox(
-                    width: itemWidth,
-                    child: _buildDetailTile(
-                      icon: LucideIcons.alertTriangle,
-                      label: 'DTC Codes',
-                      value: vehicle.dtcCodes,
-                    ),
-                  ),
-                );
-              }
-              if (vehicle.showEcuMileage == 1 && vehicle.ecuMileage > 0) {
-                tiles.add(
-                  SizedBox(
-                    width: itemWidth,
-                    child: _buildDetailTile(
-                      icon: Icons.alt_route,
-                      label: 'ECU Mileage',
-                      value: '${vehicle.ecuMileage.toStringAsFixed(0)} km',
-                    ),
-                  ),
-                );
-              }
-
               return Wrap(spacing: 12, runSpacing: 12, children: tiles);
             },
           ),
@@ -1864,48 +1944,27 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     required String label,
     required String value,
   }) {
-    final displayValue = value.trim().isEmpty ? '--' : value.trim();
-
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        color: const Color(0xFFF1F4F8),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, size: 16, color: AppTheme.primaryBlue),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: Colors.grey.shade500,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, size: 14, color: AppTheme.primaryBlue),
           ),
-          const SizedBox(height: 8),
-          Text(
-            displayValue,
-            style: const TextStyle(
-              color: AppTheme.primaryBlue,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w700)),
+                Text(value.isEmpty ? '--' : value, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
+              ],
             ),
           ),
         ],
@@ -1971,19 +2030,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
-  String _formatProtocol(VehicleRecord vehicle) {
-    final protocol = vehicle.protocol.trim();
-    final port = vehicle.port.trim();
-
-    if (protocol.isEmpty && port.isEmpty) {
-      return 'Not available';
-    }
-    if (protocol.isNotEmpty && port.isNotEmpty) {
-      return '$protocol / $port';
-    }
-
-    return protocol.isNotEmpty ? protocol : port;
-  }
 
   String _formatUpdatedAt(String createdAt) {
     final parsed = DateTime.tryParse(createdAt);

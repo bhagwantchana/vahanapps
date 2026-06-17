@@ -1,21 +1,25 @@
 import 'dart:async';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
-import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/models/dashboard_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
-import 'package:fleet_monitor/screens/reports_screen.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/services/assigned_vehicle_reminder_service.dart';
+import 'package:fleet_monitor/services/geofence_monitor_service.dart';
+import 'package:fleet_monitor/services/lifecycle_refresh.dart';
 import 'package:fleet_monitor/services/local_notification.dart';
+import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/drawer.dart';
+import 'package:fleet_monitor/widgets/live_address_text.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,8 +38,33 @@ class _HomeScreenState extends State<HomeScreen> {
   WebViewController? _controller;
   bool isLoading = true;
   String _loadedUrl = '';
+  bool _isMapExpanded = false;
   Timer? _autoRefreshTimer;
   // bool _isAutoRefreshing = false;
+
+  // Dashboard refresh: every 45 s while foreground, immediate on resume,
+  // cancelled when app backgrounded. Slightly longer cadence than the
+  // vehicle list (30 s) because the dashboard aggregates more data and
+  // updates less critically.
+  late final LifecycleRefresh _lifecycle = LifecycleRefresh(
+    onRefresh: () async {
+      if (!mounted) return;
+      await context.read<HomeCubit>().fetchHomeData();
+      if (!mounted) return;
+      // Geofence evaluation runs after fresh vehicle data lands. Failures
+      // inside the service are silent — never blocks the refresh tick.
+      final vehicles =
+          context.read<HomeCubit>().state.dashboardModel?.data?.vehicleList ??
+              <VehicleRecord>[];
+      final strings = AppStrings.of(context);
+      await GeofenceMonitorService.instance.evaluate(
+        vehicles: vehicles,
+        entryLabel: strings.t('geofence_entry_alert'),
+        exitLabel: strings.t('geofence_exit_alert'),
+      );
+    },
+    interval: const Duration(seconds: 45),
+  );
 
   @override
   void initState() {
@@ -44,10 +73,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (homeCubit.state.dashboardModel == null) {
       homeCubit.fetchHomeData();
     }
-    // _startAutoRefresh();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _syncVehicleCareReminders();
-    });
+    _lifecycle.start();
+    // // _startAutoRefresh();
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   _syncVehicleCareReminders();
+    // });
   }
 
   // void _startAutoRefresh() {
@@ -95,40 +125,60 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _lifecycle.dispose();
     super.dispose();
   }
 
   Map<String, int> calculateStats(List<VehicleRecord> vehicles) {
-    int running = 0;
+    int moving = 0;
     int idle = 0;
+    int active = 0; // Total with Ignition ON (Moving + Idle)
     int stopped = 0;
 
     for (final vehicle in vehicles) {
-      if (vehicle.isMoving) {
-        running++;
-      } else if (vehicle.isIdle) {
-        idle++;
+      if (vehicle.engineOn) {
+        active++;
+        if (vehicle.speed > 5) {
+          moving++;
+        } else {
+          idle++;
+        }
       } else {
         stopped++;
       }
     }
 
     return <String, int>{
-      'running': running,
+      'moving': moving,
       'idle': idle,
+      'active': active,
       'stopped': stopped,
       'total': vehicles.length,
     };
   }
 
   void _initWebView(String url) {
+    // Server regenerates the encrypted token in maps_url on every dashboard
+    // fetch, so the URL changes each refresh — but the page runs its own AJAX
+    // loop, so we load it exactly once and never reload from Flutter.
+    if (_loadedUrl.isNotEmpty) {
+      return;
+    }
     final parsed = Uri.tryParse(url);
     if (parsed == null) {
       return;
     }
+    // Tell the web map to render in clean embed mode — hides the desktop
+    // bottom Total/Running/Idle/Stopped bar so only the map shows on mobile.
+    final embedUri = parsed.replace(
+      queryParameters: <String, String>{
+        ...parsed.queryParameters,
+        'embed': '1',
+      },
+    );
 
     _loadedUrl = url;
-    _controller ??= WebViewController()
+    _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -137,45 +187,49 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-    _controller!.loadRequest(parsed);
+    _controller!.loadRequest(embedUri);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Image.asset(Assets.images.mylogo.path, height: 30),
+        elevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(LucideIcons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: const AppLogo(),
         actions: <Widget>[
           BlocBuilder<HomeCubit, HomeState>(
             builder: (context, state) {
-              final unreadCount =
-                  state.dashboardModel?.data?.unreadAlertCount ?? 0;
+              final dashboardData = state.dashboardModel?.data;
+              final alertCount = dashboardData?.analytics.recentPanicAlerts.length ?? 0;
+
               return IconButton(
                 icon: Stack(
                   clipBehavior: Clip.none,
-                  children: <Widget>[
+                  children: [
                     const Icon(LucideIcons.bell),
-                    if (unreadCount > 0)
+                    if (alertCount > 0)
                       Positioned(
-                        right: -2,
+                        right: -4,
                         top: -4,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white, width: 1.5),
                           ),
-                          decoration: const BoxDecoration(
-                            color: AppColors.red,
-                            shape: BoxShape.circle,
-                          ),
+                          constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
                           child: Text(
-                            unreadCount > 9 ? '9+' : unreadCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            alertCount > 9 ? '9+' : alertCount.toString(),
+                            style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w900),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),
@@ -209,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _refreshHomeData,
-                    child: const Text('Retry'),
+                    child: Text(AppStrings.of(context).t('retry')),
                   ),
                 ],
               ),
@@ -221,12 +275,22 @@ class _HomeScreenState extends State<HomeScreen> {
           final dashboardMap = dashboardData?.mapsUrl ?? '';
           final mobileMapMode = (dashboardData?.mobileMapMode ?? 'native')
               .toLowerCase();
-          final hasWebMap = dashboardMap.isNotEmpty;
-          final useNativeMap = mobileMapMode == 'native' && !hasWebMap;
+          // Require a parseable URL — a malformed maps_url must NOT strand the
+          // user on the loading placeholder; fall back to the native map.
+          final hasWebMap =
+              dashboardMap.isNotEmpty && Uri.tryParse(dashboardMap) != null;
+          // Map mode comes from the server as mobile_map_mode = 'native' | 'url'
+          // (Api.php getMobileMapMode). 'url' => embed the web map in a WebView;
+          // 'native' => the in-app MapLibre map. 'webview'/'web' kept as aliases.
+          // Fall back to native if web mode is set but no maps URL was provided.
+          final wantsWebView =
+              (mobileMapMode == 'url' ||
+                      mobileMapMode == 'webview' ||
+                      mobileMapMode == 'web') &&
+                  hasWebMap;
+          final useNativeMap = !wantsWebView;
 
-          if (!useNativeMap &&
-              dashboardMap.isNotEmpty &&
-              dashboardMap != _loadedUrl) {
+          if (!useNativeMap && dashboardMap.isNotEmpty) {
             _initWebView(dashboardMap);
           }
 
@@ -235,131 +299,22 @@ class _HomeScreenState extends State<HomeScreen> {
           return RefreshIndicator(
             onRefresh: _refreshHomeData,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: <Widget>[
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Stack(
-                    children: <Widget>[
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.34,
-                        child: useNativeMap
-                            ? NativeVehicleMap(
-                                vehicles: vehicles,
-                                emptyTitle: vehicles.isEmpty
-                                    ? 'No vehicles mapped yet'
-                                    : 'Map data not available',
-                                emptySubtitle: useNativeMap
-                                    ? 'Native map is enabled from superadmin settings'
-                                    : 'Switch to native mode to use the built-in map',
-                              )
-                            : (_controller == null
-                                  ? _EmptyMapState(
-                                      title: vehicles.isEmpty
-                                          ? 'No vehicles mapped yet'
-                                          : 'Map link not available',
-                                    )
-                                  : WebViewWidget(controller: _controller!)),
-                      ),
-                      Positioned(
-                        left: 14,
-                        top: 14,
-                        child: _DashboardChip(
-                          icon: Icons.map_outlined,
-                          label: vehicles.isEmpty
-                              ? 'No live fleet'
-                              : '${vehicles.length} vehicles',
-                        ),
-                      ),
-                      Positioned(
-                        right: 14,
-                        top: 14,
-                        child: _DashboardChip(
-                          icon: LucideIcons.activity,
-                          label: isLoading ? 'Syncing...' : 'Live',
-                        ),
-                      ),
-                      if (isLoading && _controller != null)
-                        Positioned.fill(
-                          child: Container(
-                            color: Colors.white.withValues(alpha: 0.3),
-                            child: const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: <Widget>[
-                    _buildStatCard(
-                      'Total Vehicles',
-                      stats['total']!,
-                      AppTheme.primaryBlue,
-                      LucideIcons.truck,
-                    ),
-                    _buildStatCard(
-                      'Active Devices',
-                      stats['running']! + stats['idle']!,
-                      AppTheme.primaryGreen,
-                      LucideIcons.radioReceiver,
-                    ),
-                    _buildStatCard(
-                      'Running',
-                      stats['running']!,
-                      AppColors.green,
-                      LucideIcons.playCircle,
-                    ),
-                    _buildStatCard(
-                      'Idle',
-                      stats['idle']!,
-                      Colors.orange,
-                      LucideIcons.pauseCircle,
-                    ),
-                  ],
+                _buildMapSection(
+                  vehicles,
+                  useNativeMap,
+                  dashboardData?.mobileMapProvider ?? 'maplibre',
                 ),
                 const SizedBox(height: 16),
-                if (dashboardData != null) ...<Widget>[
-                  _buildSectionCard(
-                    title: 'Performance Charts',
-                    subtitle: 'Activity trends and fleet balance',
-                    child: _buildAnalyticsCharts(dashboardData.analytics),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSectionCard(
-                    title: 'Hotspot Severity',
-                    subtitle:
-                        '${dashboardData.analytics.heatmapPoints.length} hotspots grouped by intensity',
-                    child: _buildHeatmapSeveritySummary(
-                      dashboardData.analytics.heatmapPoints,
-                    ),
-                  ),
-                ],
-                if (dashboardData?.reportShortcuts.isNotEmpty ==
-                    true) ...<Widget>[
-                  const SizedBox(height: 16),
-                  _buildSectionCard(
-                    title: 'Reports',
-                    subtitle: 'Quick access shortcuts',
-                    child: _buildReportShortcuts(
-                      dashboardData!.reportShortcuts,
-                    ),
-                  ),
-                ],
+                _buildModernStats(stats),
+                const SizedBox(height: 24),
+                _buildQuickActions(context),
+                const SizedBox(height: 24),
+                _buildRecentActivity(dashboardData?.analytics.recentPanicAlerts ?? []),
+                const SizedBox(height: 24),
+                if (dashboardData != null)
+                  _buildPerformanceOverview(dashboardData.analytics),
               ],
             ),
           );
@@ -368,464 +323,850 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, int value, Color color, IconData icon) {
-    return SizedBox(
-      width: (MediaQuery.of(context).size.width - 44) / 2,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withValues(alpha: 0.12)),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+  /// Bottom sheet shown when a marker is tapped on the native map. Uses
+  /// LiveAddressText so the address rendered here is the SAME string the
+  /// vehicle list cell shows for the same coordinates (shared coord-keyed
+  /// cache). That fixes the "map address vs list address mismatch" the
+  /// owner reported on multi-vehicle view.
+  /// Red "X days left" / "Expired" pill for the device/plan subscription
+  /// expiry, shown in the map-marker bottom sheet. Mirrors the badge on the
+  /// vehicle list cards.
+  Widget _buildExpiryBadge(VehicleRecord vehicle) {
+    final bool expired = vehicle.isExpired;
+    const Color red = Color(0xFFE53935);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: expired ? red : red.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: expired
+            ? null
+            : Border.all(color: red.withValues(alpha: 0.55), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            expired ? Icons.error_outline_rounded : Icons.access_time_rounded,
+            size: 12,
+            color: expired ? Colors.white : red,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            vehicle.expiryBadgeLabel,
+            style: TextStyle(
+              color: expired ? Colors.white : red,
+              fontWeight: FontWeight.w800,
+              fontSize: 10,
             ),
-          ],
-        ),
-        child: Row(
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade600,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showVehicleBottomSheet(BuildContext context, VehicleRecord vehicle) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final statusColor = vehicle.isMoving
+        ? const Color(0xFF22C55E)
+        : (vehicle.isIdle ? Colors.orange : Colors.red);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      isScrollControlled: false,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    value.toString(),
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.primaryBlue,
+                ),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            vehicle.registrationNumber.isNotEmpty
+                                ? vehicle.registrationNumber
+                                : vehicle.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                              color: isDark ? Colors.white : const Color(0xFF1A1A1A),
+                            ),
+                          ),
+                          if (vehicle.showExpiryBadge) ...<Widget>[
+                            const SizedBox(height: 6),
+                            _buildExpiryBadge(vehicle),
+                          ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: <Widget>[
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: statusColor,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                vehicle.statusLabel,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${vehicle.speed.round()} km/h',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
+                    IconButton(
+                      icon: const Icon(LucideIcons.x),
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(LucideIcons.mapPin, size: 16, color: Colors.grey.shade600),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: LiveAddressText(
+                        latitude: vehicle.latitude,
+                        longitude: vehicle.longitude,
+                        maxLines: 3,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white70 : Colors.grey.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F4F8),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(LucideIcons.clock, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Updated: ${vehicle.createdAt.isNotEmpty ? vehicle.createdAt : '—'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(LucideIcons.navigation, size: 16),
+                    label: const Text('Track Live'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.of(sheetContext).pop();
+                      widget.onSelectTab?.call(1); // Vehicles tab
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMapSection(
+    List<VehicleRecord> vehicles,
+    bool useNativeMap,
+    String mapProvider,
+  ) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: <Widget>[
+          SizedBox(
+            height: MediaQuery.of(context).size.height * (_isMapExpanded ? 0.65 : 0.32),
+            child: useNativeMap
+                ? NativeVehicleMap(
+                    vehicles: vehicles,
+                    emptyTitle: AppStrings.of(context).t('no_vehicles_found'),
+                    emptySubtitle: AppStrings.of(context).t('connect_device_hint'),
+                    onVehicleTap: (v) => _showVehicleBottomSheet(context, v),
+                    mapProvider: mapProvider,
+                  )
+                : (_controller == null
+                    ? _EmptyMapState(title: AppStrings.of(context).t('loading_map'))
+                    : WebViewWidget(
+                        controller: _controller!,
+                        // Claim ALL touch gestures inside the webview's
+                        // bounds before the outer ListView gets a chance.
+                        // Without this, a pinch-out motion looks like a
+                        // vertical scroll to the parent ListView and gets
+                        // stolen mid-gesture — so the map could zoom IN
+                        // but never zoom OUT. EagerGestureRecognizer says
+                        // "this child wins any conflict with the parent".
+                        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                          Factory<EagerGestureRecognizer>(
+                            () => EagerGestureRecognizer(),
+                          ),
+                        },
+                      )),
+          ),
+          Positioned(
+            left: 12,
+            top: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardTheme.color ?? Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                  )
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.users, size: 18, color: Color(0xFF4A688A)),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${vehicles.length} ${AppStrings.of(context).t('vehicles_count')}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          _buildMapStatusMini(Colors.green, '${vehicles.where((v) => v.isMoving).length} ${AppStrings.of(context).t('status_moving')}'),
+                          const SizedBox(width: 8),
+                          _buildMapStatusMini(Colors.orange, '${vehicles.where((v) => v.isIdle).length} ${AppStrings.of(context).t('status_idle')}'),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionCard({
-    required String title,
-    required String subtitle,
-    required Widget child,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE6EDF4)),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppTheme.primaryBlue,
-              fontWeight: FontWeight.w900,
-              fontSize: 17,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReportShortcuts(List<DashboardShortcut> shortcuts) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: shortcuts
-          .map(
-            (shortcut) => ActionChip(
-              label: Text(shortcut.label),
-              backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.08),
-              labelStyle: const TextStyle(
-                color: AppTheme.primaryBlue,
-                fontWeight: FontWeight.w700,
+          Positioned(
+            right: 12,
+            top: 12,
+            child: GestureDetector(
+              onTap: () => setState(() => _isMapExpanded = !_isMapExpanded),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardTheme.color ?? Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 4,
+                    )
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isMapExpanded ? LucideIcons.minimize2 : LucideIcons.plus,
+                      size: 14,
+                      color: Colors.green,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isMapExpanded
+                          ? AppStrings.of(context).t('minimize')
+                          : AppStrings.of(context).t('live'),
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        ReportsScreen(initialReportKey: shortcut.key),
-                  ),
-                );
-              },
             ),
-          )
-          .toList(),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildAnalyticsCharts(DashboardAnalytics analytics) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          height: 180,
-          child: _buildLineChart(
-            analytics.distanceTrend,
-            lineColor: AppTheme.primaryBlue,
-          ),
+  Widget _buildMapStatusMini(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(height: 16),
-        SizedBox(height: 180, child: _buildBarChart(analytics.alertTrend)),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+        ),
       ],
     );
   }
 
-  Widget _buildLineChart(DashboardChart chart, {required Color lineColor}) {
-    if (chart.series.isEmpty || chart.series.first.data.isEmpty) {
-      return const Center(child: Text('No trend data'));
+  Widget _buildModernStats(Map<String, int> stats) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ?? Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          )
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildTotalDonut(stats['total']!, stats['active']!),
+          _buildStatItem(LucideIcons.car, AppStrings.of(context).t('status_moving'), stats['moving']!, Colors.green),
+          _buildStatItem(LucideIcons.clock, AppStrings.of(context).t('status_idle'), stats['idle']!, Colors.orange),
+          _buildStatItem(LucideIcons.power, AppStrings.of(context).t('status_stopped'), stats['stopped']!, Colors.red),
+          _buildStatItem(LucideIcons.wifi, AppStrings.of(context).t('devices'), stats['total']!, Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalDonut(int total, int active) {
+    final activePercentage = total > 0 ? active / total : 0.0;
+    return SizedBox(
+      width: 65,
+      height: 65,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(
+              value: activePercentage,
+              strokeWidth: 5,
+              backgroundColor: Colors.blue.withValues(alpha: 0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                activePercentage > 0.5 ? Colors.green : Colors.orange,
+              ),
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                total.toString(),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+              Text(
+                AppStrings.of(context).t('total'),
+                style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String label, int count, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final tileBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : const Color(0xFFF1F4F8);
+    final countColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
+    return Container(
+      width: 62,
+      height: 70,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: tileBg,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(height: 4),
+          Text(
+            count.toString(),
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: countColor),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 8, color: Colors.grey.shade500, fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              AppStrings.of(context).t('quick_actions'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
+            ),
+            GestureDetector(
+              onTap: () => widget.onSelectTab?.call(1), // Vehicles tab
+              child: Text(
+                '${AppStrings.of(context).t('view_all')} >',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.blue.shade700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => widget.onSelectTab?.call(1),
+                child: _buildActionBtn(LucideIcons.navigation, AppStrings.of(context).t('track_live'), const Color(0xFFE8F5E9), Colors.green),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => widget.onSelectTab?.call(3), // Reports tab
+                child: _buildActionBtn(LucideIcons.barChart, AppStrings.of(context).t('tab_reports'), const Color(0xFFEDE7F6), Colors.purple),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => widget.onSelectTab?.call(2), // Alerts tab
+                child: _buildActionBtn(LucideIcons.bell, AppStrings.of(context).t('tab_alerts'), const Color(0xFFFFF3E0), Colors.orange),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionBtn(IconData icon, String label, Color bg, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF1A1A1A)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentActivity(List<DashboardPanicAlert> alerts) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              AppStrings.of(context).t('recent_activity'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
+            ),
+            GestureDetector(
+              onTap: () => widget.onSelectTab?.call(2), // Alerts tab
+              child: Text(
+                '${AppStrings.of(context).t('see_all')} >',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.blue.shade700),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (alerts.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                AppStrings.of(context).t('no_recent_activity'),
+                style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600),
+              ),
+            ),
+          )
+        else
+          ...alerts.take(3).map((alert) => _buildActivityItem(
+                LucideIcons.alertTriangle,
+                alert.vehicleLabel,
+                alert.message,
+                alert.createdAt,
+                Colors.orange,
+              )),
+      ],
+    );
+  }
+
+  Widget _buildActivityItem(IconData icon, String title, String sub, String time, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1A1A1A))),
+                Text(sub, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          Text(time, style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _shortPerfDate(DateTime d) {
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day} ${m[d.month - 1]}';
+  }
+
+  String _perfDateLabel() {
+    final sel = context.read<HomeCubit>().selectedDate;
+    if (sel == null || _isSameDay(sel, DateTime.now())) {
+      return AppStrings.of(context).t('today');
     }
-    final values = chart.series.first.data;
+    return _shortPerfDate(sel);
+  }
+
+  Future<void> _pickPerformanceDate() async {
+    final cubit = context.read<HomeCubit>();
+    final now = DateTime.now();
+    final initial = cubit.selectedDate ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial.isAfter(now) ? now : initial,
+      firstDate: DateTime(now.year - 1, now.month, now.day),
+      lastDate: now,
+    );
+    if (picked != null && mounted) {
+      cubit.fetchHomeData(date: picked);
+    }
+  }
+
+  Widget _buildPerformanceOverview(DashboardAnalytics analytics) {
+    final distanceTrend = analytics.distanceTrend;
+    final values = distanceTrend.series.isNotEmpty ? distanceTrend.series.first.data : <double>[];
+    final totalDistance = values.isNotEmpty ? values.reduce((a, b) => a + b) : 0.0;
+
     final spots = <FlSpot>[];
     for (var i = 0; i < values.length; i++) {
       spots.add(FlSpot(i.toDouble(), values[i]));
     }
-    final maxY = values.reduce((a, b) => a > b ? a : b);
-
-    return LineChart(
-      LineChartData(
-        minY: 0,
-        maxY: maxY <= 0 ? 10 : maxY * 1.25,
-        borderData: FlBorderData(show: false),
-        lineBarsData: <LineChartBarData>[
-          LineChartBarData(
-            spots: spots,
-            color: lineColor,
-            isCurved: true,
-            barWidth: 3,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: lineColor.withValues(alpha: 0.12),
-            ),
-          ),
-        ],
-        titlesData: const FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBarChart(DashboardChart chart) {
-    if (chart.series.isEmpty || chart.series.first.data.isEmpty) {
-      return const Center(child: Text('No alert data'));
-    }
-    final values = chart.series.first.data;
-    final groups = <BarChartGroupData>[];
-    for (var i = 0; i < values.length; i++) {
-      groups.add(
-        BarChartGroupData(
-          x: i,
-          barRods: <BarChartRodData>[
-            BarChartRodData(
-              toY: values[i],
-              width: 14,
-              color: AppTheme.primaryGreen,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(5),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return BarChart(
-      BarChartData(
-        borderData: FlBorderData(show: false),
-        titlesData: const FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        barGroups: groups,
-      ),
-    );
-  }
-
-  Widget _buildHeatmapSeveritySummary(List<DashboardHeatmapPoint> points) {
-    final severityCounts = <String, int>{'high': 0, 'medium': 0, 'low': 0};
-
-    for (final point in points) {
-      final explicitSeverity = point.severity.trim().toLowerCase();
-      if (severityCounts.containsKey(explicitSeverity)) {
-        severityCounts[explicitSeverity] =
-            severityCounts[explicitSeverity]! + 1;
-        continue;
-      }
-
-      if (point.hits >= 20) {
-        severityCounts['high'] = severityCounts['high']! + 1;
-      } else if (point.hits >= 10) {
-        severityCounts['medium'] = severityCounts['medium']! + 1;
-      } else {
-        severityCounts['low'] = severityCounts['low']! + 1;
-      }
-    }
-
-    if (points.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Text('No hotspot points found'),
-      );
-    }
-
-    final sections = <PieChartSectionData>[
-      PieChartSectionData(
-        value: severityCounts['high']!.toDouble(),
-        color: AppColors.red,
-        radius: 58,
-        showTitle: false,
-      ),
-      PieChartSectionData(
-        value: severityCounts['medium']!.toDouble(),
-        color: Colors.orange,
-        radius: 58,
-        showTitle: false,
-      ),
-      PieChartSectionData(
-        value: severityCounts['low']!.toDouble(),
-        color: AppTheme.primaryGreen,
-        radius: 58,
-        showTitle: false,
-      ),
-    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          height: 210,
-          child: Stack(
-            alignment: Alignment.center,
-            children: <Widget>[
-              PieChart(
-                PieChartData(
-                  sections: sections,
-                  centerSpaceRadius: 56,
-                  sectionsSpace: 2,
-                  startDegreeOffset: -90,
-                ),
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    points.length.toString(),
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.primaryBlue,
-                    ),
-                  ),
-                  Text(
-                    'Hotspots',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
+      children: [
         Row(
-          children: <Widget>[
-            Expanded(
-              child: _buildSeverityBadge(
-                label: 'High',
-                count: severityCounts['high']!,
-                color: AppColors.red,
-              ),
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              AppStrings.of(context).t('performance_overview'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildSeverityBadge(
-                label: 'Medium',
-                count: severityCounts['medium']!,
-                color: Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildSeverityBadge(
-                label: 'Low',
-                count: severityCounts['low']!,
-                color: AppTheme.primaryGreen,
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _pickPerformanceDate,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    const Icon(LucideIcons.calendar, size: 14, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Text(_perfDateLabel(),
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+                    const Icon(Icons.keyboard_arrow_down, size: 14, color: Colors.grey),
+                  ],
+                ),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardTheme.color ?? Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(AppStrings.of(context).t('total_distance'), style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            totalDistance > 1000 ? (totalDistance / 1000).toStringAsFixed(1) : totalDistance.toInt().toString(),
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            totalDistance > 1000 ? 'km' : 'm',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (values.length >= 2)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: values.last >= values[values.length - 2]
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            values.last >= values[values.length - 2] ? Icons.arrow_upward : Icons.arrow_downward,
+                            size: 12,
+                            color: values.last >= values[values.length - 2] ? Colors.green : Colors.red,
+                          ),
+                          Text(
+                            ' ${((values.last - values[values.length - 2]).abs() / (values[values.length - 2] == 0 ? 1 : values[values.length - 2]) * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: values.last >= values[values.length - 2] ? Colors.green : Colors.red,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (spots.isEmpty)
+                const SizedBox(
+                  height: 120,
+                  child: Center(child: Text('No distance data available', style: TextStyle(fontSize: 12, color: Colors.grey))),
+                )
+              else
+                SizedBox(
+                  height: 120,
+                  child: LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: const FlTitlesData(show: false),
+                      borderData: FlBorderData(show: false),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: AppTheme.primaryBlue,
+                          barWidth: 3,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildSeverityBadge({
-    required String label,
-    required int count,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(
-            count.toString(),
-            style: TextStyle(
-              color: color,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildHeatmapSummary(List<DashboardHeatmapPoint> points) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Text(
-                'Heatmap Hotspots',
-                style: TextStyle(
-                  color: AppTheme.primaryBlue,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 16,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${points.length} points',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (points.isEmpty)
-            const Text('No heatmap points found')
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: points.take(10).map((point) {
-                final level = point.hits >= 20
-                    ? Colors.red
-                    : point.hits >= 10
-                    ? Colors.orange
-                    : AppTheme.primaryBlue;
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: level.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${point.latitude.toStringAsFixed(3)}, ${point.longitude.toStringAsFixed(3)} • ${point.hits}',
-                    style: TextStyle(
-                      color: level,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
-      ),
-    );
-  }
+  // Widget _buildHeatmapSummary(List<DashboardHeatmapPoint> points) {
+  //   return Container(
+  //     padding: const EdgeInsets.all(12),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(12),
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: <Widget>[
+  //         Row(
+  //           children: <Widget>[
+  //             const Text(
+  //               'Heatmap Hotspots',
+  //               style: TextStyle(
+  //                 color: AppTheme.primaryBlue,
+  //                 fontWeight: FontWeight.w800,
+  //                 fontSize: 16,
+  //               ),
+  //             ),
+  //             const Spacer(),
+  //             Text(
+  //               '${points.length} points',
+  //               style: TextStyle(
+  //                 color: Colors.grey.shade600,
+  //                 fontWeight: FontWeight.w600,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //         const SizedBox(height: 12),
+  //         if (points.isEmpty)
+  //           const Text('No heatmap points found')
+  //         else
+  //           Wrap(
+  //             spacing: 8,
+  //             runSpacing: 8,
+  //             children: points.take(10).map((point) {
+  //               final level = point.hits >= 20
+  //                   ? Colors.red
+  //                   : point.hits >= 10
+  //                   ? Colors.orange
+  //                   : AppTheme.primaryBlue;
+  //               return Container(
+  //                 padding: const EdgeInsets.symmetric(
+  //                   horizontal: 10,
+  //                   vertical: 8,
+  //                 ),
+  //                 decoration: BoxDecoration(
+  //                   color: level.withValues(alpha: 0.12),
+  //                   borderRadius: BorderRadius.circular(8),
+  //                 ),
+  //                 child: Text(
+  //                   '${point.latitude.toStringAsFixed(3)}, ${point.longitude.toStringAsFixed(3)} • ${point.hits}',
+  //                   style: TextStyle(
+  //                     color: level,
+  //                     fontWeight: FontWeight.w700,
+  //                     fontSize: 12,
+  //                   ),
+  //                 ),
+  //               );
+  //             }).toList(),
+  //           ),
+  //       ],
+  //     ),
+  //   );
+  // }
 }
 
 class _EmptyMapState extends StatelessWidget {
   const _EmptyMapState({required this.title});
-
   final String title;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -874,42 +1215,3 @@ class _EmptyMapState extends StatelessWidget {
   }
 }
 
-class _DashboardChip extends StatelessWidget {
-  const _DashboardChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, size: 14, color: AppTheme.primaryBlue),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppTheme.primaryBlue,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

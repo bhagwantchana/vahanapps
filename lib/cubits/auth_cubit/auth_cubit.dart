@@ -41,6 +41,13 @@ class AuthCubit extends Cubit<AuthState> {
 
       await LocalStorage.setValue(PreferencesKey.isLogin, 'islogin');
       await LocalStorage.setValue(PreferencesKey.token, token);
+      // Persist the sub-user flag so engine/edit/settings UI can be hidden
+      // without re-hitting the network. Primary users save '0' (no-op).
+      final isSub = result.data?.isSubUser == true;
+      await LocalStorage.setValue(
+        PreferencesKey.isSubUser, isSub ? '1' : '0');
+      await LocalStorage.setValue(
+        PreferencesKey.username, result.data?.username ?? '');
       emit(AuthLoggedInState(token));
     } catch (error) {
       emit(AuthErrorState(error.toString().replaceFirst('Exception: ', '')));

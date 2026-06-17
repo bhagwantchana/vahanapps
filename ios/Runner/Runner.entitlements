@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Release / App Store builds. Apple's APNS production gateway is used
+	  when this is set to "production"; switch to "development" only when
+	  you also build with a development provisioning profile (e.g. running
+	  on a physical device via Xcode Run, not via TestFlight or App Store).
+
+	  For Flutter projects that hit "no iOS notifications" the missing piece
+	  is almost always this file PLUS the Push Notifications capability not
+	  being enabled in Xcode (which is what creates this file in the first
+	  place). Without aps-environment iOS silently refuses APNS registration,
+	  the device never gets an FCM token, and the server has nothing to send
+	  to.
+	-->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

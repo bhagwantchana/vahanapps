@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -9,9 +9,12 @@ import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/firebase_options.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
+import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/screens/assigned_vehicle_maintenance_screen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
+import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -21,67 +24,116 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await CustomNotificationSoundService().initialize();
+  // Only create channels and basic setup in background, don't setup listeners
+  await CustomNotificationSoundService().setupChannels();
   if (message.notification == null) {
     await CustomNotificationSoundService().showNotification(message);
   }
 }
 
 class CustomNotificationSoundService {
-  static const String _channelId = 'fleet_monitor_alert_channel_v2';
-  static const String _channelName = 'Fleet Monitor Alerts';
+  static const String _channelId = 'fleet_monitor_alert_channel_v3';
+  static const String _channelName = 'VahanConnect Alerts';
   static const String _defaultAndroidSoundName = 'default_sound';
   static const String _defaultIosSoundFile = 'default_sound.wav';
   static const RawResourceAndroidNotificationSound _androidSound =
       RawResourceAndroidNotificationSound(_defaultAndroidSoundName);
+  // Channels bumped to _v4 on 2026-05-23: Android notification channels are
+  // IMMUTABLE after creation. If a device once cached one of these channels
+  // with a wrong/silent sound (which appears to be what was happening for
+  // some Motorcycle vehicles), the only fix is a new channel ID — Android
+  // will then call setupChannels() and register a fresh channel with the
+  // current sound. The matching FCM payloads on the server (fcm.js
+  // VEHICLE_SOUND_CHANNELS) were bumped to _v4 at the same time so the
+  // channel IDs stay in lockstep.
   static const Map<String, _NotificationChannelConfig> _vehicleSoundChannels = {
     'generic_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_generic_v1',
-      name: 'Fleet Monitor Ignition Generic',
+      id: 'fleet_monitor_ignition_generic_v4',
+      name: 'VahanConnect Ignition Generic',
       soundName: 'generic_ignition_on',
       iosSoundFile: 'generic_ignition_on.wav',
     ),
-    'activa_custom_sound': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_activa_v2',
-      name: 'Fleet Monitor Ignition Activa',
-      soundName: 'activa_ignition_on',
-      iosSoundFile: 'activa_ignition_on.wav',
-    ),
     'activa_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_activa_v2',
-      name: 'Fleet Monitor Ignition Activa',
+      id: 'fleet_monitor_ignition_activa_v4',
+      name: 'VahanConnect Ignition Activa',
       soundName: 'activa_ignition_on',
       iosSoundFile: 'activa_ignition_on.wav',
     ),
     'bike_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_bike_v1',
-      name: 'Fleet Monitor Ignition Bike',
+      id: 'fleet_monitor_ignition_bike_v4',
+      name: 'VahanConnect Ignition Bike',
       soundName: 'bike_ignition_on',
       iosSoundFile: 'bike_ignition_on.wav',
     ),
     'car_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_car_v1',
-      name: 'Fleet Monitor Ignition Car',
+      // Bumped v4 → v5 on 2026-06-01: the car_ignition_on.wav sound file was
+      // replaced. Android channels are immutable, so the sound only changes
+      // if the channel ID is new — otherwise the device keeps the old cached
+      // sound forever. Server fcm.js android_channel_id bumped to match.
+      id: 'fleet_monitor_ignition_car_v5',
+      name: 'VahanConnect Ignition Car',
       soundName: 'car_ignition_on',
       iosSoundFile: 'car_ignition_on.wav',
     ),
     'car_ignition_off': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_car_off_v1',
-      name: 'Fleet Monitor Ignition Car Off',
+      id: 'fleet_monitor_ignition_car_off_v4',
+      name: 'VahanConnect Ignition Car Off',
       soundName: 'car_ignition_off',
       iosSoundFile: 'car_ignition_off.wav',
     ),
     'bus_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_bus_v1',
-      name: 'Fleet Monitor Ignition Bus',
+      id: 'fleet_monitor_ignition_bus_v4',
+      name: 'VahanConnect Ignition Bus',
       soundName: 'bus_ignition_on',
       iosSoundFile: 'bus_ignition_on.wav',
     ),
     'truck_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_truck_v1',
-      name: 'Fleet Monitor Ignition Truck',
+      id: 'fleet_monitor_ignition_truck_v4',
+      name: 'VahanConnect Ignition Truck',
       soundName: 'truck_ignition_on',
       iosSoundFile: 'truck_ignition_on.wav',
+    ),
+    // Alert channels — IDs must match the server's VEHICLE_SOUND_CHANNELS
+    // in tracking/includes/fcm.js. They currently use the default sound
+    // because no per-alert WAV ships in res/raw/ yet; bump to _v4 here
+    // and in the server when you record real ones. Having the channels
+    // exist (even with default sound) lets Android users mute / un-mute
+    // each alert type independently from system Settings.
+    'overspeed': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_overspeed_v3',
+      name: 'VahanConnect Overspeed Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
+    ),
+    'geofence': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_geofence_v3',
+      name: 'VahanConnect Geofence Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
+    ),
+    'sos': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_sos_v3',
+      name: 'VahanConnect SOS Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
+    ),
+    'tampering': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_tampering_v3',
+      name: 'VahanConnect Tampering Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
+    ),
+    'low_battery': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_low_battery_v3',
+      name: 'VahanConnect Low Battery Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
+    ),
+    'power_cut': _NotificationChannelConfig(
+      id: 'fleet_monitor_alert_power_cut_v3',
+      name: 'VahanConnect Power Cut Alerts',
+      soundName: _defaultAndroidSoundName,
+      iosSoundFile: _defaultIosSoundFile,
     ),
   };
   static final CustomNotificationSoundService _instance =
@@ -102,15 +154,23 @@ class CustomNotificationSoundService {
       return;
     }
 
+    // Register the background handler as early as possible (this runs inside
+    // the awaited initialize() in main(), i.e. BEFORE runApp). The handler is
+    // a top-level @pragma('vm:entry-point') function; FCM can drop background
+    // messages if this is registered late (it used to live in the
+    // fire-and-forget _backgroundSetup, which could run after runApp).
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
     await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
+    // Disable foreground alerts from FCM to prevent duplicates with our local notifications
     await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-      alert: true,
+      alert: false,
       badge: true,
-      sound: true,
+      sound: false,
     );
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -132,61 +192,39 @@ class CustomNotificationSoundService {
       },
     );
 
-    const channel = AndroidNotificationChannel(
-      _channelId,
-      _channelName,
-      description: 'Vehicle tracking notifications',
-      importance: Importance.high,
-      playSound: true,
-      sound: _androidSound,
-    );
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
-
-    final androidPlugin = _localNotifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    for (final config in _vehicleSoundChannels.values) {
-      await androidPlugin?.createNotificationChannel(
-        AndroidNotificationChannel(
-          config.id,
-          config.name,
-          description: 'Vehicle-specific ignition alerts',
-          importance: Importance.high,
-          playSound: true,
-          sound: RawResourceAndroidNotificationSound(config.soundName),
-        ),
-      );
-    }
-
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    FirebaseMessaging.onMessage.listen((message) {
-      showNotification(message);
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
-
-    final initialMessage = await _firebaseMessaging.getInitialMessage();
-    if (initialMessage != null) {
-      _handleRemoteNavigation(initialMessage);
-    }
-
-    final token = await _firebaseMessaging.getToken();
-    if (token != null && token.isNotEmpty) {
-      await _storeAndSyncToken(token);
-    }
-
-    _firebaseMessaging.onTokenRefresh.listen((token) {
-      _storeAndSyncToken(token);
-    });
+    // Run non-critical setup in the background to avoid blocking app start
+    _backgroundSetup();
 
     _isInitialized = true;
+  }
+
+  Future<void> _backgroundSetup() async {
+    try {
+      await setupChannels();
+
+      // (onBackgroundMessage is now registered earlier, in initialize().)
+      FirebaseMessaging.onMessage.listen((message) {
+        showNotification(message);
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
+
+      final initialMessage = await _firebaseMessaging.getInitialMessage();
+      if (initialMessage != null) {
+        _handleRemoteNavigation(initialMessage);
+      }
+
+      final token = await _firebaseMessaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        await _storeAndSyncToken(token);
+      }
+
+      _firebaseMessaging.onTokenRefresh.listen((token) {
+        _storeAndSyncToken(token);
+      });
+    } catch (_) {
+      // Silent failure for background setup
+    }
   }
 
   Future<void> _storeAndSyncToken(String token) async {
@@ -214,6 +252,37 @@ class CustomNotificationSoundService {
       );
     } catch (_) {
       // Silent failure: token will be retried on next refresh/login.
+    }
+  }
+
+  Future<void> setupChannels() async {
+    const channel = AndroidNotificationChannel(
+      _channelId,
+      _channelName,
+      description: 'Vehicle tracking notifications',
+      importance: Importance.high,
+      playSound: true,
+      sound: _androidSound,
+    );
+
+    final androidPlugin = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
+    await androidPlugin?.createNotificationChannel(channel);
+
+    for (final config in _vehicleSoundChannels.values) {
+      await androidPlugin?.createNotificationChannel(
+        AndroidNotificationChannel(
+          config.id,
+          config.name,
+          description: 'Vehicle-specific ignition alerts',
+          importance: Importance.high,
+          playSound: true,
+          sound: RawResourceAndroidNotificationSound(config.soundName),
+        ),
+      );
     }
   }
 
@@ -258,8 +327,10 @@ class CustomNotificationSoundService {
         icon: '@mipmap/ic_launcher',
       );
 
+      final notificationId = payload.hashCode;
+
       await _localNotifications.show(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        id: notificationId,
         title: title,
         body: body,
         notificationDetails: const NotificationDetails(android: androidDetails),
@@ -267,6 +338,8 @@ class CustomNotificationSoundService {
       );
       return;
     }
+
+    final notificationId = payload.hashCode;
 
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
@@ -276,7 +349,7 @@ class CustomNotificationSoundService {
     );
 
     await _localNotifications.show(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: notificationId,
       title: title,
       body: body,
       notificationDetails: const NotificationDetails(iOS: iosDetails),
@@ -286,7 +359,7 @@ class CustomNotificationSoundService {
 
   static Future<void> _showNotificationStatic(RemoteMessage message) async {
     final title =
-        message.notification?.title ?? message.data['title']?.toString() ?? 'FleetMonitor360';
+        message.notification?.title ?? message.data['title']?.toString() ?? 'VahanConnect';
     final body =
         message.notification?.body ?? message.data['body']?.toString() ?? 'You have a new vehicle alert';
     final payload = jsonEncode(message.data);
@@ -295,6 +368,19 @@ class CustomNotificationSoundService {
       title: title,
       body: body,
     );
+
+    // Build a per-vehicle group key so multiple alerts for the same vehicle
+    // collapse into a single Android notification stack instead of spamming
+    // the shade. Falls back to a flat 'vahanconnect_alerts' group when the
+    // payload has no vehicle association. iOS uses `threadIdentifier` for
+    // the same effect.
+    final vehicleId = (message.data['vehicle_id'] ?? '').toString().trim();
+    final imei = (message.data['imei'] ?? '').toString().trim();
+    final groupKey = vehicleId.isNotEmpty
+        ? 'vahanconnect.vehicle.$vehicleId'
+        : (imei.isNotEmpty
+            ? 'vahanconnect.imei.$imei'
+            : 'vahanconnect.alerts');
 
     if (Platform.isAndroid) {
       final androidDetails = AndroidNotificationDetails(
@@ -306,10 +392,18 @@ class CustomNotificationSoundService {
         playSound: true,
         sound: RawResourceAndroidNotificationSound(soundConfig.soundName),
         icon: '@mipmap/ic_launcher',
+        groupKey: groupKey,
+        // setAsGroupSummary=false on the child notifications; Android will
+        // auto-collapse 4+ alerts with the same groupKey into a stack with
+        // a system-generated summary.
+        setAsGroupSummary: false,
       );
 
+      final notificationId = message.messageId?.hashCode ??
+          (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+
       await _localNotifications.show(
-        id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        id: notificationId,
         title: title,
         body: body,
         notificationDetails: NotificationDetails(android: androidDetails),
@@ -318,15 +412,21 @@ class CustomNotificationSoundService {
       return;
     }
 
+    final notificationId = message.messageId?.hashCode ??
+        (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+
     final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
       sound: soundConfig.iosSoundFile,
+      // iOS groups notifications that share a thread-identifier under the
+      // same expandable stack on the lock screen and Notification Centre.
+      threadIdentifier: groupKey,
     );
 
     await _localNotifications.show(
-      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      id: notificationId,
       title: title,
       body: body,
       notificationDetails: NotificationDetails(iOS: iosDetails),
@@ -426,7 +526,56 @@ class CustomNotificationSoundService {
       return;
     }
 
+    // Deep link: if the FCM payload identifies a specific vehicle (via IMEI
+    // or vehicle_id), open the single-vehicle detail screen instead of
+    // just the Alerts tab. Falls back to Alerts when the payload is missing
+    // the identifiers — that's better than dropping the tap.
+    final imei = (data['imei'] ?? '').toString().trim();
+    final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
+    final isVehicleAlert =
+        alertType == 'overspeed' ||
+        alertType == 'ignition_on' ||
+        alertType == 'ignition_off' ||
+        alertType.startsWith('geofence_') ||
+        alertType.startsWith('harsh_') ||
+        alertType == 'tampering' ||
+        alertType == 'parking_guard' ||
+        alertType == 'idle' ||
+        alertType == 'low_battery' ||
+        alertType == 'power_cut';
+
+    if (isVehicleAlert && imei.isNotEmpty) {
+      _openVehicleDetail(imei: imei);
+      return;
+    }
+
     _openAlertsTab();
+  }
+
+  /// Land the user directly on the vehicle's detail / live-track screen
+  /// when they tap a per-vehicle notification.
+  void _openVehicleDetail({required String imei}) {
+    final navigator = appNavigatorKey.currentState;
+    if (navigator == null) {
+      return;
+    }
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) {
+      _openAlertsTab();
+      return;
+    }
+    try {
+      // Pre-fetch the vehicle's latest track so the detail screen has data
+      // by the time it builds. Same path the alerts screen uses on tap.
+      final trackCubit = BlocProvider.of<SingleTrackCubit>(ctx);
+      trackCubit.fetchVehicleTrack(imei);
+    } catch (_) {
+      // Cubit not provided in this context — detail screen will fetch
+      // itself when it lands.
+    }
+    navigator.push(
+      MaterialPageRoute<void>(builder: (_) => const VehicleDetailScreen()),
+    );
   }
 
   Map<String, dynamic> _decodePayload(String? payload) {
@@ -455,34 +604,63 @@ class CustomNotificationSoundService {
     String title = '',
     String body = '',
   }) {
+    final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
+    final notificationKind =
+        (data['notification_kind'] ?? '').toString().trim().toLowerCase();
+
+    // Route non-ignition alert types to their own channels FIRST — before
+    // we look at sound_name. The server sends sound_name='default_sound'
+    // for these alert types (because no per-alert WAV exists yet), but we
+    // still want each category to have its own *channel* so users can
+    // mute / unmute them independently from Android system settings.
+    const alertTypeChannelKeys = <String, String>{
+      'overspeed': 'overspeed',
+      'sos': 'sos',
+      'tampering': 'tampering',
+      'parking_guard': 'tampering',
+      'geofence_enter': 'geofence',
+      'geofence_exit': 'geofence',
+      'low_battery': 'low_battery',
+      'power_cut': 'power_cut',
+      'harsh_brake': 'tampering',
+      'harsh_accel': 'tampering',
+      'harsh_corner': 'tampering',
+      'offline': 'tampering',
+    };
+    final mappedAlertKey = alertTypeChannelKeys[alertType];
+    if (mappedAlertKey != null) {
+      return _resolvedFromKey(mappedAlertKey);
+    }
+
+    // Ignition / vehicle-specific sounds: server sends an explicit
+    // sound_name like 'car_ignition_on' or 'truck_ignition_on'. Honour
+    // it when present and it maps to a known vehicle channel.
     final explicitSound = (data['sound_name'] ?? data['sound'] ?? '')
         .toString()
         .trim()
         .toLowerCase();
     final normalizedExplicitSound = _normalizeSoundKey(explicitSound);
-    if (normalizedExplicitSound.isNotEmpty) {
+    if (normalizedExplicitSound.isNotEmpty &&
+        _vehicleSoundChannels.containsKey(normalizedExplicitSound)) {
       return _resolvedFromKey(normalizedExplicitSound);
     }
 
-    final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
-    final notificationKind =
-        (data['notification_kind'] ?? '').toString().trim().toLowerCase();
+    // Broaden the search by looking at all values in the data map, title, and body.
+    final allValues = data.values.map((v) => v.toString().toLowerCase()).join(' ');
+    final vehicleHint = '$allValues $title $body'.toLowerCase();
 
-    final vehicleHint = [
-      data['vehicle_type'],
-      data['vehicle_type_name'],
-      data['vehicle_name'],
-      data['v_name'],
-      data['title'],
-      data['message'],
-      title,
-      body,
-    ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+    // engine_start / engine_stop / engine_restore are the manual relay
+    // commands; treat them as ignition for sound-resolution purposes so
+    // they pick up the same per-vehicle engine cue instead of falling to
+    // the default alert bell.
+    final isEngineCommand = alertType.startsWith('engine_') ||
+        notificationKind.startsWith('engine_');
 
     final looksLikeIgnition = alertType == 'ignition_on' ||
         alertType == 'ignition_off' ||
         notificationKind.contains('ignition') ||
-        vehicleHint.contains('ignition');
+        vehicleHint.contains('ignition') ||
+        isEngineCommand;
 
     final looksLikeActiva = vehicleHint.contains('activa') ||
         vehicleHint.contains('scooty') ||
@@ -492,35 +670,61 @@ class CustomNotificationSoundService {
       return _resolvedFromKey('activa_ignition_on');
     }
 
-    if (alertType != 'ignition_on' && alertType != 'ignition_off') {
-      return _defaultResolvedSound();
-    }
+    final looksLikeCar = vehicleHint.contains('car') ||
+        vehicleHint.contains('sedan') ||
+        vehicleHint.contains('suv');
+    final looksLikeBike =
+        vehicleHint.contains('bike') || vehicleHint.contains('motorcycle');
+    final looksLikeTruck =
+        vehicleHint.contains('truck') || vehicleHint.contains('lorry');
+    final looksLikeBus = vehicleHint.contains('bus');
 
-    if (alertType == 'ignition_off') {
-      if (vehicleHint.contains('car') ||
-          vehicleHint.contains('sedan') ||
-          vehicleHint.contains('suv')) {
+    final isOffEvent = alertType == 'ignition_off' ||
+        alertType == 'engine_stop' ||
+        vehicleHint.contains('engine_stop') ||
+        vehicleHint.contains('immobilize');
+
+    if (isOffEvent) {
+      if (looksLikeCar) {
         return _resolvedFromKey('car_ignition_off');
       }
-      return _defaultResolvedSound();
+      if (looksLikeActiva) {
+        return _resolvedFromKey('activa_ignition_on');
+      }
+      if (looksLikeBike) {
+        return _resolvedFromKey('bike_ignition_on');
+      }
+      if (looksLikeTruck) {
+        return _resolvedFromKey('truck_ignition_on');
+      }
+      if (looksLikeBus) {
+        return _resolvedFromKey('bus_ignition_on');
+      }
+      return _resolvedFromKey('generic_ignition_on');
     }
 
-    if (vehicleHint.contains('bike') || vehicleHint.contains('motorcycle')) {
+    if (looksLikeBike) {
       return _resolvedFromKey('bike_ignition_on');
     }
-    if (vehicleHint.contains('truck') || vehicleHint.contains('lorry')) {
+    if (looksLikeTruck) {
       return _resolvedFromKey('truck_ignition_on');
     }
-    if (vehicleHint.contains('bus')) {
+    if (looksLikeBus) {
       return _resolvedFromKey('bus_ignition_on');
     }
-    if (vehicleHint.contains('car') ||
-        vehicleHint.contains('sedan') ||
-        vehicleHint.contains('suv')) {
+    if (looksLikeCar) {
       return _resolvedFromKey('car_ignition_on');
     }
 
-    return _resolvedFromKey('generic_ignition_on');
+    // Anything else ignition / engine related falls back to the generic
+    // engine-on cue so the user still hears an audible engine sound rather
+    // than the default alert bell. The default channel only kicks in for
+    // truly unmatched alert types (handled by `_defaultResolvedSound`).
+    if (looksLikeIgnition) {
+      return _resolvedFromKey('generic_ignition_on');
+    }
+
+    return _defaultResolvedSound();
   }
 
   static String _normalizeSoundKey(String value) {

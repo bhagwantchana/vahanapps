@@ -1,4 +1,4 @@
-﻿# FleetMonitor360 Flutter App Workflow
+# FleetMonitor360 Flutter App Workflow
 
 Last updated: 2026-03-28
 
@@ -20,7 +20,7 @@ Backend API root used by the app:
 
 The app currently points to:
 
-`https://fleetmonitor360.cloud/api/`
+`https://vahanconnect.com/api/`
 
 This is defined in:
 
@@ -410,7 +410,7 @@ Update:
 Example:
 
 - local: `http://localhost/fleetmonitor360_new/api/`
-- online: `https://fleetmonitor360.cloud/api/`
+- online: `https://vahanconnect.com/api/`
 
 ### Check profile image and map URLs
 

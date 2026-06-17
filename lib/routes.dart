@@ -2,6 +2,7 @@ import 'package:fleet_monitor/providers/login_provider.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/screens/splash_screen.dart';
+import 'package:fleet_monitor/screens/sub_users_screen.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 
@@ -25,6 +26,10 @@ class Routes {
             : 0;
         return CupertinoPageRoute<dynamic>(
           builder: (context) => DashboardScreen(initialIndex: initialIndex),
+        );
+      case SubUsersScreen.routeName:
+        return CupertinoPageRoute<dynamic>(
+          builder: (context) => const SubUsersScreen(),
         );
       default:
         return null;

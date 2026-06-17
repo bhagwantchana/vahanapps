@@ -93,4 +93,70 @@ class AppTheme {
       ),
     );
   }
+
+  // Dark theme — adapts Scaffold, AppBar, Card, and text colours via
+  // ThemeData. Note: many widgets in this app still use hardcoded
+  // `Colors.white` / `Color(0xFF...)` for backgrounds, so those will stay
+  // light even with dark mode enabled. The toggle is wired and functional;
+  // migrate widgets to `Theme.of(context).colorScheme.*` incrementally as
+  // you touch them. Critical chrome (AppBar, Drawer, Scaffold base) does
+  // adapt today.
+  static const Color darkBackground = Color(0xFF0B0E11);
+  static const Color darkSurface = Color(0xFF1A1F25);
+  static const Color darkPrimary = Color(0xFF4A8BC4);
+
+  static ThemeData get darkTheme {
+    return ThemeData(
+      brightness: Brightness.dark,
+      primaryColor: darkPrimary,
+      scaffoldBackgroundColor: darkBackground,
+      colorScheme: const ColorScheme.dark(
+        primary: darkPrimary,
+        secondary: primaryGreen,
+        surface: darkSurface,
+      ),
+      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryGreen,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          elevation: 2,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 2,
+        shadowColor: Colors.black54,
+        color: darkSurface,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: darkSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade700),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade700),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: darkPrimary, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: darkSurface,
+        foregroundColor: Colors.white,
+        elevation: 1,
+        shadowColor: Colors.black54,
+        centerTitle: true,
+      ),
+    );
+  }
 }

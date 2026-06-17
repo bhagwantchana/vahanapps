@@ -24,6 +24,14 @@ class VehicleRecord {
   final double course;
   final int acc;
   final int battery;
+  /// GSM signal strength reported by the device (0-4 on GT06 / PT06).
+  /// 0 = no signal, 4 = excellent. Surfaced as bars on the single-vehicle
+  /// detail screen so operators can correlate "no live update" with weak
+  /// cellular instead of guessing.
+  final int gsmSignal;
+  /// GPS satellites locked at last fix. Higher is better (>= 5 means a
+  /// solid 3D fix). Shown next to GPS LIVE/FIX badge.
+  final int satellites;
   final int overspeedLimit;
   final int notificationEnabled;
   final int guardActive;
@@ -68,6 +76,9 @@ class VehicleRecord {
   final String multiMapUrl;
   final String legacyMultiMapUrl;
   final String createdAt;
+  /// Device/plan subscription expiry (tbl_device.expiry_date). Drives the
+  /// red "X days left" / "Expired" badge on the vehicle cards.
+  final String expiryDate;
   final bool hasLiveLocation;
   final ActiveDriverModel? activeDriver;
   final VehicleSettingsModel? settings;
@@ -94,6 +105,8 @@ class VehicleRecord {
     this.course = 0,
     this.acc = 0,
     this.battery = 0,
+    this.gsmSignal = 0,
+    this.satellites = 0,
     this.overspeedLimit = 0,
     this.notificationEnabled = 1,
     this.guardActive = 0,
@@ -138,6 +151,7 @@ class VehicleRecord {
     this.multiMapUrl = '',
     this.legacyMultiMapUrl = '',
     this.createdAt = '',
+    this.expiryDate = '',
     this.hasLiveLocation = false,
     this.activeDriver,
     this.settings,
@@ -166,6 +180,8 @@ class VehicleRecord {
       course: toDouble(json['course']),
       acc: toInt(json['acc']),
       battery: toInt(json['battery']),
+      gsmSignal: toInt(json['gsm_signal']),
+      satellites: toInt(json['satellites']),
       overspeedLimit: toInt(json['v_overspeed']),
       notificationEnabled: toInt(
         json['notification_enabled'] ?? json['v_notification'],
@@ -213,6 +229,7 @@ class VehicleRecord {
       multiMapUrl: toStringValue(json['multi_map_url']),
       legacyMultiMapUrl: toStringValue(json['legacy_multi_map_url']),
       createdAt: toStringValue(json['created_at']),
+      expiryDate: toStringValue(json['expiry_date']),
       hasLiveLocation: json['has_live_location'] != null
           ? toBoolFlag(json['has_live_location'])
           : (toDouble(json['latitude']) != 0 || toDouble(json['longitude']) != 0),
@@ -262,6 +279,19 @@ class VehicleRecord {
     double? guardLat,
     double? guardLng,
     ActiveDriverModel? activeDriver,
+    // Live-feed fields — SSE pushes these after every device packet so the
+    // map / list refresh without polling. Older copyWith signatures
+    // didn't accept these, so SSE updates silently kept the stale values.
+    double? latitude,
+    double? longitude,
+    double? speed,
+    double? course,
+    int? acc,
+    int? battery,
+    int? gsmSignal,
+    int? satellites,
+    String? createdAt,
+    bool? hasLiveLocation,
   }) {
     return VehicleRecord(
       id: id,
@@ -279,12 +309,14 @@ class VehicleRecord {
       deviceModel: deviceModel,
       protocol: protocol,
       port: port,
-      latitude: latitude,
-      longitude: longitude,
-      speed: speed,
-      course: course,
-      acc: acc,
-      battery: battery,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      speed: speed ?? this.speed,
+      course: course ?? this.course,
+      acc: acc ?? this.acc,
+      battery: battery ?? this.battery,
+      gsmSignal: gsmSignal ?? this.gsmSignal,
+      satellites: satellites ?? this.satellites,
       overspeedLimit: overspeedLimit ?? this.overspeedLimit,
       notificationEnabled: notificationEnabled ?? this.notificationEnabled,
       guardActive: guardActive ?? this.guardActive,
@@ -330,8 +362,9 @@ class VehicleRecord {
       historyUrl: historyUrl,
       multiMapUrl: multiMapUrl,
       legacyMultiMapUrl: legacyMultiMapUrl,
-      createdAt: createdAt,
-      hasLiveLocation: hasLiveLocation,
+      createdAt: createdAt ?? this.createdAt,
+      expiryDate: expiryDate,
+      hasLiveLocation: hasLiveLocation ?? this.hasLiveLocation,
       activeDriver: activeDriver ?? this.activeDriver,
       settings: settings ?? this.settings,
     );
@@ -345,11 +378,87 @@ class VehicleRecord {
 
   bool get isStopped => !engineOn;
 
+  // ── Device/plan expiry → red badge on the vehicle cards ──────────────────
+  /// Parsed expiry date, or null when the device has no valid expiry set.
+  DateTime? get expiryDateValue {
+    final raw = expiryDate.trim();
+    if (raw.isEmpty || raw.startsWith('0000')) {
+      return null;
+    }
+    return DateTime.tryParse(raw.contains('T') ? raw : raw.replaceFirst(' ', 'T'));
+  }
+
+  /// Whole days from today until the plan expires. Negative = already expired,
+  /// 0 = expires today, null = no expiry date on the device.
+  int? get daysToExpiry {
+    final exp = expiryDateValue;
+    if (exp == null) {
+      return null;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final expDay = DateTime(exp.year, exp.month, exp.day);
+    return expDay.difference(today).inDays;
+  }
+
+  bool get isExpired {
+    final d = daysToExpiry;
+    return d != null && d < 0;
+  }
+
+  /// Within the 7-day warning window (0..7 days left, not yet expired).
+  bool get isExpiringSoon {
+    final d = daysToExpiry;
+    return d != null && d >= 0 && d <= 7;
+  }
+
+  /// Show the red expiry badge when expiring soon OR already expired.
+  bool get showExpiryBadge => isExpired || isExpiringSoon;
+
+  /// Short badge text: "Expired" / "Expires today" / "N days left".
+  String get expiryBadgeLabel {
+    final d = daysToExpiry;
+    if (d == null) {
+      return '';
+    }
+    if (d < 0) {
+      return 'Expired';
+    }
+    if (d == 0) {
+      return 'Expires today';
+    }
+    if (d == 1) {
+      return '1 day left';
+    }
+    return '$d days left';
+  }
+
   bool get isImmobilized =>
       immobilizerState == 'locked' || immobilizerState == 'pending_lock';
 
-  bool get isImmobilizerBusy =>
-      immobilizerState == 'pending_lock' || immobilizerState == 'pending_restore';
+  // Time-bound the pending state so a stuck pending_lock / pending_restore
+  // doesn't permanently disable the Start/Stop button. The tracking server's
+  // optimistic-ACK watchdog flips pending states to their final form within
+  // ~60s when the device is alive; this 90s window is the safety net for
+  // when the watchdog is slow or the device's clock skews the timestamp.
+  bool get isImmobilizerBusy {
+    if (immobilizerState != 'pending_lock' &&
+        immobilizerState != 'pending_restore') {
+      return false;
+    }
+    if (immobilizerUpdatedAt.isEmpty) {
+      return false;
+    }
+    final updatedAt = DateTime.tryParse(
+      immobilizerUpdatedAt.contains('T')
+          ? immobilizerUpdatedAt
+          : immobilizerUpdatedAt.replaceFirst(' ', 'T'),
+    );
+    if (updatedAt == null) {
+      return false;
+    }
+    return DateTime.now().difference(updatedAt).inSeconds < 90;
+  }
 
   String get statusLabel {
     if (isStopped) {
