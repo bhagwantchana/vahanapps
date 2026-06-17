@@ -34,7 +34,12 @@ workflows:
         # ↓↓↓ the numeric "Apple ID" of the app from App Store Connect (App Information)
         APP_STORE_APPLE_ID: 0000000000
         BUNDLE_ID: "com.globynix.fleetMonitor"
-      flutter: stable
+      # PINNED to the exact local version that builds cleanly. Do NOT use
+      # "stable": Codemagic's stable moved to a newer Flutter where IconData
+      # became a `final class`, which breaks lucide_icons 0.257.0
+      # ("IconData can't be extended ... it's a final class"). 3.41.9 still has
+      # a non-final IconData, so the app compiles exactly like it does locally.
+      flutter: 3.41.9
       xcode: latest
       cocoapods: default
     scripts:
