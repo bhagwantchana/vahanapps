@@ -31,8 +31,8 @@ workflows:
         distribution_type: app_store          # builds a signed App Store / TestFlight build
         bundle_identifier: com.globynix.fleetMonitor
       vars:
-        # ↓↓↓ the numeric "Apple ID" of the app from App Store Connect (App Information)
-        APP_STORE_APPLE_ID: 0000000000
+        # the numeric "Apple ID" of the app from App Store Connect (App Information)
+        APP_STORE_APPLE_ID: 6768335248
         BUNDLE_ID: "com.globynix.fleetMonitor"
       # PINNED to the exact local version that builds cleanly. Do NOT use
       # "stable": Codemagic's stable moved to a newer Flutter where IconData
