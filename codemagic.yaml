@@ -27,9 +27,11 @@ workflows:
       # ↓↓↓ replace with the NAME you gave the App Store Connect API key in Codemagic UI
       app_store_connect: FleetMonitorAppStoreKey
     environment:
-      ios_signing:
-        distribution_type: app_store          # builds a signed App Store / TestFlight build
-        bundle_identifier: com.globynix.fleetMonitor
+      # NOTE: deliberately NO `ios_signing:` block here. That managed block only
+      # FETCHES already-uploaded signing files and runs in Codemagic's prepare
+      # phase — on a brand-new app it finds nothing and fails with
+      # "No matching profiles found". We create the cert + profile explicitly in
+      # the scripts below (fetch-signing-files --create) instead.
       vars:
         # the numeric "Apple ID" of the app from App Store Connect (App Information)
         APP_STORE_APPLE_ID: 6768335248
@@ -43,8 +45,17 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Set up code signing (fetch & install the App Store profile)
+      - name: Set up code signing — CREATE the distribution cert + App Store profile if missing
         script: |
+          # The app_store_connect integration auto-supplies the API credentials.
+          # --create makes Codemagic generate the iOS Distribution certificate AND
+          # the App Store provisioning profile via the API when they don't exist
+          # yet (first build). No Mac and no manual Developer-portal steps needed.
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
           xcode-project use-profiles
       - name: Get Flutter packages
         script: |
