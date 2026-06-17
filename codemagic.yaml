@@ -51,7 +51,10 @@ workflows:
           flutter pub get
       - name: Install CocoaPods dependencies (the iOS equivalent of gradle deps)
         script: |
-          find . -name "Podfile" -execdir pod install \;
+          # Scope to ios/ ONLY. A repo-wide `find -name Podfile` would also hit
+          # macos/Podfile, which has no Flutter-macOS config on CI and would
+          # raise ("Generated.xcconfig must exist"), failing the whole build.
+          cd ios && pod install
       - name: Build signed IPA (auto-increment the TestFlight build number)
         script: |
           # Next build number = latest TestFlight build + 1 (or 1 on the very first build).

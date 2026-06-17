@@ -1,5 +1,7 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# Global platform for the project. Firebase iOS SDK (core/messaging/
+# crashlytics) requires iOS 13+, and the Runner target is already
+# IPHONEOS_DEPLOYMENT_TARGET = 13.0, so pin the pods to match.
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
