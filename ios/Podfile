@@ -1,7 +1,6 @@
-# Global platform for the project. Firebase iOS SDK (core/messaging/
-# crashlytics) requires iOS 13+, and the Runner target is already
-# IPHONEOS_DEPLOYMENT_TARGET = 13.0, so pin the pods to match.
-platform :ios, '13.0'
+# Global platform for the project. Firebase iOS SDK 12.x (core/messaging/
+# crashlytics) requires iOS 15+, so pin the pods + Runner target to iOS 15.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -41,5 +40,10 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # Firebase 12.x pods require iOS 15; force every pod target to match so
+      # CocoaPods doesn't fail on a lower inherited deployment target.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
   end
 end
