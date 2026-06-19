@@ -24,8 +24,10 @@ workflows:
     max_build_duration: 90
     instance_type: mac_mini_m2
     integrations:
-      # ↓↓↓ replace with the NAME you gave the App Store Connect API key in Codemagic UI
-      app_store_connect: FleetMonitorAppStoreKey
+      # NAME of the App Store Connect API key as it appears in Codemagic UI
+      # (Settings → Developer Portal → Manage keys). The connected key for
+      # Key ID CCG3PRF2WV is named "Codemagic", so reference that exact name.
+      app_store_connect: Codemagic
     environment:
       # NOTE: deliberately NO `ios_signing:` block here. That managed block only
       # FETCHES already-uploaded signing files and runs in Codemagic's prepare
