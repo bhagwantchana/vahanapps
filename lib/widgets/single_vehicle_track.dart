@@ -10,6 +10,7 @@ import 'package:fleet_monitor/repositorys/driver_repository.dart';
 import 'package:fleet_monitor/repositorys/single_track_repository.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
 import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
+import 'package:fleet_monitor/screens/driving_score_screen.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
@@ -21,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class VehicleDetailScreen extends StatefulWidget {
@@ -41,7 +43,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   String _loadedUrl = '';
   List<DriverRecordModel> _availableDrivers = <DriverRecordModel>[];
   Future<List<LatLng>>? _routeTrailFuture;
-  Timer? _liveRefreshTimer;
   int _routeTrailVehicleId = 0;
   int _routeTrailMinutes = 0;
   int _routeTrailPoints = 0;
@@ -189,7 +190,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
 
   @override
   void dispose() {
-    _liveRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -314,6 +314,38 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
+  /// "Find my car" — open the phone's maps app with driving directions to the
+  /// vehicle's last known location (great after parking in a big lot). Uses the
+  /// universal Google Maps URL so it works on Android + iOS.
+  Future<void> _findMyCar(VehicleRecord vehicle) async {
+    if (vehicle.latitude == 0 || vehicle.longitude == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No location available yet for this vehicle')),
+      );
+      return;
+    }
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=${vehicle.latitude},${vehicle.longitude}'
+      '&travelmode=driving',
+    );
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open maps')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open maps')),
+        );
+      }
+    }
+  }
+
   /// Safely reduce a "HH:mm:ss" (or shorter) time string to "HH:mm" without
   /// throwing RangeError when the server sends a short value like "6:00".
   String _hhmm(String t) => t.length >= 5 ? t.substring(0, 5) : t;
@@ -379,9 +411,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
                     topRight: Radius.circular(24),
                   ),
@@ -691,9 +723,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
                     topRight: Radius.circular(24),
                   ),
@@ -957,7 +989,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               latitude: vehicle.latitude,
               longitude: vehicle.longitude,
               style: TextStyle(
-                color: Colors.grey.shade800,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
                 height: 1.5,
@@ -1160,13 +1192,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                 flex: 5,
                 child: Container(
                   padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    color: AppTheme.background,
-                    borderRadius: BorderRadius.only(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(24),
                       topRight: Radius.circular(24),
                     ),
-                    boxShadow: <BoxShadow>[
+                    boxShadow: const <BoxShadow>[
                       BoxShadow(
                         color: Colors.black12,
                         blurRadius: 15,
@@ -1189,7 +1221,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           Container(
                             padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: Theme.of(context).cardColor,
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
                                 color: AppTheme.primaryBlue.withValues(alpha: 0.08),
@@ -1258,7 +1290,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   latitude: vehicle.latitude,
                                   longitude: vehicle.longitude,
                                   style: TextStyle(
-                                    color: Colors.grey.shade800,
+                                    color:
+                                        Theme.of(context).colorScheme.onSurface,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 13,
                                     height: 1.35,
@@ -1518,6 +1551,24 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 color: AppTheme.primaryBlue,
                                 onTap: () => _openHistory(vehicle),
                               ),
+                            _buildFixedActionButton(
+                              icon: LucideIcons.navigation,
+                              label: 'Find Car',
+                              color: AppTheme.primaryBlue,
+                              onTap: () => _findMyCar(vehicle),
+                            ),
+                            _buildFixedActionButton(
+                              icon: LucideIcons.gauge,
+                              label: 'Score',
+                              color: AppTheme.primaryGreen,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      DrivingScoreScreen(vehicle: vehicle),
+                                ),
+                              ),
+                            ),
                             if (settings.allowConfig == 1)
                               _buildFixedActionButton(
                                 icon: LucideIcons.settings,
@@ -1574,7 +1625,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -1779,9 +1830,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       constraints: const BoxConstraints(minHeight: 80),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F4F8), width: 1.5),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white10
+              : const Color(0xFFF1F4F8),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1800,7 +1856,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(val, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A))),
+              Flexible(
+                child: Text(
+                  val,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ),
               if (unit.isNotEmpty) ...[
                 const SizedBox(width: 1),
                 Text(unit, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey)),
@@ -1828,9 +1895,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Calculate width to fit 3 items per row with 10px spacing
-        final itemWidth = (MediaQuery.of(context).size.width - 72) / 3; 
-        
+        // Calculate width to fit 3 items per row using the actual available
+        // width (LayoutBuilder constraints) rather than the full screen, so
+        // the buttons can't overflow the panel. Matches the parent Wrap
+        // spacing of 10px (two gaps between three items).
+        const spacing = 10.0;
+        final itemWidth = (constraints.maxWidth - 2 * spacing) / 3;
+
         return Container(
           width: itemWidth,
           decoration: BoxDecoration(
@@ -1845,7 +1916,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             ],
           ),
           child: Material(
-            color: isDisabled ? const Color(0xFFF5F7FA) : Colors.white,
+            color: isDisabled
+                ? Theme.of(context).scaffoldBackgroundColor
+                : Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(15),
             elevation: isDisabled ? 0 : 0.5,
             child: InkWell(
@@ -1880,7 +1953,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       style: TextStyle(
                         fontSize: 9.5,
                         fontWeight: FontWeight.w800,
-                        color: isDisabled ? Colors.grey.shade600 : const Color(0xFF1A1A1A),
+                        color: isDisabled
+                            ? Colors.grey.shade600
+                            : Theme.of(context).colorScheme.onSurface,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -1898,14 +1973,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('Vehicle Overview', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
+          Text('Vehicle Overview', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
           const SizedBox(height: 20),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -1947,14 +2022,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F4F8),
+        color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8)),
             child: Icon(icon, size: 14, color: AppTheme.primaryBlue),
           ),
           const SizedBox(width: 10),
@@ -1963,7 +2038,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w700)),
-                Text(value.isEmpty ? '--' : value, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
+                Text(value.isEmpty ? '--' : value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
               ],
             ),
           ),

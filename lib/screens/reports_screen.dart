@@ -130,7 +130,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryBlue),
                   )
-                : Icon(LucideIcons.download, color: Color(0xFF1A1A1A), size: 20),
+                : Icon(LucideIcons.download, color: Theme.of(context).colorScheme.onSurface, size: 20),
             onPressed: _isExporting ? null : () => _fetchReport(includeExport: true),
           ),
         ],
@@ -177,7 +177,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildModernFilterHub(ReportMeta meta) {
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).cardColor,
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -214,14 +214,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F4F8),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(100),
           border: Border.all(color: Colors.grey.shade200),
         ),
         child: Row(
           children: [
             Text('$label: ', style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-            Text(selectedLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+            Text(selectedLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
             const SizedBox(width: 4),
             Icon(LucideIcons.chevronDown, size: 14, color: Colors.grey),
           ],
@@ -251,7 +251,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   final isSelected = opt.key == current;
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(opt.label, style: TextStyle(fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.primaryBlue : Colors.black87)),
+                    title: Text(opt.label, style: TextStyle(fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.primaryBlue : Theme.of(context).colorScheme.onSurface)),
                     trailing: isSelected ? Icon(LucideIcons.check, color: AppTheme.primaryBlue, size: 20) : null,
                     onTap: () {
                       onSelect(opt.key);
@@ -283,12 +283,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       itemBuilder: (context, index) {
         final card = cards[index];
-        final colors = [const Color(0xFF003366), Colors.green, Colors.orange, Colors.purple, Colors.blue];
+        final colors = [AppColors.primary, Colors.green, Colors.orange, Colors.purple, Colors.blue];
         final color = colors[index % colors.length];
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
           ),
@@ -306,7 +306,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(card.label, style: TextStyle(color: Colors.grey.shade500, fontSize: 10, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-                    Text(card.value, style: const TextStyle(color: Color(0xFF1A1A1A), fontSize: 16, fontWeight: FontWeight.w900)),
+                    Text(card.value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w900)),
                   ],
                 ),
               ),
@@ -332,7 +332,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
@@ -342,7 +342,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Visual Analytics', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
+              Text('Visual Analytics', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: AppTheme.primaryBlue.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
@@ -487,22 +487,22 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: Text('Detailed Report Data', style: TextStyle(color: Color(0xFF1A1A1A), fontWeight: FontWeight.w900, fontSize: 16)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text('Detailed Report Data', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
           ),
           const SizedBox(height: 16),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: DataTable(
-              headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F4F8)),
+              headingRowColor: WidgetStateProperty.all(Theme.of(context).colorScheme.surfaceContainerHighest),
               horizontalMargin: 20,
               columnSpacing: 30,
               headingRowHeight: 48,
@@ -511,13 +511,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
               border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade100, width: 1)),
               columns: columns
                   .map((column) => DataColumn(
-                        label: Text(humanizeSnakeCase(column), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF4A688A))),
+                        label: Text(humanizeSnakeCase(column), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.accent)),
                       ))
                   .toList(),
               rows: rows
                   .take(30)
                   .map((row) => DataRow(
-                        cells: columns.map((column) => DataCell(Text((row[column] ?? '').toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))))).toList(),
+                        cells: columns.map((column) => DataCell(Text((row[column] ?? '').toString(), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface)))).toList(),
                       ))
                   .toList(),
             ),

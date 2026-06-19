@@ -158,6 +158,13 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   @override
   void dispose() {
     _animationController.dispose();
+    // Release the map controller listener + the Dio client so the disposed
+    // State isn't retained via the controller's listener list and the
+    // underlying HttpClient is freed (this widget mounts on Home + every
+    // detail screen — leaks would accumulate).
+    _controller?.onSymbolTapped.remove(_handleSymbolTapped);
+    _controller = null;
+    _dio.close(force: true);
     super.dispose();
   }
 
@@ -827,7 +834,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   @override
   Widget build(BuildContext context) {
     if (!_hasVisibleVehicles) {
-      return _buildEmptyState();
+      return _buildEmptyState(context);
     }
 
     final center = _centerPoint() ?? _defaultCenter;
@@ -905,11 +912,16 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color cardColor = theme.cardColor;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: <Color>[Color(0xFFF8FBFD), Color(0xFFF1F6F3)],
+          colors: isDark
+              ? <Color>[cardColor, theme.scaffoldBackgroundColor]
+              : const <Color>[Color(0xFFF8FBFD), Color(0xFFF1F6F3)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -921,7 +933,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -941,9 +953,9 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             Text(
               widget.emptyTitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: AppTheme.primaryBlue,
+                color: theme.colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 4),

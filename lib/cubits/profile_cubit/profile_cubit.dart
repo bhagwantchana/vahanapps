@@ -14,8 +14,10 @@ class ProfileCubit extends Cubit<ProfileState> {
     emit(ProfileLoadingState(userProfileModel: state.userProfileModel));
     try {
       final result = await _profileRepository.fetchProfile();
+      if (isClosed) return;
       emit(ProfileLoggedInState(userProfileModel: result));
     } catch (error) {
+      if (isClosed) return;
       emit(
         ProfileErrorState(
           error.toString().replaceFirst('Exception: ', ''),
@@ -50,6 +52,7 @@ class ProfileCubit extends Cubit<ProfileState> {
       await fetchProfile();
       return true;
     } catch (error) {
+      if (isClosed) return false;
       emit(
         ProfileErrorState(
           error.toString().replaceFirst('Exception: ', ''),
@@ -59,4 +62,7 @@ class ProfileCubit extends Cubit<ProfileState> {
       return false;
     }
   }
+
+  /// Clear state on logout so the next user doesn't see the prior profile.
+  void reset() => emit(ProfileInitialState());
 }

@@ -1,5 +1,9 @@
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/cubits/alerts_cubit/alerts_cubit.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_cubit.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
+import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
+import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
 import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
@@ -102,7 +106,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
-    await context.read<AuthCubit>().signOut();
+    // Capture cubits synchronously, then stop the live SSE streams before
+    // clearing the session — the root-scoped cubits otherwise keep streaming
+    // the old user and block the next user from reconnecting until restart.
+    final vehicleCubit = context.read<VehicleCubit>();
+    final trackCubit = context.read<SingleTrackCubit>();
+    final homeCubit = context.read<HomeCubit>();
+    final alertsCubit = context.read<AlertsCubit>();
+    final profileCubit = context.read<ProfileCubit>();
+    final authCubit = context.read<AuthCubit>();
+    await vehicleCubit.reset();
+    await trackCubit.reset();
+    homeCubit.reset();
+    alertsCubit.reset();
+    profileCubit.reset();
+    await authCubit.signOut();
     if (!mounted) {
       return;
     }
@@ -132,7 +150,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             if (state is ProfileErrorState && state.userProfileModel == null) {
-              return Center(child: Text('Error: ${state.message}'));
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 48,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Could not load your profile',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        state.message,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () =>
+                            context.read<ProfileCubit>().fetchProfile(),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: Text(AppStrings.of(context).t('retry')),
+                      ),
+                    ],
+                  ),
+                ),
+              );
             }
 
             final userData = state.userProfileModel?.data;
@@ -462,7 +519,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardTheme.color ?? Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: SwitchListTile.adaptive(

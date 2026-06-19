@@ -22,6 +22,7 @@ class GeofenceScreen extends StatefulWidget {
 class _GeofenceScreenState extends State<GeofenceScreen> {
   List<GeofenceZone> _zones = <GeofenceZone>[];
   bool _loading = true;
+  String _error = '';
 
   @override
   void initState() {
@@ -30,12 +31,24 @@ class _GeofenceScreenState extends State<GeofenceScreen> {
   }
 
   Future<void> _reload() async {
-    final zones = await GeofenceStorage.loadAll();
-    if (!mounted) return;
     setState(() {
-      _zones = zones;
-      _loading = false;
+      _loading = true;
+      _error = '';
     });
+    try {
+      final zones = await GeofenceStorage.loadAll();
+      if (!mounted) return;
+      setState(() {
+        _zones = zones;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override
@@ -52,7 +65,28 @@ class _GeofenceScreenState extends State<GeofenceScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _zones.isEmpty
+          : _error.isNotEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(LucideIcons.alertTriangle,
+                            color: Colors.red, size: 44),
+                        const SizedBox(height: 16),
+                        Text(_error, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _reload,
+                          child: Text(strings.t('retry')),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _zones.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -84,7 +118,7 @@ class _GeofenceScreenState extends State<GeofenceScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color ?? Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: <BoxShadow>[
           BoxShadow(
@@ -252,6 +286,7 @@ class _GeofenceEditorState extends State<_GeofenceEditor> {
       ),
     );
     if (picked == null) return;
+    if (!mounted) return;
     setState(() {
       _lat.text = picked.latitude.toString();
       _lng.text = picked.longitude.toString();

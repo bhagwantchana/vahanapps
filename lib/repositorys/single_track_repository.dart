@@ -43,8 +43,10 @@ class SingleTrackRepository {
         AppUrl.tripHistory,
         data: FormData.fromMap(<String, dynamic>{
           'imei': imei,
-          'from_date': from.toIso8601String(),
-          'to_date': to.toIso8601String(),
+          // "YYYY-MM-DD HH:mm:ss" (no T / microseconds) to match the server's
+          // DATETIME column and avoid STRICT sql_mode rejection.
+          'from_date': from.toIso8601String().split('.').first.replaceFirst('T', ' '),
+          'to_date': to.toIso8601String().split('.').first.replaceFirst('T', ' '),
         }),
         options: NetworkApi.buildOptions(authToken: await _getToken()),
       );

@@ -389,7 +389,24 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   Widget _buildMap() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error.isNotEmpty) {
-      return Center(child: Text(_error, style: const TextStyle(color: Colors.red)));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(LucideIcons.alertTriangle, color: Colors.red, size: 44),
+              const SizedBox(height: 16),
+              Text(_error, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadTrail,
+                child: Text(AppStrings.of(context).t('retry')),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (_points.isEmpty) {
       return Center(
@@ -477,7 +494,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardTheme.color ?? Colors.white,
+        color: Theme.of(context).cardColor,
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -548,18 +565,21 @@ class _TripReplayScreenState extends State<TripReplayScreen>
 
   Widget _speedChip(double mult) {
     final selected = _speedMultiplier == mult;
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () => _setSpeed(mult),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? AppTheme.primaryBlue : Colors.grey.shade200,
+          color: selected
+              ? AppTheme.primaryBlue
+              : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           '${mult.toInt()}x',
           style: TextStyle(
-            color: selected ? Colors.white : Colors.black87,
+            color: selected ? Colors.white : colorScheme.onSurface,
             fontWeight: FontWeight.w800,
             fontSize: 12,
           ),

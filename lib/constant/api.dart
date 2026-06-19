@@ -54,4 +54,5 @@ class AppUrl {
   static const String unassignVehicleFromSubUser =
       '${baseUrl}unassignVehicleFromSubUser';
   static const String subUserAssignments = '${baseUrl}subUserAssignments';
+  static const String subUserShareLink = '${baseUrl}subUserShareLink';
 }

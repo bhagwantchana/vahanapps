@@ -3,6 +3,7 @@ import 'package:fleet_monitor/cubits/auth_cubit/auth_cubit.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/gen/assets.gen.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/providers/login_provider.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
@@ -39,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           child: Scaffold(
-            backgroundColor: AppTheme.background,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             body: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -101,20 +102,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 12),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton(
-                                        onPressed: () {},
-                                        child: Text(
-                                          'Forgot Password?',
-                                          style: TextStyle(
-                                            color: AppTheme.primaryBlue,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                                    // "Forgot Password?" removed: no reset flow
+                                    // exists yet, so a tappable link with an
+                                    // empty onPressed was dead UI. Re-add this
+                                    // (with a real handler) once a password
+                                    // reset screen/endpoint lands.
                                     // Inline error banner. The AuthCubit
                                     // pushes an AuthErrorState when the API
                                     // returns "wrong username/password" and
@@ -161,48 +153,68 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ],
                                     const SizedBox(height: 24),
 
-                                    // Gradient Button
-                                    Container(
-                                      height: 54,
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppTheme.primaryGreen
-                                                .withValues(alpha: 0.3),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 4),
-                                          ),
-                                        ],
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            AppTheme.primaryGreen,
-                                            Color(0xFF67A836),
-                                          ],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        ),
-                                      ),
-                                      child: ElevatedButton(
-                                        onPressed: provider.logIn,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.transparent,
-                                          shadowColor: Colors.transparent,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
+                                    // Gradient Button. Radius is shared between
+                                    // the gradient container and its inner
+                                    // ElevatedButton so they always line up.
+                                    Builder(
+                                      builder: (context) {
+                                        const double btnRadius = 12;
+                                        final strings = AppStrings.of(context);
+                                        return Container(
+                                          height: 54,
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(btnRadius),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: AppTheme.primaryGreen
+                                                    .withValues(alpha: 0.3),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                            // Subtle gradient derived from the
+                                            // brand green — no orphan hardcoded
+                                            // hex that drifts from the theme.
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                AppTheme.primaryGreen,
+                                                AppTheme.primaryGreen
+                                                    .withValues(alpha: 0.85),
+                                              ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
                                             ),
                                           ),
-                                        ),
-                                        child: CustomText(
-                                          text: (provider.isLoading)
-                                              ? "Login..."
-                                              : "Login ->",
-                                          color: AppColors.white,
-                                          fontSize: 16.0,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                          child: ElevatedButton.icon(
+                                            onPressed: provider.logIn,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.transparent,
+                                              shadowColor: Colors.transparent,
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        btnRadius),
+                                              ),
+                                            ),
+                                            icon: provider.isLoading
+                                                ? const SizedBox.shrink()
+                                                : const Icon(
+                                                    Icons.arrow_forward,
+                                                    color: AppColors.white,
+                                                    size: 18,
+                                                  ),
+                                            label: CustomText(
+                                              text: provider.isLoading
+                                                  ? "${strings.t('login')}..."
+                                                  : strings.t('login'),
+                                              color: AppColors.white,
+                                              fontSize: 16.0,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),

@@ -16,8 +16,10 @@ class AlertsCubit extends Cubit<AlertsState> {
       final result = await _alertsRepository.fetchAlerts(
         isRead: unreadOnly ? 0 : null,
       );
+      if (isClosed) return;
       emit(AlertsLoadedState(alertListModel: result));
     } catch (error) {
+      if (isClosed) return;
       emit(
         AlertsErrorState(
           error.toString().replaceFirst('Exception: ', ''),
@@ -30,6 +32,7 @@ class AlertsCubit extends Cubit<AlertsState> {
   Future<bool> markAsRead(int alertId) async {
     try {
       await _alertsRepository.markAsRead(alertId);
+      if (isClosed) return false;
       final currentAlerts = state.alertListModel;
       if (currentAlerts != null) {
         final updatedAlerts = currentAlerts.data.map((alert) {
@@ -57,6 +60,7 @@ class AlertsCubit extends Cubit<AlertsState> {
       }
       return true;
     } catch (error) {
+      if (isClosed) return false;
       emit(
         AlertsErrorState(
           error.toString().replaceFirst('Exception: ', ''),
@@ -66,4 +70,7 @@ class AlertsCubit extends Cubit<AlertsState> {
       return false;
     }
   }
+
+  /// Clear state on logout so the next user doesn't see the prior user's alerts.
+  void reset() => emit(AlertsInitialState());
 }

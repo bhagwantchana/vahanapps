@@ -207,7 +207,8 @@ class _HomeScreenState extends State<HomeScreen> {
           BlocBuilder<HomeCubit, HomeState>(
             builder: (context, state) {
               final dashboardData = state.dashboardModel?.data;
-              final alertCount = dashboardData?.analytics.recentPanicAlerts.length ?? 0;
+              // Total unread alerts (not just panic) — refreshed after mark-read.
+              final alertCount = dashboardData?.unreadAlertCount ?? 0;
 
               return IconButton(
                 icon: Stack(
@@ -481,7 +482,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F4F8),
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : const Color(0xFFF1F4F8),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -492,7 +495,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         'Updated: ${vehicle.createdAt.isNotEmpty ? vehicle.createdAt : '—'}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade700,
+                          color: isDark ? Colors.white70 : Colors.grey.shade700,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -605,10 +608,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Text(
                         '${vehicles.length} ${AppStrings.of(context).t('vehicles_count')}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
-                          color: Color(0xFF1A1A1A),
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       Row(
@@ -697,13 +700,16 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildTotalDonut(stats['total']!, stats['active']!),
-          _buildStatItem(LucideIcons.car, AppStrings.of(context).t('status_moving'), stats['moving']!, Colors.green),
-          _buildStatItem(LucideIcons.clock, AppStrings.of(context).t('status_idle'), stats['idle']!, Colors.orange),
-          _buildStatItem(LucideIcons.power, AppStrings.of(context).t('status_stopped'), stats['stopped']!, Colors.red),
-          _buildStatItem(LucideIcons.wifi, AppStrings.of(context).t('devices'), stats['total']!, Colors.grey),
+          const SizedBox(width: 6),
+          Expanded(child: _buildStatItem(LucideIcons.car, AppStrings.of(context).t('status_moving'), stats['moving']!, Colors.green)),
+          const SizedBox(width: 6),
+          Expanded(child: _buildStatItem(LucideIcons.clock, AppStrings.of(context).t('status_idle'), stats['idle']!, Colors.orange)),
+          const SizedBox(width: 6),
+          Expanded(child: _buildStatItem(LucideIcons.power, AppStrings.of(context).t('status_stopped'), stats['stopped']!, Colors.red)),
+          const SizedBox(width: 6),
+          Expanded(child: _buildStatItem(LucideIcons.wifi, AppStrings.of(context).t('devices'), stats['total']!, Colors.grey)),
         ],
       ),
     );
@@ -754,9 +760,8 @@ class _HomeScreenState extends State<HomeScreen> {
         : const Color(0xFFF1F4F8);
     final countColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Container(
-      width: 62,
       height: 70,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
       decoration: BoxDecoration(
         color: tileBg,
         borderRadius: BorderRadius.circular(12),
@@ -772,6 +777,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: TextStyle(fontSize: 8, color: Colors.grey.shade500, fontWeight: FontWeight.w800),
           ),
         ],
@@ -788,7 +796,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               AppStrings.of(context).t('quick_actions'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Theme.of(context).colorScheme.onSurface),
             ),
             GestureDetector(
               onTap: () => widget.onSelectTab?.call(1), // Vehicles tab
@@ -841,7 +849,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF1A1A1A)),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Theme.of(context).colorScheme.onSurface),
           ),
         ],
       ),
@@ -857,7 +865,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               AppStrings.of(context).t('recent_activity'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Theme.of(context).colorScheme.onSurface),
             ),
             GestureDetector(
               onTap: () => widget.onSelectTab?.call(2), // Alerts tab
@@ -906,7 +914,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF1A1A1A))),
+                Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Theme.of(context).colorScheme.onSurface)),
                 Text(sub, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
               ],
             ),
@@ -966,7 +974,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Text(
               AppStrings.of(context).t('performance_overview'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF1A1A1A)),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Theme.of(context).colorScheme.onSurface),
             ),
             InkWell(
               borderRadius: BorderRadius.circular(12),
@@ -982,7 +990,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Icon(LucideIcons.calendar, size: 14, color: Colors.grey),
                     const SizedBox(width: 6),
                     Text(_perfDateLabel(),
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF1A1A1A))),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
                     const Icon(Icons.keyboard_arrow_down, size: 14, color: Colors.grey),
                   ],
                 ),
@@ -1016,12 +1024,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         textBaseline: TextBaseline.alphabetic,
                         children: [
                           Text(
-                            totalDistance > 1000 ? (totalDistance / 1000).toStringAsFixed(1) : totalDistance.toInt().toString(),
+                            totalDistance >= 1000 ? (totalDistance / 1000).toStringAsFixed(1) : totalDistance.toInt().toString(),
                             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
                           ),
                           SizedBox(width: 4),
                           Text(
-                            totalDistance > 1000 ? 'km' : 'm',
+                            totalDistance >= 1000 ? 'km' : 'm',
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.grey),
                           ),
                         ],
@@ -1169,10 +1177,15 @@ class _EmptyMapState extends StatelessWidget {
   final String title;
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final Color cardColor = theme.cardColor;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: <Color>[Color(0xFFF8FBFD), Color(0xFFF1F6F3)],
+          colors: isDark
+              ? <Color>[cardColor, theme.scaffoldBackgroundColor]
+              : const <Color>[Color(0xFFF8FBFD), Color(0xFFF1F6F3)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1184,7 +1197,7 @@ class _EmptyMapState extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardColor,
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
@@ -1203,9 +1216,9 @@ class _EmptyMapState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: AppTheme.primaryBlue,
+                color: theme.colorScheme.onSurface,
               ),
             ),
           ],

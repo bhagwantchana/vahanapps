@@ -113,9 +113,9 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
       builder: (ctx) {
         return Container(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.only(
+          decoration: BoxDecoration(
+            color: Theme.of(ctx).cardColor,
+            borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(24),
               topRight: Radius.circular(24),
             ),
@@ -126,10 +126,10 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
               children: <Widget>[
                 Text(
                   document.title.isNotEmpty ? document.title : 'Document Details',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryBlue,
+                    color: Theme.of(ctx).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -146,11 +146,11 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                 if (document.notes.isNotEmpty) _detailRow('Notes', document.notes),
                 if (document.aiExtractedData.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     'Captured Fields',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryBlue,
+                      color: Theme.of(ctx).colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -158,12 +158,16 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppTheme.background,
+                      color: Theme.of(ctx).colorScheme.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
                       document.aiExtractedData,
-                      style: const TextStyle(fontSize: 12, height: 1.4),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.4,
+                        color: Theme.of(ctx).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ],
@@ -187,7 +191,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: Text(widget.title)),
       body: Column(
         children: <Widget>[
@@ -287,9 +291,9 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                                               document.title.isNotEmpty
                                                   ? document.title
                                                   : 'Untitled document',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontWeight: FontWeight.w800,
-                                                color: AppTheme.primaryBlue,
+                                                color: Theme.of(context).colorScheme.onSurface,
                                               ),
                                             ),
                                             const SizedBox(height: 4),
@@ -371,8 +375,8 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
-              color: AppTheme.primaryBlue,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
             ),
           ),

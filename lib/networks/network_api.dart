@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
+import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 
@@ -18,6 +21,20 @@ class NetworkApi {
   );
 
   NetworkApi() {
+    // On a 401 (expired/invalid session token from MY_Controller) clear the
+    // stored session so the next app launch routes to login instead of
+    // retrying with a dead token. The error still propagates so the caller
+    // surfaces "Session Expired! Please Login.".
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (DioException e, ErrorInterceptorHandler handler) {
+          if (e.response?.statusCode == 401) {
+            unawaited(LocalStorage.clearSession());
+          }
+          handler.next(e);
+        },
+      ),
+    );
     if (kDebugMode) {
       _dio.interceptors.add(
         PrettyDioLogger(

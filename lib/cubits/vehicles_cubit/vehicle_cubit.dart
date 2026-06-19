@@ -91,7 +91,10 @@ class VehicleCubit extends Cubit<VehicleState> {
               acc: incoming.acc,
               battery: incoming.battery,
               gsmSignal: incoming.gsmSignal,
-              satellites: incoming.satellites,
+              // SSE location pushes omit satellites → incoming defaults to 0 and
+              // would wipe the real GPS-lock count. Keep the prior value when the
+              // wire didn't carry a fresh (>0) one.
+              satellites: incoming.satellites > 0 ? incoming.satellites : v.satellites,
               createdAt: incoming.createdAt,
               hasLiveLocation: true,
             );
@@ -122,6 +125,14 @@ class VehicleCubit extends Cubit<VehicleState> {
     _sseSubscription = null;
     await _sseClient?.close();
     _sseClient = null;
+  }
+
+  /// Full logout teardown: stop the stream AND clear state, so the next user
+  /// never sees the previous user's vehicles on first paint (this cubit is
+  /// root-scoped and not recreated between logins).
+  Future<void> reset() async {
+    await stopLiveStream();
+    emit(VehicleInitialState());
   }
 
   @override

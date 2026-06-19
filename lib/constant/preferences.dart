@@ -25,6 +25,10 @@ class LocalStorage {
   static Future<bool> clearSession() async {
     await clearValue('isLogin');
     await clearValue('token');
+    // Also clear role/identity so a stale isSubUser/username can't bleed into
+    // the next login (e.g. the logout → failed-login window).
+    await clearValue('isSubUser');
+    await clearValue('username');
     return true;
   }
 

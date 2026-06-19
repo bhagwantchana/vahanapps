@@ -95,7 +95,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final proceed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -245,7 +245,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     context.read<AlertsCubit>().fetchAlerts(unreadOnly: false);
                   },
                 ),
-                const SizedBox(width: 10),
                 FilterChip(
                   selected: _unreadOnly,
                   label: const Text('Unread'),
@@ -254,9 +253,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     context.read<AlertsCubit>().fetchAlerts(unreadOnly: true);
                   },
                 ),
-                Container(
-                  margin: const EdgeInsets.only(left: 4),
-                  child: ElevatedButton.icon(
+                // Wrap already supplies spacing:10 between children, so no
+                // manual SizedBox / left margin is needed here.
+                ElevatedButton.icon(
                     onPressed: _isPanicSending ? null : _sendPanicAlert,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.red,
@@ -274,7 +273,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         : const Icon(Icons.sos, size: 16),
                     label: const Text('Panic'),
                   ),
-                ),
               ],
             ),
           ),
@@ -282,7 +280,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
             child: BlocBuilder<AlertsCubit, AlertsState>(
               builder: (context, state) {
                 final alerts = state.alertListModel?.data ?? <AlertItem>[];
-                final unreadCount = state.alertListModel?.meta.unreadCount ?? 0;
+                // Count reflects what's actually shown (the latest page), not the
+                // full server-side unread total — so the header matches the list.
+                final shownUnread = alerts.where((a) => !a.isRead).length;
+                final headerText = _unreadOnly
+                    ? 'Unread alerts: ${alerts.length}'
+                    : (shownUnread > 0
+                        ? 'Showing ${alerts.length} alerts • $shownUnread unread'
+                        : 'Showing ${alerts.length} alerts');
 
                 if (state is AlertsLoadingState && alerts.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
@@ -328,7 +333,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Text(
-                            'Unread alerts: $unreadCount',
+                            headerText,
                             style: TextStyle(
                               color: Colors.grey.shade700,
                               fontWeight: FontWeight.w700,
@@ -408,9 +413,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         children: <Widget>[
                           Text(
                             alert.displayType,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: Colors.black87,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           if (!alert.isRead) ...<Widget>[

@@ -1,9 +1,13 @@
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
+import 'package:fleet_monitor/cubits/alerts_cubit/alerts_cubit.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_cubit.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
+import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
+import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/assigned_vehicle_maintenance_screen.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
@@ -22,7 +26,22 @@ class AppDrawer extends StatelessWidget {
   final ValueChanged<int>? onSelectTab;
 
   Future<void> _logout(BuildContext context) async {
-    await context.read<AuthCubit>().signOut();
+    // Stop live SSE streams before clearing the session so the next user
+    // reconnects cleanly (root-scoped cubits don't close on logout).
+    // Reset all root-scoped data cubits + stop streams BEFORE clearing the
+    // session, so the next user never sees the previous user's data on first paint.
+    final vehicleCubit = context.read<VehicleCubit>();
+    final trackCubit = context.read<SingleTrackCubit>();
+    final homeCubit = context.read<HomeCubit>();
+    final alertsCubit = context.read<AlertsCubit>();
+    final profileCubit = context.read<ProfileCubit>();
+    final authCubit = context.read<AuthCubit>();
+    await vehicleCubit.reset();
+    await trackCubit.reset();
+    homeCubit.reset();
+    alertsCubit.reset();
+    profileCubit.reset();
+    await authCubit.signOut();
     if (!context.mounted) {
       return;
     }
@@ -93,6 +112,10 @@ class AppDrawer extends StatelessWidget {
               },
             ),
             const SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: <Widget>[
             _drawerItem(
               context,
               icon: Icons.dashboard_outlined,
@@ -236,8 +259,10 @@ class AppDrawer extends StatelessWidget {
                 onSelectTab?.call(4);
               },
             ),
-            const Divider(),
-            const Spacer(),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
             _drawerItem(
               context,
               icon: Icons.logout,

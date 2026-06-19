@@ -77,7 +77,9 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
       acc: incoming.acc,
       battery: incoming.battery,
       gsmSignal: incoming.gsmSignal,
-      satellites: incoming.satellites,
+      // SSE pushes omit satellites → keep the prior GPS-lock count instead of
+      // letting a default 0 wipe it.
+      satellites: incoming.satellites > 0 ? incoming.satellites : current.satellites,
       createdAt: incoming.createdAt,
       hasLiveLocation: true,
     );
@@ -177,10 +179,27 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
     }
   }
 
+  /// Tear down the live stream + tracked-vehicle state. Called on logout so we
+  /// don't keep streaming the previous user's vehicle, and so the next
+  /// fetchVehicleTrack re-connects cleanly for the new user (the _sseClient
+  /// null-guard would otherwise block reconnection until an app restart).
+  Future<void> stopLiveStream() async {
+    await _sseSub?.cancel();
+    _sseSub = null;
+    await _sseClient?.close();
+    _sseClient = null;
+    _trackedImei = null;
+  }
+
+  /// Full logout teardown: stop the stream AND clear tracked state.
+  Future<void> reset() async {
+    await stopLiveStream();
+    emit(SingleTrackInitialState());
+  }
+
   @override
   Future<void> close() async {
-    await _sseSub?.cancel();
-    await _sseClient?.close();
+    await stopLiveStream();
     return super.close();
   }
 }

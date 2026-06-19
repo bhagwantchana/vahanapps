@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// Primary customer screen to manage sub-users (foreman / manager).
 ///   • list current sub-users with their assigned-vehicle counts
@@ -63,7 +64,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     final created = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -83,7 +84,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -96,7 +97,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     final assigned = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -148,6 +149,67 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     }
   }
 
+  Future<void> _shareLink(SubUser sub) async {
+    try {
+      final url = await _repo.shareLink(sub.id);
+      if (!mounted) return;
+      if (url.isEmpty) {
+        _toast('Could not generate link', error: true);
+        return;
+      }
+      // No auto-copy on open — the user picks Share (real share sheet) or
+      // Copy (clipboard fallback) explicitly.
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Share link — ${sub.displayName}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                  'Share this link with the user. It shows only their assigned '
+                  'vehicle(s) live on a map — no login needed.'),
+              const SizedBox(height: 10),
+              SelectableText(url,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close')),
+            // Secondary fallback: copy to clipboard.
+            TextButton.icon(
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Copy'),
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: url));
+                Navigator.pop(ctx);
+                _toast('Link copied');
+              },
+            ),
+            // Primary action: real OS share sheet.
+            ElevatedButton.icon(
+              icon: const Icon(Icons.share, size: 16),
+              label: const Text('Share'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                Share.share(
+                  url,
+                  subject: 'Live tracking — ${sub.displayName}',
+                );
+              },
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _toast(e.toString().replaceFirst('Exception: ', ''), error: true);
+    }
+  }
+
   void _toast(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -159,7 +221,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Manage Sub-Users')),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.primaryGreen,
@@ -194,13 +256,13 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
         const SizedBox(height: 80),
         Icon(LucideIcons.users, size: 56, color: Colors.grey.shade400),
         const SizedBox(height: 18),
-        const Text(
+        Text(
           'No sub-users yet',
           textAlign: TextAlign.center,
           style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w800,
-              color: AppColors.darkGrey),
+              color: Theme.of(context).colorScheme.onSurface),
         ),
         const SizedBox(height: 6),
         Text(
@@ -241,7 +303,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
@@ -272,11 +334,15 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
                   children: [
                     Text(
                       s.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 15, fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 2),
                     Text('@${s.username}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600,
@@ -285,6 +351,8 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(s.email,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                                 fontSize: 11, color: Colors.grey.shade500)),
                       ),
@@ -292,6 +360,8 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(s.phone,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                                 fontSize: 11, color: Colors.grey.shade500)),
                       ),
@@ -322,6 +392,11 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Share link',
+                icon: const Icon(LucideIcons.share2, size: 18),
+                onPressed: () => _shareLink(s),
+              ),
               IconButton(
                 tooltip: 'Reset password',
                 icon: const Icon(LucideIcons.keyRound, size: 18),
@@ -476,9 +551,10 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                    color: Colors.red.shade50,
+                    color: Colors.red.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade200)),
+                    border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.30))),
                 child: Row(children: [
                   Icon(LucideIcons.alertCircle,
                       color: Colors.red.shade700, size: 16),
@@ -782,7 +858,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
       await _repo.resetPassword(widget.sub.id, pwd);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Password updated. Share: $pwd')),
+        const SnackBar(content: Text('Password updated')),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -799,16 +875,17 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
     return AlertDialog(
       title: Text('Reset password — ${widget.sub.displayName}',
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-      content: Column(
+      content: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.amber.shade50,
+              color: Colors.amber.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.amber.shade200),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.30)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,6 +958,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
                     fontWeight: FontWeight.w600)),
           ],
         ],
+      ),
       ),
       actions: [
         TextButton(

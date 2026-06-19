@@ -470,31 +470,50 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('ODOMETER', style: TextStyle(fontSize: 8, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
-                  Text('${vehicle.currentOdometer.toStringAsFixed(1)} km', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
-                ],
-              ),
-              const SizedBox(width: 8),
-              Container(width: 1, height: 20, color: const Color(0xFFF1F4F8)),
-              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('TYPE', style: TextStyle(fontSize: 8, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
-                    Text(vehicle.typeName.isNotEmpty ? vehicle.typeName : '—', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 10), overflow: TextOverflow.ellipsis),
-                  ],
+                child: _cardMeta(
+                  'VEHICLE NAME',
+                  (vehicle.name.isNotEmpty && vehicle.name != vehicle.registrationNumber) ? vehicle.name : '—',
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
+              Expanded(child: _cardMeta('TYPE', vehicle.typeName.isNotEmpty ? vehicle.typeName : '—')),
+              const SizedBox(width: 12),
               _buildBtn(LucideIcons.navigation, strings.t('track'), const Color(0xFFE3F2FD), Colors.blue, () => _navigateToDetail(vehicle)),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  /// One labelled meta field (label on top, value below) for the card's
+  /// bottom row. Kept identical for VEHICLE NAME / TYPE so they sit in
+  /// equal-width columns with even spacing — no more odd gaps.
+  Widget _cardMeta(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 8,
+            color: Colors.grey.shade500,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 

@@ -36,4 +36,10 @@ class HomeCubit extends Cubit<HomeState> {
       );
     }
   }
+
+  /// Clear state on logout so the next user doesn't see the prior dashboard.
+  void reset() {
+    _selectedDate = null;
+    emit(HomeInitialState());
+  }
 }

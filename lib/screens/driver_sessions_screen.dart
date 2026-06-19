@@ -115,7 +115,7 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: Text(widget.title)),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -181,9 +181,9 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
                                       session.displayDriver.isNotEmpty
                                           ? session.displayDriver
                                           : 'Driver Session',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w800,
-                                        color: AppTheme.primaryBlue,
+                                        color: Theme.of(context).colorScheme.onSurface,
                                       ),
                                     ),
                                     const SizedBox(height: 4),

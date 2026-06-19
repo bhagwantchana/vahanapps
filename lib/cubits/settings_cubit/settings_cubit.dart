@@ -38,6 +38,7 @@ class SettingsCubit extends Cubit<SettingsState> {
   Future<void> _loadFromPrefs() async {
     final langCode = await LocalStorage.readValue(PreferencesKey.language);
     final themeStr = await LocalStorage.readValue(PreferencesKey.themeMode);
+    if (isClosed) return;
     emit(state.copyWith(
       locale: (langCode == null || langCode.isEmpty)
           ? null

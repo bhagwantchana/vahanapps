@@ -112,4 +112,10 @@ class SubUserRepository {
             SubUserAssignedVehicle.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
+
+  /// No-login share link (parent map) for a sub-user — to hand to a parent.
+  Future<String> shareLink(int subUserId) async {
+    final data = await _post(AppUrl.subUserShareLink, {'sub_user_id': subUserId});
+    return (data['share_url'] ?? '').toString();
+  }
 }

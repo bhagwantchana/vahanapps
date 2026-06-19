@@ -223,9 +223,9 @@ class _AssignedVehicleMaintenanceScreenState
               ),
               child: Container(
                 padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  color: Theme.of(sheetBuildContext).cardColor,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
                     topRight: Radius.circular(24),
                   ),
@@ -425,7 +425,7 @@ class _AssignedVehicleMaintenanceScreenState
   Future<void> _showDocumentActions(VehicleCareSnapshot snapshot) async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -575,9 +575,9 @@ class _AssignedVehicleMaintenanceScreenState
               ),
               child: Container(
                 padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
+                decoration: BoxDecoration(
+                  color: Theme.of(sheetBuildContext).cardColor,
+                  borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(24),
                     topRight: Radius.circular(24),
                   ),
@@ -733,7 +733,7 @@ class _AssignedVehicleMaintenanceScreenState
         .length;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Vehicle Care')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -792,7 +792,7 @@ class _AssignedVehicleMaintenanceScreenState
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const <BoxShadow>[
           BoxShadow(color: Colors.black12, blurRadius: 10),
@@ -812,10 +812,10 @@ class _AssignedVehicleMaintenanceScreenState
           const SizedBox(height: 16),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w900,
-              color: AppTheme.primaryBlue,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
@@ -863,8 +863,8 @@ class _AssignedVehicleMaintenanceScreenState
                     children: <Widget>[
                       Text(
                         snapshot.vehicle.displayName,
-                        style: const TextStyle(
-                          color: AppTheme.primaryBlue,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w800,
                           fontSize: 16,
                         ),
@@ -926,12 +926,12 @@ class _AssignedVehicleMaintenanceScreenState
               ],
             ),
             const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
+            // Two actions sit side-by-side and share the available width via
+            // Expanded, so they fit on narrow (360dp) screens instead of
+            // always wrapping to two rows.
+            Row(
               children: <Widget>[
-                SizedBox(
-                  width: 170,
+                Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
@@ -949,8 +949,8 @@ class _AssignedVehicleMaintenanceScreenState
                     ),
                   ),
                 ),
-                SizedBox(
-                  width: 170,
+                const SizedBox(width: 10),
+                Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
@@ -1000,9 +1000,9 @@ class _AssignedVehicleMaintenanceScreenState
               children: <Widget>[
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.primaryBlue,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
