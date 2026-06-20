@@ -151,7 +151,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
               padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
                 child: Text('No trip data for this day yet.',
-                    style: TextStyle(color: Colors.grey.shade600)),
+                    style: TextStyle(color: onSurface.withValues(alpha: 0.7))),
               ),
             ),
           )
@@ -314,7 +314,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
                       const Text('•  '),
                       Expanded(
                         child: Text(t,
-                            style: TextStyle(color: Colors.grey.shade700)),
+                            style: TextStyle(color: onSurface.withValues(alpha: 0.85))),
                       ),
                     ],
                   ),

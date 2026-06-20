@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_state.dart';
