@@ -29,13 +29,6 @@ workflows:
       # Key ID CCG3PRF2WV is named "Codemagic", so reference that exact name.
       app_store_connect: Codemagic
     environment:
-      groups:
-        # Add CERTIFICATE_PRIVATE_KEY (a PEM RSA private key, marked Secure) to
-        # this group in the Codemagic UI. It persists the signing cert's private
-        # key across builds so fetch-signing-files reuses ONE distribution
-        # certificate instead of failing with "Cannot save Signing Certificates
-        # without certificate private key" on each fresh CI machine.
-        - appstore_credentials
       # NOTE: deliberately NO `ios_signing:` block here. That managed block only
       # FETCHES already-uploaded signing files and runs in Codemagic's prepare
       # phase — on a brand-new app it finds nothing and fails with
@@ -61,12 +54,15 @@ workflows:
           # the App Store provisioning profile via the API when they don't exist
           # yet (first build). No Mac and no manual Developer-portal steps needed.
           keychain initialize
-          # --certificate-key reuses a persisted private key (from the
-          # CERTIFICATE_PRIVATE_KEY secure env var) so the distribution cert is
-          # stable across builds instead of being recreated keyless every time.
+          # Generate the signing private key right here, inside the build (it
+          # lives only on this CI machine — NO Codemagic env var / group to set
+          # up). --create then mints the iOS Distribution certificate via the
+          # App Store Connect API using this key, so the whole signing step is
+          # self-contained and can't fail on a missing env var.
+          openssl genrsa -out /tmp/codemagic_cert_key.pem 2048
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --certificate-key=@file:/tmp/codemagic_cert_key.pem \
             --create
           keychain add-certificates
       - name: Get Flutter packages
