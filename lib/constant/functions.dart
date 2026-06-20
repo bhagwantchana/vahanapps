@@ -13,15 +13,25 @@ class Functions {
       return null;
     }
 
-    final fcm = FirebaseMessaging.instance;
-    final token = await fcm.getToken();
-    if (token != null && token.isNotEmpty) {
-      fcmTokenGet = token;
-      await LocalStorage.setValue(PreferencesKey.fcmToken, token);
-      if (kDebugMode) {
-        print('FCM Token: $token');
+    try {
+      final fcm = FirebaseMessaging.instance;
+      final token = await fcm.getToken();
+      if (token != null && token.isNotEmpty) {
+        fcmTokenGet = token;
+        await LocalStorage.setValue(PreferencesKey.fcmToken, token);
+        if (kDebugMode) {
+          print('FCM Token: $token');
+        }
+        return token;
       }
-      return token;
+    } catch (e) {
+      // getToken() can throw [firebase_messaging/unknown] java.io.IOException
+      // (SERVICE_NOT_AVAILABLE / no network / Play Services not ready). Don't
+      // crash the app — the token is fetched again on the next launch and via
+      // FirebaseMessaging.onTokenRefresh.
+      if (kDebugMode) {
+        print('getDeviceTokenToSendNotification failed: $e');
+      }
     }
     return null;
   }

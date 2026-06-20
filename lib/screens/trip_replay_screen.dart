@@ -110,7 +110,14 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     // setState avoids a double layout pass — the FlutterMap reads the new
     // centre during the rebuild below. This is what makes the playback feel
     // continuous instead of snapping at segment boundaries.
-    _mapController.move(_animatedPoint, _mapController.camera.zoom);
+    try {
+      _mapController.move(_animatedPoint, _mapController.camera.zoom);
+    } catch (_) {
+      // move()/camera throw "You need to have the FlutterMap ..." when the map
+      // isn't attached to the controller this frame (tick fired before the
+      // first layout, or after the map detached during a screen transition).
+      // Skip the pan for this frame; the next tick tracks the marker fine.
+    }
     setState(() {});
   }
 
