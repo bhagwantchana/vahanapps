@@ -540,6 +540,8 @@ class CustomNotificationSoundService {
         alertType.startsWith('harsh_') ||
         alertType == 'tampering' ||
         alertType == 'parking_guard' ||
+        alertType == 'towing' ||
+        alertType == 'speed_camera' ||
         alertType == 'idle' ||
         alertType == 'low_battery' ||
         alertType == 'power_cut';
@@ -626,10 +628,40 @@ class CustomNotificationSoundService {
       'harsh_accel': 'tampering',
       'harsh_corner': 'tampering',
       'offline': 'tampering',
+      // Lockstep with tracking/includes/fcm.js resolveNotificationConfig:
+      // towing = security-style (tampering), speed camera = speed-related.
+      'towing': 'tampering',
+      'speed_camera': 'overspeed',
     };
     final mappedAlertKey = alertTypeChannelKeys[alertType];
     if (mappedAlertKey != null) {
       return _resolvedFromKey(mappedAlertKey);
+    }
+
+    // Billing / account reminders (plan_expiry from the web cron), admin
+    // broadcast messages (admin_message / announcement) and wallet/account
+    // events (sent with notification_type='account') must NEVER pick up a
+    // vehicle engine cue just because the body mentions a vehicle label —
+    // "Swift Car", a broadcast body containing "bus", or a customer named
+    // "Cargo" would otherwise match the car-keyword scan below. Route them
+    // straight to the default channel.
+    const accountAlertTypes = <String>{
+      'wallet_credit', 'wallet_debit', 'wallet_recharge', 'recharge_request',
+      'low_balance', 'new_device_added', 'account_created', 'customer_assigned',
+    };
+    final notificationType =
+        (data['notification_type'] ?? '').toString().trim().toLowerCase();
+    if (alertType == 'plan_expiry' ||
+        alertType == 'admin_message' ||
+        alertType == 'announcement' ||
+        // Informational "vehicle reachable again" push — its body names the
+        // vehicle, which would otherwise trip the engine-keyword scan below
+        // and play an ignition cue for a connectivity event.
+        alertType == 'device_back_online' ||
+        notificationType == 'account' ||
+        notificationKind == 'account' ||
+        accountAlertTypes.contains(alertType)) {
+      return _defaultResolvedSound();
     }
 
     // Ignition / vehicle-specific sounds: server sends an explicit

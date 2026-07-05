@@ -44,6 +44,11 @@ class AppUrl {
   /// app can change support details without a release.
   static const String supportContacts = '${baseUrl}supportContacts';
 
+  /// World POIs near a point (petrol pumps / EV / tolls / speed cameras /
+  /// traffic lights) from tbl_pois (OpenStreetMap import). Sorted by
+  /// distance from the given lat/lng — normally the vehicle's position.
+  static const String nearbyPois = '${baseUrl}nearbyPois';
+
   // Sub-user feature endpoints (primary customer only).
   static const String createSubUser = '${baseUrl}createSubUser';
   static const String listSubUsers = '${baseUrl}listSubUsers';

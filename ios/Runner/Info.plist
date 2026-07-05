@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fleet Monitor</string>
+	<string>Vahan Connect</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -47,13 +47,13 @@
 	<true/>
 	<!-- Biometric unlock (local_auth / BiometricAuthService). -->
 	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to securely unlock Fleet Monitor.</string>
+	<string>Use Face ID to securely unlock Vahan Connect.</string>
 	<!-- Photo library — image_picker uses ImageSource.gallery to attach a
 	     profile photo. The app does NOT use the camera, microphone or
 	     device location, so those usage keys are intentionally omitted
 	     (declaring unused permissions triggers App Store rejection). -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Fleet Monitor needs photo library access to set your profile photo.</string>
+	<string>Vahan Connect needs photo library access to set your profile photo.</string>
 	<!-- FCM silent/data push delivery. firebase_messaging requires the
 	     "remote-notification" background mode. The app has no background
 	     location or background-fetch features, so those modes are omitted. -->

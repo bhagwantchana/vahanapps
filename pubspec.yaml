@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.26+30
+version: 1.0.27+31
 
 environment:
   sdk: ^3.10.4
@@ -50,7 +50,14 @@ dependencies:
   cached_network_image: ^3.4.1
   fl_chart: ^0.66.0
   google_fonts: ^6.1.0
-  lucide_icons: ^0.257.0
+  # Vendored + patched copy of lucide_icons 0.257.0. Upstream is abandoned at
+  # 0.257.0 and subclasses IconData (LucideIconData extends IconData), which
+  # fails to COMPILE on Flutter 3.16+ where IconData is a `final class` (the
+  # release build broke here; flutter analyze doesn't compile deps so it passed).
+  # The vendored copy builds IconData directly with the same icon names -> zero
+  # app-code change. See packages/lucide_icons/.
+  lucide_icons:
+    path: packages/lucide_icons
   flutter_map: ^8.2.2
   latlong2: ^0.9.1
   webview_flutter: ^4.13.1
@@ -68,6 +75,8 @@ dev_dependencies:
     sdk: flutter
   build_runner:
   flutter_gen_runner:
+  # Used only by tool/gen_ios_icons.dart (one-off iOS app-icon generator).
+  image: ^4.8.0
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your

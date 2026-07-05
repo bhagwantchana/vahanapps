@@ -1,0 +1,14 @@
+name: lucide_icons
+description: Vendored + patched Lucide icons (0.257.0). Builds IconData directly instead of subclassing it, so it compiles on Flutter 3.16+ (final IconData). Same icon names as upstream.
+version: 0.257.1
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=1.17.0"
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  fonts:
+    - family: Lucide
+      fonts:
+        - asset: assets/lucide.ttf

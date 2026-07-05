@@ -6,6 +6,7 @@ import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
 import 'package:fleet_monitor/models/dashboard_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
+import 'package:fleet_monitor/repositorys/vehicle_repository.dart';
 import 'package:fleet_monitor/services/assigned_vehicle_reminder_service.dart';
 import 'package:fleet_monitor/services/geofence_monitor_service.dart';
 import 'package:fleet_monitor/services/lifecycle_refresh.dart';
@@ -13,8 +14,8 @@ import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/drawer.dart';
-import 'package:fleet_monitor/widgets/live_address_text.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
+import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -33,14 +34,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   // static const Duration _autoRefreshInterval = Duration(seconds: 3);
+
+  /// Light foreground-only position poll for the overview map. The heavy
+  /// dashboard fetch (counts/charts) still runs every 45 s; this fast poll
+  /// only refreshes vehicle positions so the map glides continuously instead
+  /// of jumping once per dashboard cycle.
+  static const Duration _mapPollInterval = Duration(seconds: 4);
+  static const Duration _mapMoveDuration = Duration(milliseconds: 4500);
+
   final AssignedVehicleReminderService _vehicleCareService =
       AssignedVehicleReminderService();
+  final VehicleRepository _vehicleRepository = VehicleRepository();
   WebViewController? _controller;
   bool isLoading = true;
   String _loadedUrl = '';
   bool _isMapExpanded = false;
   Timer? _autoRefreshTimer;
   // bool _isAutoRefreshing = false;
+
+  /// Positions shown on the overview map. Seeded from the dashboard vehicle
+  /// list, then kept fresh by the 4 s position poll. The map reads THIS list
+  /// (not dashboardModel directly) so it moves markers between polls; the
+  /// dashboard fetch only reconciles the vehicle SET (added/removed devices).
+  List<VehicleRecord> _liveVehicles = <VehicleRecord>[];
 
   // Dashboard refresh: every 45 s while foreground, immediate on resume,
   // cancelled when app backgrounded. Slightly longer cadence than the
@@ -66,6 +82,16 @@ class _HomeScreenState extends State<HomeScreen> {
     interval: const Duration(seconds: 45),
   );
 
+  // Overview-map position poll: every 4 s while foreground, immediate on
+  // resume, cancelled when the app is backgrounded (LifecycleRefresh handles
+  // that). The onRefresh body additionally no-ops while the Home tab is not
+  // the visible tab (IndexedStack disables TickerMode for offstage children),
+  // so we never poll for a screen the user isn't looking at.
+  late final LifecycleRefresh _mapPoll = LifecycleRefresh(
+    onRefresh: _pollLivePositions,
+    interval: _mapPollInterval,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -73,11 +99,77 @@ class _HomeScreenState extends State<HomeScreen> {
     if (homeCubit.state.dashboardModel == null) {
       homeCubit.fetchHomeData();
     }
+    // Seed the map from whatever dashboard data we already have (cached from a
+    // previous visit) so the first paint isn't empty before the poll lands.
+    _liveVehicles =
+        homeCubit.state.dashboardModel?.data?.vehicleList ?? <VehicleRecord>[];
     _lifecycle.start();
+    _mapPoll.start();
     // // _startAutoRefresh();
     // WidgetsBinding.instance.addPostFrameCallback((_) {
     //   _syncVehicleCareReminders();
     // });
+  }
+
+  /// Fetches fresh vehicle positions via the light `vehicleList` path and
+  /// merges them into [_liveVehicles]. Foreground-only + active-tab-only, and
+  /// fully failure-tolerant: any error is swallowed and the last known
+  /// positions are kept on the map (no clear, no user-visible error).
+  Future<void> _pollLivePositions() async {
+    if (!mounted) return;
+    // Skip while the Home tab is offstage in the IndexedStack — TickerMode is
+    // disabled for non-visible tabs, so this cheaply gates the poll to the
+    // active tab without threading tab state down into the screen.
+    if (!TickerMode.valuesOf(context).enabled) return;
+    try {
+      final result = await _vehicleRepository.fetchVehicles();
+      if (!mounted) return;
+      _mergeLivePositions(result.data);
+    } catch (_) {
+      // Swallow — keep last positions, never surface an error on the map.
+    }
+  }
+
+  /// Swaps in the freshly-polled vehicle records (newest positions/headings)
+  /// and reconciles the set — adds freshly-seen devices, drops vanished ones,
+  /// preserving the incoming order. When the id SET is unchanged across polls
+  /// the map only *moves* markers (cheap re-animation); a changed set triggers
+  /// a marker rebuild inside NativeVehicleMap.
+  void _mergeLivePositions(List<VehicleRecord> fresh) {
+    if (!mounted) return;
+    setState(() => _liveVehicles = List<VehicleRecord>.unmodifiable(fresh));
+  }
+
+  /// Reconciles the vehicle SET from a heavy dashboard fetch WITHOUT clobbering
+  /// the poll-fresh positions: keeps existing map records for ids still present
+  /// (their coords stay as last polled), seeds newly-added devices from the
+  /// dashboard, and drops removed ones — all in dashboard order.
+  void _syncVehicleSetFromDashboard(List<VehicleRecord> dashboardVehicles) {
+    if (!mounted) return;
+    if (_liveVehicles.isEmpty) {
+      setState(() => _liveVehicles = List<VehicleRecord>.unmodifiable(dashboardVehicles));
+      return;
+    }
+    final byId = <int, VehicleRecord>{
+      for (final v in _liveVehicles) v.id: v,
+    };
+    final reconciled = <VehicleRecord>[
+      for (final v in dashboardVehicles) byId[v.id] ?? v,
+    ];
+    if (_sameVehicleSet(_liveVehicles, reconciled)) {
+      return; // set unchanged — leave poll-fresh positions untouched
+    }
+    setState(() => _liveVehicles = List<VehicleRecord>.unmodifiable(reconciled));
+  }
+
+  /// True when both lists hold the same vehicle ids in the same order — the
+  /// signal the map uses to decide "move markers" vs "rebuild markers".
+  bool _sameVehicleSet(List<VehicleRecord> a, List<VehicleRecord> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
   }
 
   // void _startAutoRefresh() {
@@ -125,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _mapPoll.dispose();
     _lifecycle.dispose();
     super.dispose();
   }
@@ -243,7 +336,20 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       drawer: AppDrawer(onSelectTab: widget.onSelectTab),
-      body: BlocBuilder<HomeCubit, HomeState>(
+      body: BlocConsumer<HomeCubit, HomeState>(
+        // Reconcile the map's vehicle SET whenever a heavy dashboard fetch
+        // lands (device added/removed) without clobbering the poll-fresh
+        // positions. Deferred to a post-frame callback so we never setState
+        // during the build/notification phase.
+        listenWhen: (previous, current) =>
+            current.dashboardModel?.data?.vehicleList != null,
+        listener: (context, state) {
+          final dashboardVehicles =
+              state.dashboardModel?.data?.vehicleList ?? <VehicleRecord>[];
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _syncVehicleSetFromDashboard(dashboardVehicles);
+          });
+        },
         builder: (context, state) {
           if (state is HomeLoadingState && state.dashboardModel == null) {
             return const Center(child: CircularProgressIndicator());
@@ -303,7 +409,10 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: <Widget>[
                 _buildMapSection(
-                  vehicles,
+                  // Map positions come from the 4 s live poll (_liveVehicles),
+                  // not the 45 s dashboard fetch, so markers glide continuously.
+                  // Fall back to the dashboard list before the first poll lands.
+                  _liveVehicles.isNotEmpty ? _liveVehicles : vehicles,
                   useNativeMap,
                   dashboardData?.mobileMapProvider ?? 'maplibre',
                 ),
@@ -324,213 +433,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Bottom sheet shown when a marker is tapped on the native map. Uses
-  /// LiveAddressText so the address rendered here is the SAME string the
-  /// vehicle list cell shows for the same coordinates (shared coord-keyed
-  /// cache). That fixes the "map address vs list address mismatch" the
-  /// owner reported on multi-vehicle view.
-  /// Red "X days left" / "Expired" pill for the device/plan subscription
-  /// expiry, shown in the map-marker bottom sheet. Mirrors the badge on the
-  /// vehicle list cards.
-  Widget _buildExpiryBadge(VehicleRecord vehicle) {
-    final bool expired = vehicle.isExpired;
-    const Color red = Color(0xFFE53935);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: expired ? red : red.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: expired
-            ? null
-            : Border.all(color: red.withValues(alpha: 0.55), width: 0.8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            expired ? Icons.error_outline_rounded : Icons.access_time_rounded,
-            size: 12,
-            color: expired ? Colors.white : red,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            vehicle.expiryBadgeLabel,
-            style: TextStyle(
-              color: expired ? Colors.white : red,
-              fontWeight: FontWeight.w800,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  /// Opens the full-screen live-tracking map for a vehicle tapped on the home
+  /// map. Mirrors the single-view fullscreen flow (`_openLiveMap`) and passes
+  /// the vehicle so the frosted-glass info bar renders. Falls back to a
+  /// SnackBar when no live URL is available.
+  Future<void> _openVehicleLiveMap(
+    BuildContext context,
+    VehicleRecord vehicle,
+  ) async {
+    final String liveUrl = vehicle.primaryMapUrl.isNotEmpty
+        ? vehicle.primaryMapUrl
+        : vehicle.googleTrackingUrl;
+    final Uri? parsed = liveUrl.isEmpty ? null : Uri.tryParse(liveUrl);
 
-  void _showVehicleBottomSheet(BuildContext context, VehicleRecord vehicle) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final statusColor = vehicle.isMoving
-        ? const Color(0xFF22C55E)
-        : (vehicle.isIdle ? Colors.orange : Colors.red);
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    if (parsed == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Live map not available for this vehicle'),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => VehicleLiveMapScreen(
+          title: vehicle.displayName,
+          url: liveUrl,
+          vehicle: vehicle,
+        ),
       ),
-      isScrollControlled: false,
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            vehicle.registrationNumber.isNotEmpty
-                                ? vehicle.registrationNumber
-                                : vehicle.name,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 17,
-                              color: isDark ? Colors.white : const Color(0xFF1A1A1A),
-                            ),
-                          ),
-                          if (vehicle.showExpiryBadge) ...<Widget>[
-                            const SizedBox(height: 6),
-                            _buildExpiryBadge(vehicle),
-                          ],
-                          const SizedBox(height: 4),
-                          Row(
-                            children: <Widget>[
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: statusColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                vehicle.statusLabel,
-                                style: TextStyle(
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                '${vehicle.speed.round()} km/h',
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(LucideIcons.x),
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(LucideIcons.mapPin, size: 16, color: Colors.grey.shade600),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: LiveAddressText(
-                        latitude: vehicle.latitude,
-                        longitude: vehicle.longitude,
-                        maxLines: 3,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isDark ? Colors.white70 : Colors.grey.shade800,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : const Color(0xFFF1F4F8),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(LucideIcons.clock, size: 14, color: Colors.grey.shade600),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Updated: ${vehicle.createdAt.isNotEmpty ? vehicle.createdAt : '—'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.white70 : Colors.grey.shade700,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(LucideIcons.navigation, size: 16),
-                    label: const Text('Track Live'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.of(sheetContext).pop();
-                      widget.onSelectTab?.call(1); // Vehicles tab
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -560,9 +493,14 @@ class _HomeScreenState extends State<HomeScreen> {
             child: useNativeMap
                 ? NativeVehicleMap(
                     vehicles: vehicles,
+                    // Glide slightly LONGER than the 4 s poll so the tween
+                    // never fully drains before the next update arrives — the
+                    // marker is always in motion (re-targets from the current
+                    // interpolated point each poll → no move-then-freeze jump).
+                    moveAnimationDuration: _mapMoveDuration,
                     emptyTitle: AppStrings.of(context).t('no_vehicles_found'),
                     emptySubtitle: AppStrings.of(context).t('connect_device_hint'),
-                    onVehicleTap: (v) => _showVehicleBottomSheet(context, v),
+                    onVehicleTap: (v) => _openVehicleLiveMap(context, v),
                     mapProvider: mapProvider,
                   )
                 : (_controller == null

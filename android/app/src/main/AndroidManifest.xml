@@ -14,10 +14,6 @@
          plugin's gallery path uses the Android 13+ system photo picker, which
          does NOT require broad media permissions. -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- Optional foreground location for live tracking. The runtime
-         permission prompt still controls access at use time. -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <!-- Play Console policy: apps with infrequent / one-time photo access
          must NOT request READ_MEDIA_IMAGES / READ_MEDIA_VIDEO; they have to

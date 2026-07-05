@@ -9,7 +9,9 @@ import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/routes.dart';
 import 'package:fleet_monitor/screens/splash_screen.dart';
 import 'package:fleet_monitor/services/array_providers.dart';
+import 'package:fleet_monitor/services/connectivity_service.dart';
 import 'package:fleet_monitor/services/local_notification.dart';
+import 'package:fleet_monitor/widgets/no_internet_overlay.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -60,6 +62,9 @@ Future<void> main() async {
     }
 
     await CustomNotificationSoundService().initialize();
+    // Start watching internet reachability so the global "No internet" overlay
+    // can take over when connectivity drops (see NoInternetOverlay below).
+    ConnectivityService.instance.init();
     Bloc.observer = MyBlocObserver();
     runApp(const MyApp());
   }, (error, stack) {
@@ -108,6 +113,11 @@ class MyApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: AppStrings.supportedLocales,
+            // Global "No internet" screen layered above every route. It only
+            // surfaces when a real reachability probe fails, and auto-dismisses
+            // when the connection returns.
+            builder: (context, child) =>
+                NoInternetOverlay(child: child ?? const SizedBox.shrink()),
             onGenerateRoute: Routes.onGenerateRoute,
             initialRoute: SplashScreen.routeName,
           );

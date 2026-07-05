@@ -1,9 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
+import 'package:fleet_monitor/services/connectivity_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
+
+/// True when a DioException is a loss-of-connectivity failure (no route to
+/// host / DNS / socket / connect timeout) rather than a server-side error.
+bool _isConnectionError(DioException e) =>
+    e.type == DioExceptionType.connectionError ||
+    e.type == DioExceptionType.connectionTimeout ||
+    e.error is SocketException;
 
 const Map<String, dynamic> defaultHeader = <String, dynamic>{
   'Accept': 'application/json',
@@ -30,6 +39,12 @@ class NetworkApi {
         onError: (DioException e, ErrorInterceptorHandler handler) {
           if (e.response?.statusCode == 401) {
             unawaited(LocalStorage.clearSession());
+          }
+          // A connection-type failure means the device may be offline. Ask the
+          // connectivity service to verify (a real probe) so the global
+          // "No internet" screen can take over if reachability is actually lost.
+          if (_isConnectionError(e)) {
+            ConnectivityService.instance.reportPossibleConnectionError();
           }
           handler.next(e);
         },
@@ -66,6 +81,9 @@ class NetworkApi {
 
   static String parseError(Object error) {
     if (error is DioException) {
+      if (_isConnectionError(error)) {
+        return 'No internet connection';
+      }
       final responseData = error.response?.data;
       if (responseData is Map<String, dynamic>) {
         final apiMessage = responseData['message']?.toString();

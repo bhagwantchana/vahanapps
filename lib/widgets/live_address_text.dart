@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/api.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
@@ -34,7 +35,13 @@ class LiveAddressText extends StatefulWidget {
 
 class _LiveAddressTextState extends State<LiveAddressText> {
   static final Map<String, String> _cache = <String, String>{};
-  static final Set<String> _inFlight = <String>{};
+
+  // In-flight lookups shared across widget instances. A Map of futures (not
+  // a Set of keys) so that when multiple list cells of the same vehicle
+  // render at once, the late instances await the SAME future and still get
+  // the result instead of returning early and staying on raw lat/lng.
+  static final Map<String, Future<String>> _inFlight =
+      <String, Future<String>>{};
 
   String? _resolved;
 
@@ -70,13 +77,27 @@ class _LiveAddressTextState extends State<LiveAddressText> {
       return;
     }
 
-    // Avoid re-issuing the same lookup if it's already in flight (multiple
-    // list cells of the same vehicle render at once).
-    if (_inFlight.contains(key)) {
-      return;
-    }
-    _inFlight.add(key);
+    final resolved = await _inFlight.putIfAbsent(
+      key,
+      () => _lookupAddress(widget.latitude, widget.longitude, key)
+          .whenComplete(() => _inFlight.remove(key)),
+    );
 
+    // Guard against a stale-async overwrite: this State may have been
+    // recycled to different coords while the shared lookup was running.
+    // Only apply the result if it still matches the CURRENT position.
+    if (resolved.isNotEmpty &&
+        mounted &&
+        key == _cacheKey(widget.latitude, widget.longitude)) {
+      setState(() => _resolved = resolved);
+    }
+  }
+
+  /// Runs the actual hybrid lookup for one coordinate bucket. Exactly one
+  /// of these runs per key at a time (see [_inFlight]); returns '' when
+  /// neither the server nor the native geocoder produced an address.
+  static Future<String> _lookupAddress(
+      double lat, double lng, String key) async {
     // Hybrid resolver:
     //  1. Try server-side /api/geocodeAddress (single source of truth so
     //     web users see the SAME string mobile shows). Bounded 2 s so a
@@ -91,10 +112,10 @@ class _LiveAddressTextState extends State<LiveAddressText> {
       if (token.isNotEmpty) {
         final response = await NetworkApi().sendRequest.post(
           AppUrl.geocodeAddress,
-          data: <String, dynamic>{
-            'lat': widget.latitude,
-            'lng': widget.longitude,
-          },
+          data: FormData.fromMap(<String, dynamic>{
+            'lat': lat,
+            'lng': lng,
+          }),
           options: NetworkApi.buildOptions(authToken: token),
         );
         final body = response.data;
@@ -117,10 +138,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
     // address to the server cache so the web map converges over time.
     if (resolved.isEmpty) {
       try {
-        final placemarks = await placemarkFromCoordinates(
-          widget.latitude,
-          widget.longitude,
-        );
+        final placemarks = await placemarkFromCoordinates(lat, lng);
         if (placemarks.isNotEmpty) {
           final p = placemarks.first;
           // POI-resistant build. On both Android and iOS the platform
@@ -157,7 +175,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
             }
             resolved = cleaned.join(', ');
             if (resolved.isNotEmpty) {
-              _pushAddressToServer(widget.latitude, widget.longitude, resolved);
+              _pushAddressToServer(lat, lng, resolved);
             }
           }
         }
@@ -168,16 +186,16 @@ class _LiveAddressTextState extends State<LiveAddressText> {
 
     if (resolved.isNotEmpty) {
       _cache[key] = resolved;
-      if (mounted) setState(() => _resolved = resolved);
     }
-    _inFlight.remove(key);
+    return resolved;
   }
 
   /// Background push to /api/cacheAddress when the native geocoder
   /// resolved an address that the server hadn't cached yet. Lets the web
   /// map eventually read the same string. Fire-and-forget.
   static final Set<String> _pushedKeys = <String>{};
-  Future<void> _pushAddressToServer(double lat, double lng, String address) async {
+  static Future<void> _pushAddressToServer(
+      double lat, double lng, String address) async {
     final key = '${lat.toStringAsFixed(4)},${lng.toStringAsFixed(4)}';
     if (_pushedKeys.contains(key)) return;
     _pushedKeys.add(key);
@@ -186,11 +204,11 @@ class _LiveAddressTextState extends State<LiveAddressText> {
       if (token.isEmpty) return;
       await NetworkApi().sendRequest.post(
         AppUrl.cacheAddress,
-        data: <String, dynamic>{
+        data: FormData.fromMap(<String, dynamic>{
           'lat': lat,
           'lng': lng,
           'address': address,
-        },
+        }),
         options: NetworkApi.buildOptions(authToken: token),
       );
     } catch (_) {

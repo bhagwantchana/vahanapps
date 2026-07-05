@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/api.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
@@ -13,7 +14,9 @@ class HomeRepository {
     try {
       final response = await _networkApi.sendRequest.post(
         AppUrl.dashboard,
-        data: (date != null && date.isNotEmpty) ? {'date': date} : null,
+        data: (date != null && date.isNotEmpty)
+            ? FormData.fromMap(<String, dynamic>{'date': date})
+            : null,
         options: NetworkApi.buildOptions(authToken: token),
       );
 

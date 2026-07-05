@@ -124,6 +124,16 @@ class AppStrings {
       'hi': 'दोबारा कोशिश करें',
       'pa': 'ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ',
     },
+    'no_internet_title': <String, String>{
+      'en': 'No Internet Connection',
+      'hi': 'इंटरनेट कनेक्शन नहीं है',
+      'pa': 'ਇੰਟਰਨੈੱਟ ਕਨੈਕਸ਼ਨ ਨਹੀਂ ਹੈ',
+    },
+    'no_internet_message': <String, String>{
+      'en': 'Please check your connection and try again.',
+      'hi': 'कृपया अपना कनेक्शन जांचें और दोबारा कोशिश करें।',
+      'pa': 'ਆਪਣਾ ਕਨੈਕਸ਼ਨ ਚੈੱਕ ਕਰੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+    },
     'cancel': <String, String>{
       'en': 'Cancel',
       'hi': 'रद्द करें',

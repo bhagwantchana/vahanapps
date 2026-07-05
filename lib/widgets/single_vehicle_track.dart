@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_state.dart';
@@ -10,6 +12,7 @@ import 'package:fleet_monitor/repositorys/single_track_repository.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
 import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
 import 'package:fleet_monitor/screens/driving_score_screen.dart';
+import 'package:fleet_monitor/screens/nearby_pois_screen.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
@@ -313,6 +316,31 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
+  /// "Nearby" — petrol pumps / EV / tolls / speed cameras / traffic lights
+  /// around the VEHICLE's last known position (not the phone's), so a fleet
+  /// owner can direct a distant driver to the closest pump.
+  Future<void> _openNearbyPois(VehicleRecord vehicle) async {
+    if (vehicle.latitude == 0 || vehicle.longitude == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No live location for this vehicle yet'),
+        ),
+      );
+      return;
+    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => NearbyPoisScreen(
+          lat: vehicle.latitude,
+          lng: vehicle.longitude,
+          vehicleName: vehicle.displayName,
+        ),
+      ),
+    );
+  }
+
   /// "Find my car" — open the phone's maps app with driving directions to the
   /// vehicle's last known location (great after parking in a big lot). Uses the
   /// universal Google Maps URL so it works on Android + iOS.
@@ -370,8 +398,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) =>
-            VehicleLiveMapScreen(title: vehicle.displayName, url: liveUrl),
+        builder: (_) => VehicleLiveMapScreen(
+          title: vehicle.displayName,
+          url: liveUrl,
+          vehicle: vehicle,
+        ),
       ),
     );
   }
@@ -1557,6 +1588,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               onTap: () => _findMyCar(vehicle),
                             ),
                             _buildFixedActionButton(
+                              icon: LucideIcons.fuel,
+                              label: 'Nearby',
+                              color: AppTheme.primaryGreen,
+                              onTap: () => _openNearbyPois(vehicle),
+                            ),
+                            _buildFixedActionButton(
                               icon: LucideIcons.gauge,
                               label: 'Score',
                               color: AppTheme.primaryGreen,
@@ -2129,10 +2166,17 @@ class VehicleLiveMapScreen extends StatefulWidget {
     super.key,
     required this.title,
     required this.url,
+    this.vehicle,
   });
 
   final String title;
   final String url;
+
+  /// When provided, a compact frosted-glass info bar is overlaid at the
+  /// bottom of the map showing the vehicle's live details (reg-no, status,
+  /// speed, address, last-updated). Optional so existing call sites that
+  /// only pass title + url keep working unchanged.
+  final VehicleRecord? vehicle;
 
   @override
   State<VehicleLiveMapScreen> createState() => _VehicleLiveMapScreenState();
@@ -2159,6 +2203,7 @@ class _VehicleLiveMapScreenState extends State<VehicleLiveMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final VehicleRecord? vehicle = widget.vehicle;
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -2170,6 +2215,224 @@ class _VehicleLiveMapScreenState extends State<VehicleLiveMapScreen> {
         children: <Widget>[
           WebViewWidget(controller: _controller),
           if (_isLoading) const Center(child: CircularProgressIndicator()),
+          if (vehicle != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: _GlassVehicleBar(vehicle: vehicle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact, professional frosted-glass "mirror" bar overlaid at the bottom of
+/// the full-screen live map. Shows the vehicle's registration, live status
+/// pill + speed, single-line address and last-updated time. Sits at the very
+/// bottom so the map stays interactive above it.
+class _GlassVehicleBar extends StatelessWidget {
+  const _GlassVehicleBar({required this.vehicle});
+
+  final VehicleRecord vehicle;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color statusColor = vehicle.isMoving
+        ? const Color(0xFF22C55E)
+        : (vehicle.isIdle ? Colors.orange : Colors.red);
+    final Color titleColor = isDark ? Colors.white : const Color(0xFF141A22);
+    final Color subtitleColor =
+        isDark ? Colors.white60 : Colors.black.withValues(alpha: 0.55);
+    final Color bodyColor =
+        isDark ? Colors.white70 : Colors.black.withValues(alpha: 0.72);
+    final Color fillColor = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.white.withValues(alpha: 0.72);
+    final Color hairline = isDark
+        ? Colors.white.withValues(alpha: 0.18)
+        : Colors.white.withValues(alpha: 0.85);
+
+    final String reg = vehicle.registrationNumber.isNotEmpty
+        ? vehicle.registrationNumber
+        : vehicle.name;
+    final bool showName =
+        vehicle.name.isNotEmpty && vehicle.name != reg;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.28,
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.all(Radius.circular(22)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              decoration: BoxDecoration(
+                color: fillColor,
+                borderRadius: const BorderRadius.all(Radius.circular(22)),
+                border: Border.all(color: hairline, width: 0.8),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  // Drag handle.
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                  // Line 1: reg-no + (name) on the left, status pill + speed
+                  // aligned right.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              reg,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 17,
+                                letterSpacing: 0.2,
+                                color: titleColor,
+                              ),
+                            ),
+                            if (showName) ...<Widget>[
+                              const SizedBox(height: 1),
+                              Text(
+                                vehicle.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  color: subtitleColor,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Speed intentionally omitted here — the map already shows
+                      // the live speed pill above, so it would be redundant.
+                      _StatusPill(color: statusColor, label: vehicle.statusLabel),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Line 2: single-line address.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Icon(LucideIcons.mapPin, size: 15, color: statusColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: LiveAddressText(
+                          latitude: vehicle.latitude,
+                          longitude: vehicle.longitude,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                            color: bodyColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Line 3: last-updated time.
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: <Widget>[
+                      Icon(LucideIcons.clock, size: 13, color: subtitleColor),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Updated: ${vehicle.createdAt.isNotEmpty ? vehicle.createdAt : '—'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: subtitleColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w800,
+              fontSize: 11.5,
+            ),
+          ),
         ],
       ),
     );

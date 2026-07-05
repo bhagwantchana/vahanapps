@@ -36,6 +36,7 @@ class NativeVehicleMap extends StatefulWidget {
     this.emptySubtitle = 'Live map will appear once a vehicle is tracked',
     this.followFocusedVehicle = false,
     this.animateMarkers = true,
+    this.moveAnimationDuration = const Duration(milliseconds: 900),
     this.onVehicleTap,
     this.mapProvider = 'maplibre',
   });
@@ -47,6 +48,14 @@ class NativeVehicleMap extends StatefulWidget {
   final String emptySubtitle;
   final bool followFocusedVehicle;
   final bool animateMarkers;
+
+  /// How long a marker takes to glide from its current rendered position to a
+  /// freshly received position. The single-vehicle detail map keeps the snappy
+  /// 900 ms default; the home overview passes ~the poll interval (e.g. 4.5 s)
+  /// so the marker is *always* gliding — it re-targets from the current
+  /// interpolated point on each poll, giving continuous motion with no
+  /// visible move-then-freeze.
+  final Duration moveAnimationDuration;
 
   /// Called when a vehicle marker is tapped. Host screen typically opens a
   /// bottom sheet showing the vehicle's address (via LiveAddressText so it
@@ -66,7 +75,6 @@ class NativeVehicleMap extends StatefulWidget {
 class _NativeVehicleMapState extends State<NativeVehicleMap>
     with SingleTickerProviderStateMixin {
   static const LatLng _defaultCenter = LatLng(20.5937, 78.9629);
-  static const Duration _animationDuration = Duration(milliseconds: 900);
   static const String _fallbackImageName = 'veh_fallback';
   static const double _epsilon = 0.0000015;
 
@@ -102,7 +110,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
   late final AnimationController _animationController = AnimationController(
     vsync: this,
-    duration: _animationDuration,
+    duration: widget.moveAnimationDuration,
   )..addListener(_handleAnimationTick);
 
   double _dpr = 2.0;
@@ -143,6 +151,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   @override
   void didUpdateWidget(covariant NativeVehicleMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    // Keep the glide length in sync if the caller changes it at runtime.
+    if (oldWidget.moveAnimationDuration != widget.moveAnimationDuration) {
+      _animationController.duration = widget.moveAnimationDuration;
+    }
 
     // A new vehicle to follow → allow the camera to recentre on it once.
     if (oldWidget.focusVehicle?.id != widget.focusVehicle?.id) {
@@ -641,7 +654,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     _renderedCourse
         .removeWhere((vehicleId, _) => !nextPositions.containsKey(vehicleId));
 
-    if (!widget.animateMarkers || _animationController.isAnimating) {
+    if (!widget.animateMarkers) {
       nextPositions.forEach((vehicleId, target) {
         _renderedPositions[vehicleId] = target;
       });
@@ -655,6 +668,12 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       return;
     }
 
+    // Re-target the glide from where each marker CURRENTLY is (the live
+    // interpolated pose in _renderedPositions, kept fresh by _handleAnimationTick)
+    // toward the new fix — even when a glide is still in flight. Restarting from
+    // the current pose (not snapping to the raw fix) means fast position polls
+    // (~4 s) re-aim continuously with no jump, so the marker never freezes or
+    // teleports between updates.
     _animationStart = <int, LatLng>{};
     _animationEnd = nextPositions;
     _courseStart = <int, double>{};
