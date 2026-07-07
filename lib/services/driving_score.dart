@@ -56,8 +56,24 @@ class DrivingScore {
     int harshBrake = 0;
     final limit = overspeedLimit > 0 ? overspeedLimit : 0;
 
-    for (var i = 0; i < pts.length; i++) {
+    // GLITCH-PROOF the speed series with a median-of-3: GT06 devices emit
+    // occasional single wild samples (a 218 km/h byte between two 40s) that
+    // poisoned max-speed AND counted false overspeed/harsh events. The median
+    // kills isolated spikes while a REAL sustained speed (2+ consecutive high
+    // samples) passes through untouched. Also covers historic bad rows
+    // already stored before the server-side ingest filter existed.
+    final speeds = List<double>.generate(pts.length, (i) {
       final s = pts[i].speed;
+      if (i == 0 || i == pts.length - 1) return s;
+      final a = pts[i - 1].speed, c = pts[i + 1].speed;
+      // median of (a, s, c)
+      if (s >= a && s >= c) return a >= c ? a : c;
+      if (s <= a && s <= c) return a <= c ? a : c;
+      return s;
+    });
+
+    for (var i = 0; i < pts.length; i++) {
+      final s = speeds[i];
       if (s > maxSpeed) maxSpeed = s;
       if (s > 2) {
         sumMovingSpeed += s;
@@ -65,7 +81,7 @@ class DrivingScore {
       }
       if (limit > 0 && s > limit) overspeed++;
       if (i > 0) {
-        final prev = pts[i - 1].speed;
+        final prev = speeds[i - 1];
         final dt = _seconds(pts[i - 1].createdAt, pts[i].createdAt);
         if (dt > 0 && dt <= 30) {
           final accel = (s - prev) / dt; // km/h per second

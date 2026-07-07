@@ -9,7 +9,9 @@ import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/firebase_options.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
+import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/screens/assigned_vehicle_maintenance_screen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
@@ -205,6 +207,10 @@ class CustomNotificationSoundService {
       // (onBackgroundMessage is now registered earlier, in initialize().)
       FirebaseMessaging.onMessage.listen((message) {
         showNotification(message);
+        // The push itself proves server-side vehicle state just changed —
+        // nudge the polling cubits so screens catch up in seconds instead
+        // of waiting out their 30-45 s cadence.
+        _refreshVehicleStateFromPush(message);
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
@@ -532,8 +538,21 @@ class CustomNotificationSoundService {
     // the identifiers — that's better than dropping the tap.
     final imei = (data['imei'] ?? '').toString().trim();
     final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
-    final isVehicleAlert =
-        alertType == 'overspeed' ||
+    final isVehicleAlert = _isVehicleAlertType(alertType);
+
+    if (isVehicleAlert && imei.isNotEmpty) {
+      _openVehicleDetail(imei: imei);
+      return;
+    }
+
+    _openAlertsTab();
+  }
+
+  /// Alert types that mark a vehicle-state change. Shared by the
+  /// notification-tap deep link (_openFromPayload) and the foreground
+  /// push-refresh nudge (_refreshVehicleStateFromPush) — keep ONE list.
+  static bool _isVehicleAlertType(String alertType) {
+    return alertType == 'overspeed' ||
         alertType == 'ignition_on' ||
         alertType == 'ignition_off' ||
         alertType.startsWith('geofence_') ||
@@ -545,13 +564,44 @@ class CustomNotificationSoundService {
         alertType == 'idle' ||
         alertType == 'low_battery' ||
         alertType == 'power_cut';
+  }
 
-    if (isVehicleAlert && imei.isNotEmpty) {
-      _openVehicleDetail(imei: imei);
+  // Wall-clock of the last push-triggered cubit refresh — debounces a burst
+  // of FCM alerts (e.g. ignition + overspeed together) to one fetch per 5 s.
+  static DateTime? _lastPushRefresh;
+
+  /// A foreground vehicle alert means server-side state just changed
+  /// (ignition, overspeed, geofence, ...). Refresh the home + vehicle-list
+  /// cubits so their screens reflect it within seconds instead of staying
+  /// stale until the next 30-45 s poll tick.
+  void _refreshVehicleStateFromPush(RemoteMessage message) {
+    final alertType =
+        (message.data['alert_type'] ?? '').toString().trim().toLowerCase();
+    if (!_isVehicleAlertType(alertType)) {
       return;
     }
 
-    _openAlertsTab();
+    final now = DateTime.now();
+    final last = _lastPushRefresh;
+    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastPushRefresh = now;
+
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) {
+      return;
+    }
+    try {
+      BlocProvider.of<HomeCubit>(ctx).fetchHomeData();
+    } catch (_) {
+      // Cubit not provided in this context — the next poll picks it up.
+    }
+    try {
+      BlocProvider.of<VehicleCubit>(ctx).fetchVehicles();
+    } catch (_) {
+      // Cubit not provided in this context — the next poll picks it up.
+    }
   }
 
   /// Land the user directly on the vehicle's detail / live-track screen

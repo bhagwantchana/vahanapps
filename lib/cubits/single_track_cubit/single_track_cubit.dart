@@ -19,6 +19,10 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
   SseClient? _sseClient;
   StreamSubscription<SseEvent>? _sseSub;
   String? _trackedImei;
+  // Wall-clock of the last LIVE data (SSE event or silent poll success).
+  // The detail screen's fallback poll uses this to skip ticks while the SSE
+  // push channel is healthy — poll only fills gaps, never duplicates.
+  DateTime? _lastLiveAt;
 
   Future<void> fetchVehicleTrack(String imei) async {
     _trackedImei = imei;
@@ -26,6 +30,9 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
     try {
       final result = await _repository.fetchVehicleTrack(imei);
       if (isClosed) return;
+      // This IS live data — stamp it so the screen's fallback poll doesn't
+      // immediately refetch on its first tick right after this load.
+      _lastLiveAt = DateTime.now();
       emit(SingleTrackLoggedInState(singleTrackModel: result));
       _ensureLiveStream(result.data);
     } catch (error) {
@@ -39,17 +46,47 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
     }
   }
 
+  /// Fallback refresh for the native map: re-fetches the vehicle WITHOUT a
+  /// Loading emission (no spinner/blank) so the marker glide is never
+  /// interrupted. Skipped while SSE is delivering (fresh within [staleAfter]).
+  /// Called on a screen-owned timer — the cubit itself never self-polls.
+  Future<void> silentRefreshIfStale({Duration staleAfter = const Duration(seconds: 4)}) async {
+    final imei = _trackedImei;
+    if (imei == null || imei.isEmpty || isClosed) return;
+    final last = _lastLiveAt;
+    if (last != null && DateTime.now().difference(last) < staleAfter) return;
+    try {
+      final result = await _repository.fetchVehicleTrack(imei);
+      if (isClosed || _trackedImei != imei) return;
+      _lastLiveAt = DateTime.now();
+      emit(SingleTrackLoggedInState(singleTrackModel: result));
+      _ensureLiveStream(result.data);
+    } catch (_) {
+      // Silent by design — the next tick or SSE reconnect will recover.
+    }
+  }
+
   void _ensureLiveStream(VehicleRecord? vehicle) {
-    if (_sseClient != null) return;
+    if (_sseClient != null) {
+      // Client exists but may be sitting in a backed-off reconnect wait
+      // (app was backgrounded, network dropped). An app-resume lands here
+      // via silentRefreshIfStale -> revive the stream within ~1 s instead
+      // of waiting out the up-to-30 s backoff. No-op while connected.
+      _sseClient!.kick();
+      return;
+    }
     final userId = vehicle?.userId ?? 0;
     if (userId <= 0) return;
-    _sseClient = SseClient(userId: userId);
+    // sig: server-computed HMAC (armed GPS_SSE_SECRET) from the settings
+    // payload — without it the hardened stream rejects the subscription.
+    _sseClient = SseClient(userId: userId, sig: vehicle?.settings?.sseSig ?? '');
     _sseSub = _sseClient!.stream.listen(_onSseEvent);
     _sseClient!.connect();
   }
 
   void _onSseEvent(SseEvent event) {
     if (event.event != 'vehicle') return;
+    _lastLiveAt = DateTime.now();
     _applyLiveUpdate(event.data);
   }
 
@@ -189,6 +226,7 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
     await _sseClient?.close();
     _sseClient = null;
     _trackedImei = null;
+    _lastLiveAt = null;
   }
 
   /// Full logout teardown: stop the stream AND clear tracked state.

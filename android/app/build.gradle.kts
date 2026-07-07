@@ -32,7 +32,11 @@ android {
 
     namespace = "com.globynix.fleetmonitor"
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+    // maplibre_gl requires NDK 28+. Was 27.0.12077973, which built the APK but
+    // failed the AAB's native debug-symbol strip step (Play Store bundle). 28.2
+    // is installed and backward-compatible (Flutter's own "use the highest NDK"
+    // recommendation), so the appbundle strips + signs cleanly.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

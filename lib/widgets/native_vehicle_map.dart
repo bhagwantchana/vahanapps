@@ -121,6 +121,9 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// Flips true the first time the user pans / pinch-zooms. Once set, the
   /// camera stops auto-recentering so we never fight the user's gesture.
   bool _userInteracted = false;
+  // Pending auto-resume of camera follow after the user stops touching the
+  // map (see _onCameraIdle). Cancelled by any new gesture and on dispose.
+  Timer? _followResumeTimer;
   /// Guards camera moves we trigger ourselves so they aren't mistaken for a
   /// user gesture in [_onCameraMove].
   bool _programmaticMove = false;
@@ -170,6 +173,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
   @override
   void dispose() {
+    _followResumeTimer?.cancel();
     _animationController.dispose();
     // Release the map controller listener + the Dio client so the disposed
     // State isn't retained via the controller's listener list and the
@@ -842,10 +846,28 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     if (!_programmaticMove && !_userInteracted) {
       _userInteracted = true;
     }
+    // A fresh user gesture cancels any pending follow-resume so the camera
+    // never snatches control back mid-exploration.
+    if (!_programmaticMove) {
+      _followResumeTimer?.cancel();
+      _followResumeTimer = null;
+    }
   }
 
   void _onCameraIdle() {
     _programmaticMove = false;
+    // Follow auto-resume: a single accidental pan used to disengage the
+    // camera FOREVER (nothing reset _userInteracted on the single-vehicle
+    // screen). After 10s of no touching, glide back onto the vehicle —
+    // the behaviour users know from the web tracker's follow mode.
+    if (widget.followFocusedVehicle && _userInteracted) {
+      _followResumeTimer?.cancel();
+      _followResumeTimer = Timer(const Duration(seconds: 10), () {
+        if (!mounted) return;
+        _userInteracted = false;
+        _followCamera();
+      });
+    }
   }
 
   // ── Build ──────────────────────────────────────────────────────────────

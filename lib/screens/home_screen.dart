@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
+import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/models/dashboard_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
@@ -401,7 +402,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _initWebView(dashboardMap);
           }
 
-          final stats = calculateStats(vehicles);
+          // Stat tiles read the 4 s live poll (engineOn/speed are carried by
+          // those records) so Moving/Idle/Stopped flip within seconds, same
+          // as the map. Fall back to the dashboard list before the first poll.
+          final stats = calculateStats(
+            _liveVehicles.isNotEmpty ? _liveVehicles : vehicles,
+          );
 
           return RefreshIndicator(
             onRefresh: _refreshHomeData,
@@ -441,6 +447,23 @@ class _HomeScreenState extends State<HomeScreen> {
     BuildContext context,
     VehicleRecord vehicle,
   ) async {
+    // Map-mode consistency: in native mode the full-screen is NATIVE too
+    // (previously it always opened the web page, breaking the in-app-map
+    // promise). Prime the track cubit so the screen has live data + SSE.
+    final mode = (context.read<HomeCubit>().state.dashboardModel?.data?.mobileMapMode ??
+            'native')
+        .toLowerCase();
+    if (mode != 'url' && mode != 'webview' && vehicle.imei.isNotEmpty) {
+      context.read<SingleTrackCubit>().fetchVehicleTrack(vehicle.imei);
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => NativeLiveMapScreen(title: vehicle.displayName),
+        ),
+      );
+      return;
+    }
+
     final String liveUrl = vehicle.primaryMapUrl.isNotEmpty
         ? vehicle.primaryMapUrl
         : vehicle.googleTrackingUrl;

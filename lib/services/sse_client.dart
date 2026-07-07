@@ -22,9 +22,14 @@ class SseEvent {
 /// the connection drops — keeps the live map "warm" through network
 /// changes, signal loss, server restarts.
 class SseClient {
-  SseClient({required this.userId});
+  SseClient({required this.userId, this.sig = ''});
 
   final int userId;
+
+  /// Server-computed HMAC of [userId] (delivered in the vehicleTrack settings
+  /// payload). Required once the tracking server arms GPS_SSE_SECRET — without
+  /// it the stream now answers 403. Empty = legacy open server, omitted.
+  final String sig;
 
   final _controller = StreamController<SseEvent>.broadcast();
   StreamSubscription<List<int>>? _subscription;
@@ -60,7 +65,10 @@ class SseClient {
       // Defensively close any half-open client before opening a new one.
       _client?.close(force: true);
       _client = HttpClient();
-      final uri = Uri.parse('${AppUrl.liveStreamUrl}?user_id=$userId');
+      final uri = Uri.parse(
+        '${AppUrl.liveStreamUrl}?user_id=$userId'
+        '${sig.isNotEmpty ? '&sig=${Uri.encodeComponent(sig)}' : ''}',
+      );
       final request = await _client!.getUrl(uri);
       request.headers.set('Accept', 'text/event-stream');
       request.headers.set('Cache-Control', 'no-cache');
@@ -125,6 +133,23 @@ class SseClient {
     } finally {
       _connecting = false;
     }
+  }
+
+  /// App-resume nudge: when the stream is sitting in a backed-off reconnect
+  /// wait (up to 30 s after repeated drops), reset the backoff to its initial
+  /// 1 s and reconnect NOW. No-op while already connected, mid-connect, or
+  /// closed — reuses the same guards as connect(), so calling this from every
+  /// resume/refresh tick is safe.
+  void kick() {
+    if (_stopped) return;
+    if (_subscription != null) return; // already connected
+    if (_connecting) return; // a connect() is already in flight
+    _reconnectDelay = const Duration(seconds: 1);
+    // Cancel-by-flag: the pending delayed reconnect (if any) becomes a
+    // guarded no-op once we connect here — connect() bails on a live
+    // subscription, so clearing the flag cannot double-connect.
+    _reconnectScheduled = false;
+    connect();
   }
 
   void _emit(String event, String dataJson) {

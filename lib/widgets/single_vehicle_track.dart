@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:fleet_monitor/constant/app_theme.dart';
@@ -185,14 +186,47 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     return _routeTrailFuture!;
   }
 
+  // Native-map liveness: a screen-owned fallback poll (fills SSE gaps with a
+  // SILENT re-fetch — no spinner) + a live-growing trail appended from every
+  // position update so the blue line extends while the customer watches,
+  // matching the web map's accumulating route.
+  Timer? _nativeRefreshTimer;
+  final List<LatLng> _liveTrail = <LatLng>[];
+  int _liveTrailVehicleId = 0;
+  static const int _liveTrailMax = 300;
+
   @override
   void initState() {
     super.initState();
+    _nativeRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      context.read<SingleTrackCubit>().silentRefreshIfStale();
+    });
   }
 
   @override
   void dispose() {
+    _nativeRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Append the latest fix to the on-screen trail (min 5 m step, capped).
+  void _growLiveTrail(VehicleRecord vehicle) {
+    if (vehicle.latitude == 0 && vehicle.longitude == 0) return;
+    if (_liveTrailVehicleId != vehicle.id) {
+      _liveTrail.clear();
+      _liveTrailVehicleId = vehicle.id;
+    }
+    final next = LatLng(vehicle.latitude, vehicle.longitude);
+    if (_liveTrail.isNotEmpty) {
+      final last = _liveTrail.last;
+      final meters = const Distance().as(LengthUnit.Meter, last, next);
+      if (meters < 5) return;
+    }
+    _liveTrail.add(next);
+    if (_liveTrail.length > _liveTrailMax) {
+      _liveTrail.removeAt(0);
+    }
   }
 
   Future<void> _toggleNotifications(VehicleRecord vehicle) async {
@@ -378,6 +412,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   String _hhmm(String t) => t.length >= 5 ? t.substring(0, 5) : t;
 
   Future<void> _openLiveMap(VehicleRecord vehicle) async {
+    // Native mode gets a native full-screen (map-mode consistent) — the
+    // webview full-screen stays for url mode.
+    final settings = _resolveSettings(vehicle);
+    if (settings.mobileMapMode.toLowerCase() == 'native') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => NativeLiveMapScreen(title: vehicle.displayName),
+        ),
+      );
+      return;
+    }
+
     final liveUrl = vehicle.primaryMapUrl.isNotEmpty
         ? vehicle.primaryMapUrl
         : vehicle.googleTrackingUrl;
@@ -1074,8 +1121,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
           final liveMapUrl = trackingUrl.isNotEmpty
               ? trackingUrl
               : vehicle.googleTrackingUrl;
-          final useNativeMap = settings.mobileMapMode.toLowerCase() == 'native';
+          // Mirror the home screen's guard: an empty/malformed tracking URL
+          // must never strand the user on a dead card — fall back to native.
+          final useNativeMap =
+              settings.mobileMapMode.toLowerCase() == 'native' ||
+                  trackingUrl.isEmpty;
           final routeTrailFuture = _resolveRouteTrail(vehicle, settings);
+          // Grow the on-screen live trail from every position update (SSE or
+          // silent poll) so the line extends while the customer watches.
+          if (useNativeMap) _growLiveTrail(vehicle);
           if (!useNativeMap &&
               trackingUrl.isNotEmpty &&
               trackingUrl != _loadedUrl) {
@@ -1101,7 +1155,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           ? FutureBuilder<List<LatLng>>(
                               future: routeTrailFuture,
                               builder: (context, snapshot) {
-                                final trailPoints = snapshot.data ?? <LatLng>[];
+                                // History snapshot + the live-growing session
+                                // trail (SSE/poll-fed) = a route line that
+                                // extends as the vehicle drives, like the web map.
+                                final trailPoints = <LatLng>[
+                                  ...(snapshot.data ?? <LatLng>[]),
+                                  ..._liveTrail,
+                                ];
                                 return Stack(
                                   children: <Widget>[
                                     NativeVehicleMap(
@@ -1114,6 +1174,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                       emptySubtitle:
                                           'Native map is enabled from superadmin settings',
                                       followFocusedVehicle: true,
+                                      // Shorter glide than the home overview:
+                                      // SSE pushes land every few seconds, so
+                                      // 2.5 s keeps the marker close to the
+                                      // real position without visible jumps.
+                                      moveAnimationDuration:
+                                          const Duration(milliseconds: 2500),
                                     ),
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting)
@@ -1199,7 +1265,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       right: 22,
                       child: _buildMapOverlayButton(
                         icon: Icons.open_in_full_rounded,
-                        label: useNativeMap ? 'Open URL map' : 'Open map',
+                        label: 'Open map', // native mode now opens a native full-screen
                         onTap: liveMapUrl.isNotEmpty
                             ? () => _openLiveMap(vehicle)
                             : null,
@@ -2235,10 +2301,103 @@ class _VehicleLiveMapScreenState extends State<VehicleLiveMapScreen> {
 /// the full-screen live map. Shows the vehicle's registration, live status
 /// pill + speed, single-line address and last-updated time. Sits at the very
 /// bottom so the map stays interactive above it.
+/// Full-screen NATIVE live map — the map-mode-consistent counterpart of
+/// VehicleLiveMapScreen (which is a WebView). Rides SingleTrackCubit for live
+/// positions (SSE + its own silent fallback poll), grows a session trail, and
+/// reuses the frosted glass bar with the speed shown (no webmap gauge here).
+class NativeLiveMapScreen extends StatefulWidget {
+  const NativeLiveMapScreen({super.key, required this.title});
+
+  final String title;
+
+  @override
+  State<NativeLiveMapScreen> createState() => _NativeLiveMapScreenState();
+}
+
+class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
+  // Own fallback poll: this screen can be pushed straight from home (no
+  // detail screen underneath running its timer). silentRefreshIfStale
+  // dedups against SSE, so double-timers never double-fetch.
+  Timer? _refreshTimer;
+  final List<LatLng> _liveTrail = <LatLng>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      context.read<SingleTrackCubit>().silentRefreshIfStale();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _growTrail(VehicleRecord vehicle) {
+    if (vehicle.latitude == 0 && vehicle.longitude == 0) return;
+    final next = LatLng(vehicle.latitude, vehicle.longitude);
+    if (_liveTrail.isNotEmpty) {
+      final meters = const Distance().as(LengthUnit.Meter, _liveTrail.last, next);
+      if (meters < 5) return;
+    }
+    _liveTrail.add(next);
+    if (_liveTrail.length > 300) _liveTrail.removeAt(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+      body: BlocBuilder<SingleTrackCubit, SingleTrackState>(
+        builder: (context, state) {
+          final vehicle = state.singleTrackModel?.data;
+          if (vehicle == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          _growTrail(vehicle);
+          return Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: NativeVehicleMap(
+                  vehicles: <VehicleRecord>[vehicle],
+                  focusVehicle: vehicle,
+                  trailPoints: _liveTrail,
+                  followFocusedVehicle: true,
+                  moveAnimationDuration: const Duration(milliseconds: 2500),
+                  emptyTitle: vehicle.hasLiveLocation
+                      ? 'Map data not available'
+                      : 'No live location yet',
+                  emptySubtitle: 'Waiting for the vehicle to report',
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _GlassVehicleBar(vehicle: vehicle, showSpeed: true),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _GlassVehicleBar extends StatelessWidget {
-  const _GlassVehicleBar({required this.vehicle});
+  const _GlassVehicleBar({required this.vehicle, this.showSpeed = false});
 
   final VehicleRecord vehicle;
+
+  /// True on the NATIVE full-screen map, which has no webmap speed gauge —
+  /// the bar carries the live speed there (webview mode keeps it hidden
+  /// because the page's own gauge already shows it).
+  final bool showSpeed;
 
   @override
   Widget build(BuildContext context) {
@@ -2343,8 +2502,29 @@ class _GlassVehicleBar extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      // Speed intentionally omitted here — the map already shows
-                      // the live speed pill above, so it would be redundant.
+                      // Webview mode: speed omitted (the page's gauge shows it).
+                      // Native full-screen: no gauge exists, so show it here.
+                      if (showSpeed) ...<Widget>[
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            '${vehicle.speed.round()} km/h',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: statusColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       _StatusPill(color: statusColor, label: vehicle.statusLabel),
                     ],
                   ),

@@ -38,8 +38,13 @@ class VehicleSettingsModel {
   final String googleTrackingUrl;
   final String historyUrl;
   final String mobileMapMode;
+  final String mobileMapProvider;
   final int mobileMapTrailMinutes;
   final int mobileMapTrailPoints;
+
+  /// Server-computed HMAC for the tracking server's SSE stream (the secret
+  /// never ships in the app). Empty = server not armed → legacy open connect.
+  final String sseSig;
 
   const VehicleSettingsModel({
     this.vehicleId = 0,
@@ -79,8 +84,10 @@ class VehicleSettingsModel {
     this.googleTrackingUrl = '',
     this.historyUrl = '',
     this.mobileMapMode = 'native',
+    this.mobileMapProvider = 'maplibre',
     this.mobileMapTrailMinutes = 120,
     this.mobileMapTrailPoints = 25,
+    this.sseSig = '',
   });
 
   factory VehicleSettingsModel.fromJson(Map<String, dynamic> json) {
@@ -126,8 +133,10 @@ class VehicleSettingsModel {
       googleTrackingUrl: toStringValue(linkMap['google_tracking_url']),
       historyUrl: toStringValue(linkMap['history_url']),
       mobileMapMode: toStringValue(json['mobile_map_mode'], fallback: 'native'),
+      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'maplibre'),
       mobileMapTrailMinutes: toInt(json['mobile_map_trail_minutes'], fallback: 120),
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
+      sseSig: toStringValue(json['sse_sig']),
     );
   }
 
