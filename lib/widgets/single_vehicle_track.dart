@@ -43,7 +43,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   WebViewController? _controller;
   bool isLoading = true;
   bool _isSessionBusy = false;
-  String _loadedUrl = '';
+  // Vehicle whose map URL is currently loaded in the inline WebView. We key the
+  // (re)load on the VEHICLE, not the URL string: the server's tracking_url
+  // embeds a random-IV-encrypted IMEI, so it differs on EVERY API/poll response
+  // for the same vehicle. Comparing the URL string reloaded the WebView every
+  // ~5 s poll (spinner + map re-init = the "map keeps refreshing" report). The
+  // webmap stays live on its own internal SSE, so it only needs loading once.
+  int _loadedVehicleId = -1;
   List<DriverRecordModel> _availableDrivers = <DriverRecordModel>[];
   Future<List<LatLng>>? _routeTrailFuture;
   int _routeTrailVehicleId = 0;
@@ -57,7 +63,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       return;
     }
 
-    _loadedUrl = url;
     _controller ??= WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -1130,9 +1135,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
           // Grow the on-screen live trail from every position update (SSE or
           // silent poll) so the line extends while the customer watches.
           if (useNativeMap) _growLiveTrail(vehicle);
+          // Load ONCE per vehicle — NOT on every URL change. tracking_url's
+          // encrypted IMEI uses a random IV so its string differs on every poll
+          // response; reloading on that churned the WebView every ~5 s. The
+          // webmap self-refreshes via its own SSE once loaded.
           if (!useNativeMap &&
               trackingUrl.isNotEmpty &&
-              trackingUrl != _loadedUrl) {
+              _loadedVehicleId != vehicle.id) {
+            _loadedVehicleId = vehicle.id;
             _loadWebLink(trackingUrl);
           }
 
