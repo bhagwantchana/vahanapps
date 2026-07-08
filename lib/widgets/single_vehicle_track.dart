@@ -1497,6 +1497,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     // once the plan has expired.
                                     'Plan expiry: ${_formatExpiry(vehicle)}',
                                     style: TextStyle(
+                                      fontSize: 12,
                                       color: vehicle.isExpired
                                           ? Colors.red.shade600
                                           : Colors.grey.shade600,
