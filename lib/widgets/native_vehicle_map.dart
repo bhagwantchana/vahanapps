@@ -637,8 +637,16 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             lineJoin: 'round',
           ),
         );
-      } catch (_) {}
+      } catch (_) {
+        // Draw FAILED (transient platform-channel error). Leave
+        // _renderedTrailPoints STALE so the next _drawTrail() fails the
+        // _sameTrail guard and RETRIES the add — otherwise committing the
+        // cache here would make the guard skip every retry and the trail
+        // would stay hidden for the whole session until the vehicle moves.
+        return;
+      }
     }
+    // Only reached after a SUCCESSFUL updateLine or addLine.
     _renderedTrailPoints = points;
   }
 
