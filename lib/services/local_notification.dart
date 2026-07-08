@@ -9,9 +9,7 @@ import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/firebase_options.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
-import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
-import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/screens/assigned_vehicle_maintenance_screen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
@@ -207,10 +205,12 @@ class CustomNotificationSoundService {
       // (onBackgroundMessage is now registered earlier, in initialize().)
       FirebaseMessaging.onMessage.listen((message) {
         showNotification(message);
-        // The push itself proves server-side vehicle state just changed —
-        // nudge the polling cubits so screens catch up in seconds instead
-        // of waiting out their 30-45 s cadence.
-        _refreshVehicleStateFromPush(message);
+        // NOTE (2026-07-08): removed the push-triggered cubit refresh here.
+        // It called HomeCubit.fetchHomeData() on every vehicle alert, which
+        // rebuilt the HOME MAP — so a burst of alerts made the map visibly
+        // reload again and again (owner reported this). The live maps already
+        // stay current via SSE + the normal poll, so the push nudge was
+        // redundant. Notifications still show; screens refresh on their own.
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen(_handleRemoteNavigation);
@@ -548,9 +548,8 @@ class CustomNotificationSoundService {
     _openAlertsTab();
   }
 
-  /// Alert types that mark a vehicle-state change. Shared by the
-  /// notification-tap deep link (_openFromPayload) and the foreground
-  /// push-refresh nudge (_refreshVehicleStateFromPush) — keep ONE list.
+  /// Alert types that mark a vehicle-state change. Used by the
+  /// notification-tap deep link (_openFromPayload) to route to the vehicle.
   static bool _isVehicleAlertType(String alertType) {
     return alertType == 'overspeed' ||
         alertType == 'ignition_on' ||
@@ -566,43 +565,6 @@ class CustomNotificationSoundService {
         alertType == 'power_cut';
   }
 
-  // Wall-clock of the last push-triggered cubit refresh — debounces a burst
-  // of FCM alerts (e.g. ignition + overspeed together) to one fetch per 5 s.
-  static DateTime? _lastPushRefresh;
-
-  /// A foreground vehicle alert means server-side state just changed
-  /// (ignition, overspeed, geofence, ...). Refresh the home + vehicle-list
-  /// cubits so their screens reflect it within seconds instead of staying
-  /// stale until the next 30-45 s poll tick.
-  void _refreshVehicleStateFromPush(RemoteMessage message) {
-    final alertType =
-        (message.data['alert_type'] ?? '').toString().trim().toLowerCase();
-    if (!_isVehicleAlertType(alertType)) {
-      return;
-    }
-
-    final now = DateTime.now();
-    final last = _lastPushRefresh;
-    if (last != null && now.difference(last) < const Duration(seconds: 5)) {
-      return;
-    }
-    _lastPushRefresh = now;
-
-    final ctx = appNavigatorKey.currentContext;
-    if (ctx == null) {
-      return;
-    }
-    try {
-      BlocProvider.of<HomeCubit>(ctx).fetchHomeData();
-    } catch (_) {
-      // Cubit not provided in this context — the next poll picks it up.
-    }
-    try {
-      BlocProvider.of<VehicleCubit>(ctx).fetchVehicles();
-    } catch (_) {
-      // Cubit not provided in this context — the next poll picks it up.
-    }
-  }
 
   /// Land the user directly on the vehicle's detail / live-track screen
   /// when they tap a per-vehicle notification.
