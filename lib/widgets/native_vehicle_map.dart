@@ -96,6 +96,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   final Map<int, LatLng> _lastPushed = <int, LatLng>{};
 
   Line? _trailLine;
+  // Geometry currently drawn for the trail. _rebuild() runs on every data
+  // tick (SSE push + the 5s silent poll); redrawing the line each time made
+  // it BLINK — the map looked like it "refreshed" every few seconds even for
+  // a parked vehicle. We diff against this and skip / update-in-place instead.
+  List<LatLng> _renderedTrailPoints = <LatLng>[];
 
   final Map<int, LatLng> _renderedPositions = <int, LatLng>{};
   Map<int, LatLng> _animationStart = <int, LatLng>{};
@@ -304,6 +309,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       return;
     }
     _styleReady = true;
+
+    // A (re)loaded style wipes all annotations — forget the old trail handle
+    // so _drawTrail re-adds it instead of diffing against a line that's gone.
+    _trailLine = null;
+    _renderedTrailPoints = <LatLng>[];
 
     // Vehicle markers must always be visible — never hidden by MapLibre's
     // default label/icon collision detection.
@@ -583,31 +593,68 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       return;
     }
 
-    if (_trailLine != null) {
-      try {
-        await controller.removeLine(_trailLine!);
-      } catch (_) {}
-      _trailLine = null;
-    }
-
-    if (widget.trailPoints.length < 2) {
-      return;
-    }
-
     final points = widget.trailPoints
         .map((point) => LatLng(point.latitude, point.longitude))
         .toList();
-    try {
-      _trailLine = await controller.addLine(
-        LineOptions(
-          geometry: points,
-          lineColor: _hex(AppTheme.primaryBlue),
-          lineWidth: 5.0,
-          lineOpacity: 0.45,
-          lineJoin: 'round',
-        ),
-      );
-    } catch (_) {}
+
+    // Unchanged since the last draw → do NOTHING. This is the fix for the
+    // "map refreshes every few seconds" report: without it, every SSE push
+    // and every 5s silent poll removed + re-added the line, blinking it.
+    if (_sameTrail(points, _renderedTrailPoints)) {
+      return;
+    }
+
+    // Too few points to draw a line → drop any existing one.
+    if (points.length < 2) {
+      if (_trailLine != null) {
+        try {
+          await controller.removeLine(_trailLine!);
+        } catch (_) {}
+        _trailLine = null;
+      }
+      _renderedTrailPoints = points;
+      return;
+    }
+
+    // Update the existing line's geometry IN PLACE (no blink) as the trail
+    // grows while driving; only add a fresh line when there isn't one yet.
+    if (_trailLine != null) {
+      try {
+        await controller.updateLine(_trailLine!, LineOptions(geometry: points));
+      } catch (_) {
+        // Fall back to a fresh line if the in-place update fails.
+        _trailLine = null;
+      }
+    }
+    if (_trailLine == null) {
+      try {
+        _trailLine = await controller.addLine(
+          LineOptions(
+            geometry: points,
+            lineColor: _hex(AppTheme.primaryBlue),
+            lineWidth: 5.0,
+            lineOpacity: 0.45,
+            lineJoin: 'round',
+          ),
+        );
+      } catch (_) {}
+    }
+    _renderedTrailPoints = points;
+  }
+
+  /// True when two trail point lists are effectively identical (same length,
+  /// same coordinates). Lets _drawTrail skip redundant redraws that blink.
+  bool _sameTrail(List<LatLng> a, List<LatLng> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if ((a[i].latitude - b[i].latitude).abs() > 1e-6 ||
+          (a[i].longitude - b[i].longitude).abs() > 1e-6) {
+        return false;
+      }
+    }
+    return true;
   }
 
   String _hex(Color color) {
