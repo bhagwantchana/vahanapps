@@ -1492,12 +1492,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    vehicle.imei.isNotEmpty
-                                        ? 'IMEI: ${vehicle.imei}'
-                                        : 'Device details unavailable',
+                                    // Show the plan expiry here (customer-facing)
+                                    // instead of the technical device IMEI — red
+                                    // once the plan has expired.
+                                    'Plan expiry: ${_formatExpiry(vehicle)}',
                                     style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontWeight: FontWeight.w500,
+                                      color: vehicle.isExpired
+                                          ? Colors.red.shade600
+                                          : Colors.grey.shade600,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
@@ -2124,6 +2127,18 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         ],
       ),
     );
+  }
+
+  /// Human-readable plan-expiry date for the overview tile, e.g. "06 Jul 2027".
+  /// Appends " · Expired" / " · N days left" so the customer sees the status at
+  /// a glance; "--" when the device has no expiry set.
+  String _formatExpiry(VehicleRecord vehicle) {
+    final d = vehicle.expiryDateValue;
+    if (d == null) return '--';
+    const months = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final date = '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
+    final label = vehicle.expiryBadgeLabel; // 'Expired' / 'Expires today' / 'N days left' / ''
+    return label.isEmpty ? date : '$date · $label';
   }
 
   Widget _buildDetailTile({
