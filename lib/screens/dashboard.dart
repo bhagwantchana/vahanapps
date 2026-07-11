@@ -4,6 +4,7 @@ import 'package:fleet_monitor/screens/home_screen.dart';
 import 'package:fleet_monitor/screens/profile_screen.dart';
 import 'package:fleet_monitor/screens/reports_screen.dart';
 import 'package:fleet_monitor/screens/vehicle_list.dart';
+import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:fleet_monitor/widgets/alerts_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -26,6 +27,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex.clamp(0, 4).toInt();
+    // Dashboard is only reachable post-auth (splash biometric pass or fresh
+    // login) — open the notification deep-link gate and flush any payload
+    // stashed by a terminated-state tap. Post-frame so the flush navigates on
+    // a settled stack (splash's pushReplacement has already run).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      CustomNotificationSoundService().markLaunchGateOpen();
+    });
   }
 
   void _selectTab(int index) {
@@ -40,9 +48,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final screens = <Widget>[
       HomeScreen(onSelectTab: _selectTab),
       VehicleListWidget(onSelectTab: _selectTab),
-      const AlertsScreen(),
-      const ReportsScreen(),
-      const ProfileScreen(),
+      AlertsScreen(onSelectTab: _selectTab),
+      ReportsScreen(onSelectTab: _selectTab),
+      ProfileScreen(onSelectTab: _selectTab),
     ];
 
     final strings = AppStrings.of(context);

@@ -100,5 +100,17 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
         </intent>
+        <!-- Help & Support Call / Email buttons: under Android 11+ package
+             visibility, canLaunchUrl() returns false for tel:/mailto: unless
+             the matching intent is declared here, silently killing the
+             buttons. -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
     </queries>
 </manifest>

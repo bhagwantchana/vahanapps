@@ -6,15 +6,19 @@ import 'package:fleet_monitor/models/report_model.dart';
 import 'package:fleet_monitor/models/model_helpers.dart';
 import 'package:fleet_monitor/repositorys/report_repository.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
+import 'package:fleet_monitor/widgets/drawer.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class ReportsScreen extends StatefulWidget {
-  const ReportsScreen({super.key, this.initialReportKey});
+  const ReportsScreen({super.key, this.initialReportKey, this.onSelectTab});
 
   final String? initialReportKey;
+
+  /// Lets the shared drawer switch dashboard tabs from this screen.
+  final ValueChanged<int>? onSelectTab;
 
   @override
   State<ReportsScreen> createState() => _ReportsScreenState();
@@ -118,9 +122,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      drawer: AppDrawer(onSelectTab: widget.onSelectTab),
       appBar: AppBar(
         elevation: 0,
         automaticallyImplyLeading: false,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(LucideIcons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: const AppLogo(),
         actions: <Widget>[
           IconButton(

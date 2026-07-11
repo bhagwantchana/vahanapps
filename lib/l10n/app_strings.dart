@@ -364,6 +364,63 @@ class AppStrings {
       'hi': 'प्रोफ़ाइल',
       'pa': 'ਪ੍ਰੋਫਾਈਲ',
     },
+    // ----- Subscriptions screen -----
+    'subscriptions_title': <String, String>{
+      'en': 'Subscriptions',
+      'hi': 'सब्सक्रिप्शन',
+      'pa': 'ਸਬਸਕ੍ਰਿਪਸ਼ਨ',
+    },
+    'subscriptions_subtitle': <String, String>{
+      'en': 'Tracking plan of every vehicle — renew before it expires.',
+      'hi': 'हर वाहन का ट्रैकिंग प्लान — समाप्त होने से पहले नवीनीकरण करें।',
+      'pa': 'ਹਰ ਗੱਡੀ ਦਾ ਟ੍ਰੈਕਿੰਗ ਪਲਾਨ — ਖਤਮ ਹੋਣ ਤੋਂ ਪਹਿਲਾਂ ਰੀਨਿਊ ਕਰੋ।',
+    },
+    'subs_active': <String, String>{
+      'en': 'Active',
+      'hi': 'सक्रिय',
+      'pa': 'ਐਕਟਿਵ',
+    },
+    'subs_expiring': <String, String>{
+      'en': 'Expiring',
+      'hi': 'समाप्त हो रहा',
+      'pa': 'ਖਤਮ ਹੋ ਰਿਹਾ',
+    },
+    'subs_expired': <String, String>{
+      'en': 'Expired',
+      'hi': 'समाप्त',
+      'pa': 'ਖਤਮ',
+    },
+    'subs_valid_till': <String, String>{
+      'en': 'Valid till',
+      'hi': 'मान्य तक',
+      'pa': 'ਵੈਧ ਤੱਕ',
+    },
+    'subs_no_expiry': <String, String>{
+      'en': 'No expiry set',
+      'hi': 'कोई समाप्ति तिथि नहीं',
+      'pa': 'ਕੋਈ ਮਿਆਦ ਸੈੱਟ ਨਹੀਂ',
+    },
+    'subs_renew_hint': <String, String>{
+      'en': 'To renew a plan, contact support.',
+      'hi': 'प्लान नवीनीकरण के लिए सपोर्ट से संपर्क करें।',
+      'pa': 'ਪਲਾਨ ਰੀਨਿਊ ਕਰਨ ਲਈ ਸਪੋਰਟ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।',
+    },
+    'subs_empty': <String, String>{
+      'en': 'No vehicles found',
+      'hi': 'कोई वाहन नहीं मिला',
+      'pa': 'ਕੋਈ ਗੱਡੀ ਨਹੀਂ ਮਿਲੀ',
+    },
+    // ----- Legal -----
+    'privacy_policy': <String, String>{
+      'en': 'Privacy Policy',
+      'hi': 'गोपनीयता नीति',
+      'pa': 'ਪ੍ਰਾਈਵੇਸੀ ਪਾਲਿਸੀ',
+    },
+    'privacy_policy_subtitle': <String, String>{
+      'en': 'How we collect, use and protect your data',
+      'hi': 'हम आपका डेटा कैसे एकत्र, उपयोग और सुरक्षित करते हैं',
+      'pa': 'ਅਸੀਂ ਤੁਹਾਡਾ ਡਾਟਾ ਕਿਵੇਂ ਇਕੱਠਾ, ਵਰਤੋਂ ਤੇ ਸੁਰੱਖਿਅਤ ਕਰਦੇ ਹਾਂ',
+    },
     // ----- Drawer items -----
     'drawer_driver_sessions': <String, String>{
       'en': 'Driver Sessions',

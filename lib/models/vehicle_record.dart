@@ -76,6 +76,12 @@ class VehicleRecord {
   final String multiMapUrl;
   final String legacyMultiMapUrl;
   final String createdAt;
+  /// Last-fix time as epoch milliseconds (`ts` on the wire — SSE pushes and
+  /// the vehicle APIs both carry it). Timezone-proof, unlike [createdAt],
+  /// which is a zone-less server-local string: the webmaps hit exactly this
+  /// (every vehicle flagged offline when the string parsed browser-local)
+  /// and gate on the epoch instead. 0 = not provided.
+  final int tsEpochMs;
   /// Device/plan subscription expiry (tbl_device.expiry_date). Drives the
   /// red "X days left" / "Expired" badge on the vehicle cards.
   final String expiryDate;
@@ -151,6 +157,7 @@ class VehicleRecord {
     this.multiMapUrl = '',
     this.legacyMultiMapUrl = '',
     this.createdAt = '',
+    this.tsEpochMs = 0,
     this.expiryDate = '',
     this.hasLiveLocation = false,
     this.activeDriver,
@@ -229,6 +236,7 @@ class VehicleRecord {
       multiMapUrl: toStringValue(json['multi_map_url']),
       legacyMultiMapUrl: toStringValue(json['legacy_multi_map_url']),
       createdAt: toStringValue(json['created_at']),
+      tsEpochMs: toInt(json['ts']),
       expiryDate: toStringValue(json['expiry_date']),
       hasLiveLocation: json['has_live_location'] != null
           ? toBoolFlag(json['has_live_location'])
@@ -291,6 +299,7 @@ class VehicleRecord {
     int? gsmSignal,
     int? satellites,
     String? createdAt,
+    int? tsEpochMs,
     bool? hasLiveLocation,
   }) {
     return VehicleRecord(
@@ -363,6 +372,7 @@ class VehicleRecord {
       multiMapUrl: multiMapUrl,
       legacyMultiMapUrl: legacyMultiMapUrl,
       createdAt: createdAt ?? this.createdAt,
+      tsEpochMs: tsEpochMs ?? this.tsEpochMs,
       expiryDate: expiryDate,
       hasLiveLocation: hasLiveLocation ?? this.hasLiveLocation,
       activeDriver: activeDriver ?? this.activeDriver,

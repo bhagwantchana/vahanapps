@@ -15,6 +15,7 @@ import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
 import 'package:fleet_monitor/screens/driving_score_screen.dart';
 import 'package:fleet_monitor/screens/nearby_pois_screen.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
+import 'package:fleet_monitor/services/lifecycle_refresh.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/live_address_text.dart';
@@ -195,7 +196,17 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   // SILENT re-fetch — no spinner) + a live-growing trail appended from every
   // position update so the blue line extends while the customer watches,
   // matching the web map's accumulating route.
-  Timer? _nativeRefreshTimer;
+  // Lifecycle-aware: the raw Timer.periodic kept polling (and the SSE
+  // reconnect loop spinning) while the app sat in the background — battery +
+  // data drain the user never sees. LifecycleRefresh cancels on pause and
+  // refreshes immediately on resume (which also revives SSE via kick()).
+  late final LifecycleRefresh _nativeRefresh = LifecycleRefresh(
+    interval: const Duration(seconds: 5),
+    onRefresh: () async {
+      if (!mounted) return;
+      await context.read<SingleTrackCubit>().silentRefreshIfStale();
+    },
+  );
   final List<LatLng> _liveTrail = <LatLng>[];
   int _liveTrailVehicleId = 0;
   static const int _liveTrailMax = 300;
@@ -203,15 +214,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _nativeRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
-      context.read<SingleTrackCubit>().silentRefreshIfStale();
-    });
+    _nativeRefresh.start();
   }
 
   @override
   void dispose() {
-    _nativeRefreshTimer?.cancel();
+    _nativeRefresh.dispose();
     super.dispose();
   }
 
@@ -2344,26 +2352,39 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
   // Own fallback poll: this screen can be pushed straight from home (no
   // detail screen underneath running its timer). silentRefreshIfStale
   // dedups against SSE, so double-timers never double-fetch.
-  Timer? _refreshTimer;
+  // Lifecycle-aware poll (see _VehicleDetailScreenState._nativeRefresh).
+  late final LifecycleRefresh _refresh = LifecycleRefresh(
+    interval: const Duration(seconds: 5),
+    onRefresh: () async {
+      if (!mounted) return;
+      await context.read<SingleTrackCubit>().silentRefreshIfStale();
+    },
+  );
   final List<LatLng> _liveTrail = <LatLng>[];
+  // Guards the trail against the app-scoped cubit's PREVIOUS vehicle: opening
+  // vehicle B after viewing A briefly renders A's model, and without this the
+  // trail drew a stray straight line from A's position to B's (same guard as
+  // _growLiveTrail on the detail screen).
+  int _trailVehicleId = 0;
 
   @override
   void initState() {
     super.initState();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (!mounted) return;
-      context.read<SingleTrackCubit>().silentRefreshIfStale();
-    });
+    _refresh.start();
   }
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _refresh.dispose();
     super.dispose();
   }
 
   void _growTrail(VehicleRecord vehicle) {
     if (vehicle.latitude == 0 && vehicle.longitude == 0) return;
+    if (_trailVehicleId != vehicle.id) {
+      _liveTrail.clear();
+      _trailVehicleId = vehicle.id;
+    }
     final next = LatLng(vehicle.latitude, vehicle.longitude);
     if (_liveTrail.isNotEmpty) {
       final meters = const Distance().as(LengthUnit.Meter, _liveTrail.last, next);

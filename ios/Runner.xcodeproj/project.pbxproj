@@ -17,6 +17,7 @@
 		F10000000000000000000007 /* generic_ignition_on.wav in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000007 /* generic_ignition_on.wav */; };
 		F10000000000000000000008 /* truck_ignition_on.wav in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000008 /* truck_ignition_on.wav */; };
 		3115F1469798490F6B5D038A /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E643E1DFA6E31BFB4E2F420C /* GoogleService-Info.plist */; };
+		F10000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -73,6 +74,7 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E643E1DFA6E31BFB4E2F420C /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Runner/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		F20000000000000000000009 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "PrivacyInfo.xcprivacy"; path = "Runner/PrivacyInfo.xcprivacy"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +115,7 @@
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				E643E1DFA6E31BFB4E2F420C /* GoogleService-Info.plist */,
+				F20000000000000000000009 /* PrivacyInfo.xcprivacy */,
 			);
 			sourceTree = "<group>";
 		};
@@ -252,6 +255,7 @@
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				3115F1469798490F6B5D038A /* GoogleService-Info.plist in Resources */,
+				F10000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

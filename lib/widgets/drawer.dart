@@ -16,7 +16,9 @@ import 'package:fleet_monitor/screens/geofence_screen.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/screens/reports_screen.dart';
 import 'package:fleet_monitor/screens/sub_users_screen.dart';
+import 'package:fleet_monitor/screens/subscriptions_screen.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
+import 'package:fleet_monitor/screens/web_page_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -246,6 +248,37 @@ class AppDrawer extends StatelessWidget {
                   context,
                   MaterialPageRoute<void>(
                     builder: (_) => const TripReplayScreen(),
+                  ),
+                );
+              },
+            ),
+            _drawerItem(
+              context,
+              icon: Icons.workspace_premium_outlined,
+              title: AppStrings.of(context).t('subscriptions_title'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SubscriptionsScreen(),
+                  ),
+                );
+              },
+            ),
+            _drawerItem(
+              context,
+              icon: Icons.privacy_tip_outlined,
+              title: AppStrings.of(context).t('privacy_policy'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => WebPageScreen(
+                      title: AppStrings.of(context).t('privacy_policy'),
+                      url: 'https://vahanconnect.com/privacy-policy',
+                    ),
                   ),
                 );
               },

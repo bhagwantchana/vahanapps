@@ -32,7 +32,7 @@ class SseClient {
   final String sig;
 
   final _controller = StreamController<SseEvent>.broadcast();
-  StreamSubscription<List<int>>? _subscription;
+  StreamSubscription<String>? _subscription;
   HttpClient? _client;
   bool _stopped = false;
   // Guards against a reconnect storm: onError, onDone, the catch and the
@@ -84,33 +84,45 @@ class SseClient {
 
       // SSE delivers events as text frames separated by blank lines. Each
       // frame has lines of the form `event: <name>` and `data: <body>`.
+      //
+      // IMPORTANT: decode + split via the streaming transformers, NOT per
+      // chunk. The server writes `event:` and `data:` as separate res.write
+      // calls (two HTTP chunks), and the old per-chunk `text.split('\n')`
+      // produced a trailing '' for every `...\n`-terminated chunk — which the
+      // frame-boundary branch misread as end-of-frame, resetting pendingEvent
+      // before the data line arrived. Every event then dispatched with an
+      // empty name and was dropped: the live feed was silently dead and the
+      // UI survived on the polling fallback alone. LineSplitter buffers
+      // partial lines across chunks (a blank line arrives exactly once per
+      // real frame boundary) and utf8.decoder carries split multi-byte
+      // sequences across chunk boundaries.
       String pendingEvent = '';
       final pendingData = StringBuffer();
 
-      _subscription = response.listen(
-        (chunk) {
-          final text = utf8.decode(chunk, allowMalformed: true);
-          for (final line in text.split('\n')) {
-            final trimmed = line.trimRight();
-            if (trimmed.isEmpty) {
-              // Frame boundary — dispatch if we collected anything.
-              if (pendingData.isNotEmpty) {
-                _emit(pendingEvent, pendingData.toString());
-              }
-              pendingEvent = '';
-              pendingData.clear();
-              continue;
+      _subscription = response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen(
+        (line) {
+          final trimmed = line.trimRight();
+          if (trimmed.isEmpty) {
+            // Frame boundary — dispatch if we collected anything.
+            if (pendingData.isNotEmpty) {
+              _emit(pendingEvent, pendingData.toString());
             }
-            if (trimmed.startsWith(':')) {
-              // SSE comment / keep-alive ping. Ignore.
-              continue;
-            }
-            if (trimmed.startsWith('event:')) {
-              pendingEvent = trimmed.substring(6).trim();
-            } else if (trimmed.startsWith('data:')) {
-              if (pendingData.isNotEmpty) pendingData.write('\n');
-              pendingData.write(trimmed.substring(5).trim());
-            }
+            pendingEvent = '';
+            pendingData.clear();
+            return;
+          }
+          if (trimmed.startsWith(':')) {
+            // SSE comment / keep-alive ping. Ignore.
+            return;
+          }
+          if (trimmed.startsWith('event:')) {
+            pendingEvent = trimmed.substring(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            if (pendingData.isNotEmpty) pendingData.write('\n');
+            pendingData.write(trimmed.substring(5).trim());
           }
         },
         onError: (Object error) {

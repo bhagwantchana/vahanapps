@@ -9,9 +9,11 @@ import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
 import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
+import 'package:fleet_monitor/screens/web_page_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
+import 'package:fleet_monitor/widgets/drawer.dart';
 import 'package:fleet_monitor/widgets/gap_widget.dart';
 import 'package:fleet_monitor/widgets/help_sport.dart';
 import 'package:fleet_monitor/widgets/profile_widget.dart';
@@ -19,7 +21,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.onSelectTab});
+
+  /// Lets the shared drawer switch dashboard tabs from this screen.
+  final ValueChanged<int>? onSelectTab;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -131,8 +136,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: AppDrawer(onSelectTab: widget.onSelectTab),
       appBar: AppBar(
         title: const AppLogo(),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu_rounded),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         actions: <Widget>[
           IconButton(
             onPressed: _logout,
@@ -277,6 +289,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         context,
                         MaterialPageRoute<void>(
                           builder: (_) => const HelpSupportScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _settingsItem(
+                    Icons.privacy_tip_outlined,
+                    AppStrings.of(context).t('privacy_policy'),
+                    AppStrings.of(context).t('privacy_policy_subtitle'),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => WebPageScreen(
+                            title: AppStrings.of(context).t('privacy_policy'),
+                            url: 'https://vahanconnect.com/privacy-policy',
+                          ),
                         ),
                       );
                     },

@@ -118,6 +118,9 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
       // letting a default 0 wipe it.
       satellites: incoming.satellites > 0 ? incoming.satellites : current.satellites,
       createdAt: incoming.createdAt,
+      // Epoch fix time drives the offline (grey) marker bucket — keep the
+      // prior one if a push ever arrives without it.
+      tsEpochMs: incoming.tsEpochMs > 0 ? incoming.tsEpochMs : current.tsEpochMs,
       hasLiveLocation: true,
     );
 

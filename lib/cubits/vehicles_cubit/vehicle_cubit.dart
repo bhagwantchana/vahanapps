@@ -47,7 +47,10 @@ class VehicleCubit extends Cubit<VehicleState> {
     final userId = result.data.first.userId;
     if (userId <= 0) return;
 
-    _sseClient = SseClient(userId: userId);
+    // sig: server-computed HMAC (empty while GPS_SSE_SECRET is unarmed).
+    // Same pattern as single_track_cubit — without it the stream answers 403
+    // the day the secret deploys and every fielded binary loses live updates.
+    _sseClient = SseClient(userId: userId, sig: result.sseSig);
     _sseSubscription = _sseClient!.stream.listen(_onSseEvent);
     _sseClient!.connect();
   }
@@ -96,6 +99,9 @@ class VehicleCubit extends Cubit<VehicleState> {
               // wire didn't carry a fresh (>0) one.
               satellites: incoming.satellites > 0 ? incoming.satellites : v.satellites,
               createdAt: incoming.createdAt,
+              // Epoch fix time drives the offline (grey) marker bucket —
+              // keep the prior one if a push ever arrives without it.
+              tsEpochMs: incoming.tsEpochMs > 0 ? incoming.tsEpochMs : v.tsEpochMs,
               hasLiveLocation: true,
             );
           }()
@@ -114,6 +120,7 @@ class VehicleCubit extends Cubit<VehicleState> {
         count: current.count,
         message: current.message,
         data: updatedList,
+        sseSig: current.sseSig,
       ),
     ));
   }

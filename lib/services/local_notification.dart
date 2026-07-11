@@ -149,6 +149,28 @@ class CustomNotificationSoundService {
   bool _isInitialized = false;
   String? _pendingNavigationPayload;
 
+  // Launch gate: a terminated-state notification tap can navigate BEFORE the
+  // splash screen's biometric prompt has run, landing anyone holding the
+  // phone inside the app with the lock silently skipped. Deep links stash
+  // until the gate opens (Dashboard mount = user passed splash biometric or
+  // logged in), then flush through the normal pending-payload path. Plain
+  // per-process bool: a fresh process always starts locked; foreground taps
+  // while the app is running are unaffected (gate already open).
+  bool _launchGateOpen = false;
+
+  /// Called when the user is legitimately inside the app (DashboardScreen
+  /// mount). Opens the deep-link gate and flushes any stashed payload.
+  void markLaunchGateOpen() {
+    _launchGateOpen = true;
+    flushPendingNavigation();
+  }
+
+  /// Drop any stashed deep link (splash routed to Login — the tap must not
+  /// survive into another user's fresh session).
+  void clearPendingNavigation() {
+    _pendingNavigationPayload = null;
+  }
+
   Future<void> initialize() async {
     if (_isInitialized) {
       return;
@@ -191,6 +213,26 @@ class CustomNotificationSoundService {
         _handleNotificationTap(details.payload);
       },
     );
+
+    // Terminated-state tap on a LOCALLY-shown notification (foreground
+    // re-shows, care reminders): the plugin delivers that launch payload only
+    // via getNotificationAppLaunchDetails — onDidReceiveNotificationResponse
+    // never fires for a dead process. Without this the tap cold-started the
+    // app to the plain home screen and the deep link was silently lost.
+    // (FCM-rendered notifications are covered by getInitialMessage; the two
+    // paths are mutually exclusive per launch.)
+    try {
+      final launchDetails =
+          await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp == true) {
+        final launchPayload = launchDetails!.notificationResponse?.payload;
+        if (launchPayload != null && launchPayload.trim().isNotEmpty) {
+          _pendingNavigationPayload = launchPayload;
+        }
+      }
+    } catch (_) {
+      // Best-effort — worst case the tap lands on the home screen as before.
+    }
 
     // Run non-critical setup in the background to avoid blocking app start
     _backgroundSetup();
@@ -480,6 +522,13 @@ class CustomNotificationSoundService {
       return;
     }
 
+    // Hold deep links until the splash biometric/auth gate has passed —
+    // markLaunchGateOpen() re-flushes this payload once the user is in.
+    if (!_launchGateOpen) {
+      _pendingNavigationPayload = payload;
+      return;
+    }
+
     final data = _decodePayload(payload);
     final kind = (data['notification_kind'] ?? '').toString();
     final vehicleId =
@@ -587,9 +636,23 @@ class CustomNotificationSoundService {
       // Cubit not provided in this context — detail screen will fetch
       // itself when it lands.
     }
-    navigator.push(
-      MaterialPageRoute<void>(builder: (_) => const VehicleDetailScreen()),
+    // Dashboard-first, then push the detail on a settled stack (same pattern
+    // as the maintenance_due/insurance_due handlers above). A bare push()
+    // left the splash screen mounted underneath on a terminated-state tap,
+    // and its delayed pushReplacement then REPLACED the just-pushed detail
+    // screen with Dashboard ~2s later (deep link visibly yanked away).
+    // pushNamedAndRemoveUntil disposes the splash, so its mounted-check
+    // aborts that navigation — and back from the detail lands on Dashboard.
+    navigator.pushNamedAndRemoveUntil(
+      DashboardScreen.routeName,
+      (route) => false,
+      arguments: 0,
     );
+    Future<void>.delayed(Duration.zero, () {
+      appNavigatorKey.currentState?.push(
+        MaterialPageRoute<void>(builder: (_) => const VehicleDetailScreen()),
+      );
+    });
   }
 
   Map<String, dynamic> _decodePayload(String? payload) {

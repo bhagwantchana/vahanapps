@@ -9,6 +9,7 @@ import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
 import 'package:fleet_monitor/services/force_update_service.dart';
+import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
@@ -78,12 +79,22 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) {
         return;
       }
+      // A stashed notification deep link must not survive a FAILED unlock —
+      // the Dashboard mount opens the deep-link gate for the success path.
+      if (!authenticated) {
+        CustomNotificationSoundService().clearPendingNavigation();
+      }
       Navigator.of(context).pushReplacementNamed(
         authenticated ? DashboardScreen.routeName : LoginScreen.routeName,
       );
       return;
     }
 
+    if (!hasSession) {
+      // No session: any stashed deep link belongs to a logged-out state —
+      // drop it so it can't fire into the next user's fresh login.
+      CustomNotificationSoundService().clearPendingNavigation();
+    }
     Navigator.of(context).pushReplacementNamed(
       hasSession ? DashboardScreen.routeName : LoginScreen.routeName,
     );

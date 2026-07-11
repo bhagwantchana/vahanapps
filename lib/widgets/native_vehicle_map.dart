@@ -78,12 +78,38 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   static const String _fallbackImageName = 'veh_fallback';
   static const double _epsilon = 0.0000015;
 
-  final Dio _dio = Dio();
+  /// Bounded timeouts: icon downloads now also happen mid-session (first
+  /// time a status variant is needed) inside _rebuild, and a black-holed
+  /// request with Dio's default infinite timeouts would stall trail redraw
+  /// and symbol add/remove until the OS socket gives up.
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 8),
+  ));
   MapLibreMapController? _controller;
   bool _styleReady = false;
 
-  /// Registered MapLibre image names (one per distinct vehicle-icon URL).
+  /// Bumped on every style (re)load. A _rebuild pass that started against an
+  /// older style bails after each await instead of committing dead symbols /
+  /// image names into the caches _onStyleLoaded just cleared.
+  int _styleGeneration = 0;
+
+  /// Registered MapLibre image names (one per distinct vehicle-icon URL +
+  /// status variant) whose bytes are the REAL downloaded icon.
   final Set<String> _registeredImages = <String>{};
+
+  /// Names currently backed by the bundled placeholder because every
+  /// download candidate failed (e.g. offline at first sight of a variant).
+  /// Kept out of [_registeredImages] so a later tick retries the download
+  /// and heals the marker in place.
+  final Set<String> _placeholderImages = <String>{};
+
+  /// Last failed download attempt per image name. Retries honour a cooldown
+  /// so a dead icon host (or a permanently-missing icon file) costs at most
+  /// one attempt per cooldown window instead of stalling _rebuild with
+  /// timeout-bound requests on every data tick.
+  final Map<String, DateTime> _iconFailedAt = <String, DateTime>{};
+  static const Duration _iconRetryCooldown = Duration(seconds: 45);
 
   /// vehicleId → live Symbol on the map.
   final Map<int, Symbol> _symbols = <int, Symbol>{};
@@ -112,6 +138,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   Map<int, double> _courseStart = <int, double>{};
   Map<int, double> _courseEnd = <int, double>{};
   final Map<int, double> _lastPushedCourse = <int, double>{};
+
+  /// Icon image name currently applied to each symbol — lets the status-
+  /// colored icon swap (moving/idle/stopped/offline) skip the channel when
+  /// nothing changed, so a parked vehicle never re-pushes its image.
+  final Map<int, String> _lastPushedIcon = <int, String>{};
 
   late final AnimationController _animationController = AnimationController(
     vsync: this,
@@ -202,9 +233,55 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     return LatLng(vehicle.latitude, vehicle.longitude);
   }
 
-  String _imageName(VehicleRecord vehicle) {
+  /// Image name for a vehicle at a given status. The status is passed in
+  /// (snapshotted once per _rebuild pass) rather than derived here, so
+  /// _ensureImages, addSymbol and the swap loop always agree on the SAME
+  /// name even if the wall clock crosses the 30-min offline boundary
+  /// between them mid-pass.
+  String _imageName(VehicleRecord vehicle, String status) {
     final url = vehicle.vehicleIconUrl.trim();
-    return url.isEmpty ? _fallbackImageName : 'veh_${url.hashCode}';
+    if (url.isEmpty) {
+      return _fallbackImageName;
+    }
+    return 'veh_${url.hashCode}_$status';
+  }
+
+  /// Same status buckets as the webmaps' getVehicleStatus(): a fix older
+  /// than 30 minutes is offline (grey), ACC off is stopped (red), >5 km/h
+  /// is moving (green), otherwise idle (orange). The offline gate uses the
+  /// epoch `ts` the wire carries — NEVER the created_at string, which is a
+  /// zone-less server-local timestamp that parsed phone-local flags every
+  /// live vehicle offline (the exact incident the webmaps documented and
+  /// fixed the same way). No ts on the record → no offline bucket, so a
+  /// missing field can never paint a moving vehicle grey.
+  String _vehicleStatus(VehicleRecord vehicle) {
+    final tsMs = vehicle.tsEpochMs;
+    if (tsMs > 0 &&
+        DateTime.now().millisecondsSinceEpoch - tsMs > 30 * 60 * 1000) {
+      return 'offline';
+    }
+    if (vehicle.isStopped) {
+      return 'stopped';
+    }
+    if (vehicle.isMoving) {
+      return 'moving';
+    }
+    return 'idle';
+  }
+
+  /// URL of the pre-generated status-colored variant that the webmaps also
+  /// use: assets/icons/car.png → assets/icons/status/car_moving.png. Falls
+  /// back to the plain icon at download time if the variant doesn't exist.
+  String _statusIconUrl(String iconUrl, String status) {
+    final slash = iconUrl.lastIndexOf('/');
+    if (slash < 0) {
+      return '';
+    }
+    final dir = iconUrl.substring(0, slash);
+    final file = iconUrl.substring(slash + 1);
+    final dot = file.lastIndexOf('.');
+    final stem = dot > 0 ? file.substring(0, dot) : file;
+    return '$dir/status/${stem}_$status.png';
   }
 
   LatLng _lerpLatLng(LatLng start, LatLng end, double t) {
@@ -315,6 +392,22 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     _trailLine = null;
     _renderedTrailPoints = <LatLng>[];
 
+    // The same applies to style IMAGES and symbols: a style (re)load — e.g.
+    // the map-provider setting flipping between liberty and positron, which
+    // recreates the platform view via the ValueKey — starts with zero
+    // registered images and zero annotations. Stale caches here would make
+    // _ensureImages skip re-registering and the add loop skip re-adding,
+    // leaving every marker invisible until the screen is left.
+    _styleGeneration++;
+    _registeredImages.clear();
+    _placeholderImages.clear();
+    _iconFailedAt.clear();
+    _symbols.clear();
+    _addingSymbols.clear();
+    _lastPushed.clear();
+    _lastPushedCourse.clear();
+    _lastPushedIcon.clear();
+
     // Vehicle markers must always be visible — never hidden by MapLibre's
     // default label/icon collision detection.
     await controller.setSymbolIconAllowOverlap(true);
@@ -350,7 +443,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
   // ── Marker bitmaps ─────────────────────────────────────────────────────
 
-  Future<void> _ensureImages(List<VehicleRecord> vehicles) async {
+  Future<void> _ensureImages(
+    List<VehicleRecord> vehicles,
+    Map<int, String> statusById,
+    int generation,
+  ) async {
     final controller = _controller;
     if (controller == null || !_styleReady) {
       return;
@@ -358,52 +455,126 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
     // Always have the fallback registered first.
     if (!_registeredImages.contains(_fallbackImageName)) {
-      final bytes = await _composeIconBytes('');
-      if (!mounted || _controller == null) {
+      final (bytes, _) = await _composeIconBytes(const <String>[]);
+      if (!mounted || _controller == null || generation != _styleGeneration) {
         return;
       }
-      await _controller!.addImage(_fallbackImageName, bytes);
+      try {
+        await _controller!.addImage(_fallbackImageName, bytes);
+      } catch (_) {
+        return; // transient channel failure — retry on the next data tick
+      }
+      if (generation != _styleGeneration) {
+        // Style reloaded mid-push: the bytes landed in the dead style. Do
+        // NOT mark registered in the new generation's (cleared) cache.
+        return;
+      }
       _registeredImages.add(_fallbackImageName);
     }
 
+    // Names already attempted in THIS pass — several vehicles often share
+    // one icon+status, and on the failure path the name wouldn't reach
+    // _registeredImages, so without this each sharer would re-pay the full
+    // download timeout inside a single pass.
+    final attempted = <String>{};
+
     for (final vehicle in vehicles) {
-      final name = _imageName(vehicle);
-      if (_registeredImages.contains(name)) {
+      final status = statusById[vehicle.id];
+      if (status == null) {
         continue;
       }
-      final bytes = await _composeIconBytes(vehicle.vehicleIconUrl.trim());
-      if (!mounted || _controller == null) {
+      final name = _imageName(vehicle, status);
+      if (_registeredImages.contains(name) || attempted.contains(name)) {
+        continue;
+      }
+      final url = vehicle.vehicleIconUrl.trim();
+      if (url.isEmpty) {
+        continue; // fallback image already registered above
+      }
+      final failedAt = _iconFailedAt[name];
+      if (failedAt != null &&
+          DateTime.now().difference(failedAt) < _iconRetryCooldown) {
+        continue; // recently failed — don't stall this pass, retry later
+      }
+      attempted.add(name);
+      // Status-colored variant first (what the webmaps show), plain icon as
+      // the fallback — so a missing variant can never break a marker.
+      final (bytes, fetched) = await _composeIconBytes(<String>[
+        _statusIconUrl(url, status),
+        url,
+      ]);
+      if (!mounted || _controller == null || generation != _styleGeneration) {
         return;
       }
-      await _controller!.addImage(name, bytes);
-      _registeredImages.add(name);
+      if (fetched) {
+        _iconFailedAt.remove(name);
+      } else {
+        _iconFailedAt[name] = DateTime.now();
+        if (_placeholderImages.contains(name)) {
+          // Placeholder is already in the style — nothing new to push.
+          continue;
+        }
+      }
+      try {
+        await _controller!.addImage(name, bytes);
+      } catch (_) {
+        // Push failed WITHOUT a style reload (e.g. surface teardown while
+        // backgrounding). Clear the cooldown so the next tick retries
+        // immediately — otherwise new symbols could point at a missing
+        // image for the whole cooldown window.
+        _iconFailedAt.remove(name);
+        return;
+      }
+      if (generation != _styleGeneration) {
+        // Style reloaded mid-push: bytes landed in the dead style — bail
+        // without committing so the new generation re-registers cleanly.
+        return;
+      }
+      if (fetched) {
+        // Real icon bytes — done for the session.
+        _registeredImages.add(name);
+        _placeholderImages.remove(name);
+      } else {
+        // Transient failure (dead zone / server blip): the bundled bytes
+        // keep the marker visible, but do NOT cache the name as registered —
+        // after the cooldown the download is retried, and addImage under
+        // the same name replaces the placeholder in the style, healing the
+        // marker in place. The swap loop's registered-image gate also keeps
+        // an already-correct icon from being downgraded to this placeholder.
+        _placeholderImages.add(name);
+      }
     }
   }
 
-  Future<Uint8List> _composeIconBytes(String url) async {
-    Uint8List raw;
-    try {
+  /// Downloads and renders the first candidate URL that works; falls back to
+  /// the bundled asset when every candidate fails (or none were given). The
+  /// bool is true when a candidate actually rendered (or none were
+  /// requested), false when every candidate failed and the bundled
+  /// placeholder was used. The decode/render runs INSIDE the per-candidate
+  /// try: a 200 response with a non-image body (error page, corrupt PNG)
+  /// counts as a failed candidate instead of throwing out of _rebuild.
+  Future<(Uint8List, bool)> _composeIconBytes(List<String> candidateUrls) async {
+    for (final url in candidateUrls) {
       if (url.isEmpty) {
-        raw = (await rootBundle.load('assets/images/map.png'))
-            .buffer
-            .asUint8List();
-      } else {
+        continue;
+      }
+      try {
         final response = await _dio.get<List<int>>(
           url,
           options: Options(responseType: ResponseType.bytes),
         );
         final data = response.data;
-        raw = (data == null || data.isEmpty)
-            ? (await rootBundle.load('assets/images/map.png'))
-                .buffer
-                .asUint8List()
-            : Uint8List.fromList(data);
+        if (data == null || data.isEmpty) {
+          continue;
+        }
+        return (await _renderMarkerPng(Uint8List.fromList(data)), true);
+      } catch (_) {
+        // bad candidate (network error or undecodable body) — try the next
       }
-    } catch (_) {
-      raw =
-          (await rootBundle.load('assets/images/map.png')).buffer.asUint8List();
     }
-    return _renderMarkerPng(raw);
+    final raw =
+        (await rootBundle.load('assets/images/map.png')).buffer.asUint8List();
+    return (await _renderMarkerPng(raw), candidateUrls.isEmpty);
   }
 
   /// Draws the icon bytes centered on a transparent canvas with a soft,
@@ -480,9 +651,21 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
     _rebuildBusy = true;
     try {
+      // Style generation this pass belongs to. If the style reloads while an
+      // await below is in flight (map-provider flip recreating the platform
+      // view), the pass must NOT commit its dead symbols / image names into
+      // the caches _onStyleLoaded just cleared — the dirty re-run rebuilds
+      // everything against the fresh style instead.
+      final gen = _styleGeneration;
       final visible = _visibleVehicles;
-      await _ensureImages(visible);
-      if (!mounted || _controller == null) {
+      // Snapshot each vehicle's status ONCE for this whole pass so image
+      // registration, addSymbol and the swap loop can never disagree on the
+      // icon name (the offline bucket is wall-clock dependent).
+      final statusById = <int, String>{
+        for (final vehicle in visible) vehicle.id: _vehicleStatus(vehicle),
+      };
+      await _ensureImages(visible, statusById, gen);
+      if (!mounted || _controller == null || gen != _styleGeneration) {
         return;
       }
 
@@ -495,10 +678,14 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         final symbol = _symbols.remove(id);
         _lastPushed.remove(id);
         _lastPushedCourse.remove(id);
+        _lastPushedIcon.remove(id);
         if (symbol != null) {
           try {
             await _controller!.removeSymbol(symbol);
           } catch (_) {}
+          if (!mounted || _controller == null || gen != _styleGeneration) {
+            return;
+          }
         }
       }
 
@@ -511,24 +698,74 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         _addingSymbols.add(vehicle.id);
         final geometry = _renderedPositions[vehicle.id] ?? _toLatLng(vehicle);
         final rotation = _renderedCourse[vehicle.id] ?? (vehicle.course % 360);
+        final iconName =
+            _imageName(vehicle, statusById[vehicle.id] ?? 'stopped');
         try {
           final symbol = await _controller!.addSymbol(
             SymbolOptions(
               geometry: geometry,
-              iconImage: _imageName(vehicle),
+              iconImage: iconName,
               iconSize: 1.0,
               iconAnchor: 'center',
               iconRotate: rotation,
             ),
             <String, dynamic>{'vid': vehicle.id},
           );
+          if (gen != _styleGeneration) {
+            // Style reloaded mid-add: this symbol belongs to the dead style.
+            // Drop it (best effort) instead of committing it to the caches —
+            // the dirty re-run re-adds against the fresh style.
+            try {
+              await _controller?.removeSymbol(symbol);
+            } catch (_) {}
+            return;
+          }
           _symbols[vehicle.id] = symbol;
           _lastPushed[vehicle.id] = geometry;
           _lastPushedCourse[vehicle.id] = rotation;
+          _lastPushedIcon[vehicle.id] = iconName;
         } catch (_) {
           // ignore — will retry on the next data update
         } finally {
           _addingSymbols.remove(vehicle.id);
+        }
+      }
+
+      // Swap the status-colored icon in place when a vehicle's status
+      // changed (moving green / idle orange / stopped red / offline grey —
+      // the same variants the webmaps show). updateSymbol touches ONLY
+      // iconImage: geometry, rotation and the glide animation are untouched,
+      // so there is no jump and no blink. Skipped entirely while the image
+      // name is unchanged — a parked fleet costs nothing per tick.
+      for (final vehicle in visible) {
+        final symbol = _symbols[vehicle.id];
+        if (symbol == null) {
+          continue;
+        }
+        final iconName =
+            _imageName(vehicle, statusById[vehicle.id] ?? 'stopped');
+        if (_lastPushedIcon[vehicle.id] == iconName) {
+          continue;
+        }
+        // Never point a symbol at an image that isn't registered — that
+        // would blank the marker. _ensureImages above registers current
+        // statuses; if it bailed early, keep the old icon this tick.
+        if (!_registeredImages.contains(iconName)) {
+          continue;
+        }
+        _lastPushedIcon[vehicle.id] = iconName;
+        try {
+          await _controller!.updateSymbol(
+            symbol,
+            SymbolOptions(iconImage: iconName),
+          );
+        } catch (_) {
+          // Push failed → forget it so the next data tick retries instead
+          // of the stale color sticking for the whole session.
+          _lastPushedIcon.remove(vehicle.id);
+        }
+        if (!mounted || _controller == null || gen != _styleGeneration) {
+          return;
         }
       }
 

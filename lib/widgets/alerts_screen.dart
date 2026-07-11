@@ -8,13 +8,17 @@ import 'package:fleet_monitor/models/alert_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/repositorys/alerts_repository.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
+import 'package:fleet_monitor/widgets/drawer.dart';
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 class AlertsScreen extends StatefulWidget {
-  const AlertsScreen({super.key});
+  const AlertsScreen({super.key, this.onSelectTab});
+
+  /// Lets the shared drawer switch dashboard tabs from this screen.
+  final ValueChanged<int>? onSelectTab;
 
   @override
   State<AlertsScreen> createState() => _AlertsScreenState();
@@ -227,7 +231,16 @@ class _AlertsScreenState extends State<AlertsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: const AppLogo()),
+      drawer: AppDrawer(onSelectTab: widget.onSelectTab),
+      appBar: AppBar(
+        title: const AppLogo(),
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(LucideIcons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+      ),
       body: Column(
         children: <Widget>[
           Padding(
