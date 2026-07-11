@@ -35,13 +35,13 @@ workflows:
       # "No matching profiles found". We create the cert + profile explicitly in
       # the scripts below (fetch-signing-files --create) instead.
       #
-      # `signing` group must contain CERTIFICATE_PRIVATE_KEY (secure var, set
-      # once in the Codemagic UI): the RSA private key backing the iOS
+      # `signing` group must contain CERT_KEY_B64 (secure var, set once in the
+      # Codemagic UI): base64 of the RSA private key backing the iOS
       # Distribution certificate. A PERSISTENT key is required — the old
       # per-build `openssl genrsa` minted a NEW key every run, so build #2
       # couldn't use build #1's certificate and cert creation eventually hit
-      # Apple's 2-distribution-cert limit ("code signing" step failing in
-      # seconds right after the Bundle ID lookup).
+      # Apple's 2-distribution-cert limit. Base64 (not raw PEM) because a
+      # multi-line PEM in a Codemagic secure var gets mangled and rejected.
       groups:
         - signing
       vars:
@@ -64,22 +64,32 @@ workflows:
           # the App Store provisioning profile via the API when they don't exist
           # yet (first build). No Mac and no manual Developer-portal steps needed.
           keychain initialize
-          # PERSISTENT signing key from the Codemagic env group `signing`
-          # (CERTIFICATE_PRIVATE_KEY, secure). Every build reuses the SAME key,
-          # so the distribution certificate created on the first build keeps
-          # matching on every later build. (The old per-build `openssl genrsa`
-          # broke repeat builds: fresh key -> existing cert unusable -> new cert
-          # attempt -> Apple's distribution-cert limit.)
-          if [ -z "$CERTIFICATE_PRIVATE_KEY" ]; then
-            echo "ERROR: CERTIFICATE_PRIVATE_KEY env var is not set."
-            echo "Add it once in Codemagic: App settings -> Environment variables ->"
-            echo "group 'signing' -> CERTIFICATE_PRIVATE_KEY (Secure) = an RSA private key"
-            echo "(generate locally with: openssl genrsa 2048)"
+          # PERSISTENT signing key from the Codemagic env group `signing`.
+          # Stored BASE64-encoded (single line) as CERT_KEY_B64 — a raw
+          # multi-line PEM pasted into a Codemagic secure var gets its newlines
+          # mangled and the CLI rejects it ("certificate-key ... is not valid").
+          # Decode to a file here and pass with @file. Every build reuses the
+          # SAME key, so the distribution certificate created on the first build
+          # keeps matching on every later build (the old per-build
+          # `openssl genrsa` made a fresh key each run -> new cert each time ->
+          # Apple's distribution-cert limit).
+          if [ -z "$CERT_KEY_B64" ]; then
+            echo "ERROR: CERT_KEY_B64 env var is not set."
+            echo "Add it once in Codemagic: app -> Environment variables ->"
+            echo "group 'signing' -> CERT_KEY_B64 (Secure) = base64 of an RSA"
+            echo "private key. Generate locally with:"
+            echo "  openssl genrsa 2048 | openssl base64 -A"
+            exit 1
+          fi
+          printf '%s' "$CERT_KEY_B64" | openssl base64 -d -A > /tmp/codemagic_cert_key.pem
+          if ! openssl rsa -in /tmp/codemagic_cert_key.pem -noout -check >/dev/null 2>&1; then
+            echo "ERROR: CERT_KEY_B64 did not decode to a valid RSA private key."
+            echo "Re-copy the ENTIRE base64 string (no spaces/line breaks)."
             exit 1
           fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --certificate-key=@file:/tmp/codemagic_cert_key.pem \
             --create
           keychain add-certificates
       - name: Get Flutter packages
