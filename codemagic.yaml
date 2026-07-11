@@ -34,6 +34,16 @@ workflows:
       # phase — on a brand-new app it finds nothing and fails with
       # "No matching profiles found". We create the cert + profile explicitly in
       # the scripts below (fetch-signing-files --create) instead.
+      #
+      # `signing` group must contain CERTIFICATE_PRIVATE_KEY (secure var, set
+      # once in the Codemagic UI): the RSA private key backing the iOS
+      # Distribution certificate. A PERSISTENT key is required — the old
+      # per-build `openssl genrsa` minted a NEW key every run, so build #2
+      # couldn't use build #1's certificate and cert creation eventually hit
+      # Apple's 2-distribution-cert limit ("code signing" step failing in
+      # seconds right after the Bundle ID lookup).
+      groups:
+        - signing
       vars:
         # the numeric "Apple ID" of the app from App Store Connect (App Information)
         APP_STORE_APPLE_ID: 6768335248
@@ -54,15 +64,22 @@ workflows:
           # the App Store provisioning profile via the API when they don't exist
           # yet (first build). No Mac and no manual Developer-portal steps needed.
           keychain initialize
-          # Generate the signing private key right here, inside the build (it
-          # lives only on this CI machine — NO Codemagic env var / group to set
-          # up). --create then mints the iOS Distribution certificate via the
-          # App Store Connect API using this key, so the whole signing step is
-          # self-contained and can't fail on a missing env var.
-          openssl genrsa -out /tmp/codemagic_cert_key.pem 2048
+          # PERSISTENT signing key from the Codemagic env group `signing`
+          # (CERTIFICATE_PRIVATE_KEY, secure). Every build reuses the SAME key,
+          # so the distribution certificate created on the first build keeps
+          # matching on every later build. (The old per-build `openssl genrsa`
+          # broke repeat builds: fresh key -> existing cert unusable -> new cert
+          # attempt -> Apple's distribution-cert limit.)
+          if [ -z "$CERTIFICATE_PRIVATE_KEY" ]; then
+            echo "ERROR: CERTIFICATE_PRIVATE_KEY env var is not set."
+            echo "Add it once in Codemagic: App settings -> Environment variables ->"
+            echo "group 'signing' -> CERTIFICATE_PRIVATE_KEY (Secure) = an RSA private key"
+            echo "(generate locally with: openssl genrsa 2048)"
+            exit 1
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@file:/tmp/codemagic_cert_key.pem \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
             --create
           keychain add-certificates
       - name: Get Flutter packages
