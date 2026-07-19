@@ -28,6 +28,7 @@ class LocalStorage {
     // Also clear role/identity so a stale isSubUser/username can't bleed into
     // the next login (e.g. the logout → failed-login window).
     await clearValue('isSubUser');
+    await clearValue('viewMode');
     await clearValue('username');
     return true;
   }

@@ -7,6 +7,7 @@ import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
+import 'package:fleet_monitor/screens/student_map_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
 import 'package:fleet_monitor/services/force_update_service.dart';
 import 'package:fleet_monitor/services/local_notification.dart';
@@ -72,6 +73,21 @@ class _SplashScreenState extends State<SplashScreen>
     final hasSession =
         isLogin == 'islogin' && token != null && token.isNotEmpty;
 
+    // Landing route for an authenticated session: a student-mode sub-user gets
+    // the locked single-map screen; everyone else the full dashboard.
+    final viewMode = await LocalStorage.readValue(PreferencesKey.viewMode);
+    final isSub = await LocalStorage.readValue(PreferencesKey.isSubUser);
+    if (!mounted) {
+      return;
+    }
+    final bool isStudentSession = isSub == '1' && viewMode == 'student';
+    final homeRoute = isStudentSession
+        ? StudentMapScreen.routeName
+        : DashboardScreen.routeName;
+    // Keep the notification service in sync so a tapped alert on a restarted
+    // student session routes to the map, not the dashboard.
+    CustomNotificationSoundService().setStudentMode(isStudentSession);
+
     if (hasSession && biometricEnabled) {
       final authenticated = await BiometricAuthService.authenticate(
         reason: 'Use system biometrics to unlock VahanConnect',
@@ -85,7 +101,7 @@ class _SplashScreenState extends State<SplashScreen>
         CustomNotificationSoundService().clearPendingNavigation();
       }
       Navigator.of(context).pushReplacementNamed(
-        authenticated ? DashboardScreen.routeName : LoginScreen.routeName,
+        authenticated ? homeRoute : LoginScreen.routeName,
       );
       return;
     }
@@ -96,7 +112,7 @@ class _SplashScreenState extends State<SplashScreen>
       CustomNotificationSoundService().clearPendingNavigation();
     }
     Navigator.of(context).pushReplacementNamed(
-      hasSession ? DashboardScreen.routeName : LoginScreen.routeName,
+      hasSession ? homeRoute : LoginScreen.routeName,
     );
   }
 

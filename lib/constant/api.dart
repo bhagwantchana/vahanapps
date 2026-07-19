@@ -54,6 +54,7 @@ class AppUrl {
   static const String listSubUsers = '${baseUrl}listSubUsers';
   static const String deleteSubUser = '${baseUrl}deleteSubUser';
   static const String resetSubUserPassword = '${baseUrl}resetSubUserPassword';
+  static const String setSubUserViewMode = '${baseUrl}setSubUserViewMode';
   static const String assignVehiclesToSubUser =
       '${baseUrl}assignVehiclesToSubUser';
   static const String unassignVehicleFromSubUser =

@@ -450,6 +450,8 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
   bool _obscure = true;
   bool _saving = false;
   String? _error;
+  // 'general' = full read-only app; 'student' = locked single-map screen.
+  String _viewMode = 'general';
 
   @override
   void dispose() {
@@ -492,6 +494,7 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
         password: pwd,
         email: _emailCtl.text.trim(),
         phone: _phoneCtl.text.trim(),
+        viewMode: _viewMode,
       );
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -546,6 +549,34 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
                       size: 18),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 )),
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: DropdownButtonFormField<String>(
+                value: _viewMode,
+                decoration: const InputDecoration(
+                  labelText: 'Account type',
+                  prefixIcon: Icon(LucideIcons.userCog, size: 18),
+                  border: OutlineInputBorder(),
+                  helperText:
+                      'Student = locked single-map screen (no menu/details)',
+                  helperMaxLines: 2,
+                ),
+                items: const <DropdownMenuItem<String>>[
+                  DropdownMenuItem<String>(
+                    value: 'general',
+                    child: Text('General (full app)'),
+                  ),
+                  DropdownMenuItem<String>(
+                    value: 'student',
+                    child: Text('Student (map only)'),
+                  ),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (value) => setState(
+                        () => _viewMode = value ?? 'general'),
+              ),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Container(

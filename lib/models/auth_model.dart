@@ -33,6 +33,9 @@ class AuthData {
   final bool isSubUser;
   final int parentUserId;
   final String username;
+  // Sub-user view mode (added 2026-07-19). 'general' = full read-only app;
+  // 'student' = locked single-map screen. Only ever 'student' for a sub-user.
+  final String viewMode;
 
   const AuthData({
     this.xAuthToken = '',
@@ -42,7 +45,11 @@ class AuthData {
     this.isSubUser = false,
     this.parentUserId = 0,
     this.username = '',
+    this.viewMode = 'general',
   });
+
+  // True only for a sub-user explicitly in student mode.
+  bool get isStudentMode => isSubUser && viewMode == 'student';
 
   factory AuthData.fromJson(Map<String, dynamic> json) {
     return AuthData(
@@ -55,6 +62,9 @@ class AuthData {
       isSubUser: toInt(json['is_sub_user']) == 1,
       parentUserId: toInt(json['parent_user_id']),
       username: toStringValue(json['username']),
+      viewMode: toStringValue(json['view_mode']).isEmpty
+          ? 'general'
+          : toStringValue(json['view_mode']),
     );
   }
 }

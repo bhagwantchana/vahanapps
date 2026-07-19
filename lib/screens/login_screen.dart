@@ -6,6 +6,7 @@ import 'package:fleet_monitor/gen/assets.gen.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/providers/login_provider.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
+import 'package:fleet_monitor/screens/student_map_screen.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -26,9 +27,15 @@ class _LoginScreenState extends State<LoginScreen> {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthLoggedInState) {
-          context.read<HomeCubit>().fetchHomeData();
           Navigator.popUntil(context, (route) => route.isFirst);
-          Navigator.pushReplacementNamed(context, DashboardScreen.routeName);
+          if (state.isStudent) {
+            // Student sub-user → locked single-map home (no dashboard fetch;
+            // the map screen loads its own scoped vehicle list).
+            Navigator.pushReplacementNamed(context, StudentMapScreen.routeName);
+          } else {
+            context.read<HomeCubit>().fetchHomeData();
+            Navigator.pushReplacementNamed(context, DashboardScreen.routeName);
+          }
         }
       },
       child: Scaffold(

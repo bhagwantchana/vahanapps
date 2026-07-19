@@ -57,6 +57,7 @@ class SubUserRepository {
     required String password,
     String email = '',
     String phone = '',
+    String viewMode = 'general',
   }) async {
     final data = await _post(AppUrl.createSubUser, {
       'first_name': firstName,
@@ -65,6 +66,7 @@ class SubUserRepository {
       'password': password,
       'email': email,
       'phone': phone,
+      'view_mode': viewMode,
     });
     return SubUser(
       id: (data['sub_user_id'] is int)
@@ -85,6 +87,12 @@ class SubUserRepository {
   Future<void> resetPassword(int subUserId, String newPassword) => _post(
         AppUrl.resetSubUserPassword,
         {'sub_user_id': subUserId, 'new_password': newPassword},
+      );
+
+  /// Switch an existing sub-user between 'general' and 'student' view modes.
+  Future<void> setViewMode(int subUserId, String viewMode) => _post(
+        AppUrl.setSubUserViewMode,
+        {'sub_user_id': subUserId, 'view_mode': viewMode},
       );
 
   Future<int> assignVehicles(int subUserId, List<int> vehicleIds) async {

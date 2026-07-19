@@ -2,6 +2,7 @@ import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/cubits/auth_cubit/auth_state.dart';
 import 'package:fleet_monitor/repositorys/auth_repository.dart';
+import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class AuthCubit extends Cubit<AuthState> {
@@ -46,9 +47,18 @@ class AuthCubit extends Cubit<AuthState> {
       final isSub = result.data?.isSubUser == true;
       await LocalStorage.setValue(
         PreferencesKey.isSubUser, isSub ? '1' : '0');
+      // Persist the view mode so splash (app restart) can route the student
+      // straight to the locked map without re-hitting the network. Non-student
+      // and primary accounts save 'general' (no behaviour change).
+      final isStudent = result.data?.isStudentMode == true;
+      await LocalStorage.setValue(
+        PreferencesKey.viewMode, isStudent ? 'student' : 'general');
       await LocalStorage.setValue(
         PreferencesKey.username, result.data?.username ?? '');
-      emit(AuthLoggedInState(token));
+      // Tell the notification service so a tapped alert routes to the locked
+      // student map instead of the full dashboard.
+      CustomNotificationSoundService().setStudentMode(isStudent);
+      emit(AuthLoggedInState(token, isStudent: isStudent));
     } catch (error) {
       emit(AuthErrorState(error.toString().replaceFirst('Exception: ', '')));
     }
@@ -58,6 +68,7 @@ class AuthCubit extends Cubit<AuthState> {
     final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
     await _authRepository.logoutRepo(token);
     await LocalStorage.clearSession();
+    CustomNotificationSoundService().setStudentMode(false);
     emit(AuthLoggedOutState());
   }
 }

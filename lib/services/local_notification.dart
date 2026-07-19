@@ -13,6 +13,7 @@ import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart'
 import 'package:fleet_monitor/screens/assigned_vehicle_maintenance_screen.dart';
 import 'package:fleet_monitor/screens/dashboard.dart';
 import 'package:fleet_monitor/screens/document_vault_screen.dart';
+import 'package:fleet_monitor/screens/student_map_screen.dart';
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/foundation.dart';
@@ -148,6 +149,13 @@ class CustomNotificationSoundService {
       FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
   String? _pendingNavigationPayload;
+
+  // Student-mode lock: a "student" sub-user lives only on the locked single-map
+  // screen, so a notification tap must NOT drop them into the full dashboard /
+  // alerts / vehicle-detail flow. Set at login + session restore, cleared on
+  // logout. When true, every deep link routes to the student map instead.
+  bool _isStudentMode = false;
+  void setStudentMode(bool value) => _isStudentMode = value;
 
   // Launch gate: a terminated-state notification tap can navigate BEFORE the
   // splash screen's biometric prompt has run, landing anyone holding the
@@ -526,6 +534,16 @@ class CustomNotificationSoundService {
     // markLaunchGateOpen() re-flushes this payload once the user is in.
     if (!_launchGateOpen) {
       _pendingNavigationPayload = payload;
+      return;
+    }
+
+    // Student sub-user is locked to the single-map screen: every notification
+    // tap just brings them (back) to their map — never the dashboard/alerts.
+    if (_isStudentMode) {
+      navigator.pushNamedAndRemoveUntil(
+        StudentMapScreen.routeName,
+        (route) => false,
+      );
       return;
     }
 

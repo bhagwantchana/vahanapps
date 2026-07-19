@@ -21,10 +21,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, this.onSelectTab});
+  const ProfileScreen({super.key, this.onSelectTab, this.isStudent = false});
 
   /// Lets the shared drawer switch dashboard tabs from this screen.
   final ValueChanged<int>? onSelectTab;
+
+  /// Locked "student" sub-user mode: no sidebar drawer (which would expose
+  /// Dashboard/Vehicles/etc. with no way back), a plain back button instead of
+  /// the hamburger, and no Account Settings section. Everything else (name,
+  /// security, preferences) stays.
+  final bool isStudent;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -136,15 +142,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: AppDrawer(onSelectTab: widget.onSelectTab),
+      // Student mode: no drawer at all (it would expose the full app menu with
+      // no route back to the locked map).
+      drawer: widget.isStudent ? null : AppDrawer(onSelectTab: widget.onSelectTab),
       appBar: AppBar(
         title: const AppLogo(),
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu_rounded),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
+        leading: widget.isStudent
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu_rounded),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
         actions: <Widget>[
           IconButton(
             onPressed: _logout,
@@ -254,21 +267,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                   GapWidget(size: 16),
-                  _sectionHeader(AppStrings.of(context).t('account_settings')),
-                  _settingsItem(
-                    Icons.person_outline_rounded,
-                    AppStrings.of(context).t('view_edit_profile'),
-                    AppStrings.of(context).t('change_basic_info'),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ProfileWidget(),
-                        ),
-                      );
-                    },
-                  ),
-                  GapWidget(size: 8),
+                  // Account Settings (view/edit profile) is hidden for a
+                  // locked student sub-user.
+                  if (!widget.isStudent) ...<Widget>[
+                    _sectionHeader(AppStrings.of(context).t('account_settings')),
+                    _settingsItem(
+                      Icons.person_outline_rounded,
+                      AppStrings.of(context).t('view_edit_profile'),
+                      AppStrings.of(context).t('change_basic_info'),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ProfileWidget(),
+                          ),
+                        );
+                      },
+                    ),
+                    GapWidget(size: 8),
+                  ],
                   _sectionHeader(AppStrings.of(context).t('security')),
                   _settingsSwitch(
                     Icons.fingerprint_rounded,

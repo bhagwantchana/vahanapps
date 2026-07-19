@@ -358,7 +358,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(vehicle.registrationNumber, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: titleColor)),
+                    Text(vehicle.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: titleColor)),
                     if (vehicle.showExpiryBadge) ...<Widget>[
                       const SizedBox(height: 5),
                       _buildExpiryBadge(vehicle),

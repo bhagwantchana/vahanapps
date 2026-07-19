@@ -12,5 +12,6 @@ class PreferencesKey {
   // mode); '0' (or missing) for a primary customer. Cached locally so the
   // UI can gate engine/edit/settings without a network round-trip.
   static const String isSubUser = 'isSubUser';
+  static const String viewMode = 'viewMode';
   static const String username = 'username';
 }
