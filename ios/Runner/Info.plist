@@ -49,11 +49,16 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Use Face ID to securely unlock Vahan Connect.</string>
 	<!-- Photo library — image_picker uses ImageSource.gallery to attach a
-	     profile photo. The app does NOT use the camera, microphone or
-	     device location, so those usage keys are intentionally omitted
-	     (declaring unused permissions triggers App Store rejection). -->
+	     profile photo. The app does NOT use the camera or microphone, so
+	     those keys are intentionally omitted. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Vahan Connect needs photo library access to set your profile photo.</string>
+	<!-- Location — the Google Maps SDK (google_maps_flutter) links CoreLocation,
+	     so Apple's static check (ITMS-90683) REQUIRES a purpose string even
+	     though the map runs with myLocationEnabled=false and never prompts for
+	     location at runtime. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Vahan Connect can use your location to centre the live map on your area and show nearby vehicles.</string>
 	<!-- FCM silent/data push delivery. firebase_messaging requires the
 	     "remote-notification" background mode. The app has no background
 	     location or background-fetch features, so those modes are omitted. -->
