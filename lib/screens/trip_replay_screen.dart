@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_state.dart';
@@ -513,6 +514,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          _buildSpeedGraph(),
           Slider(
             value: progress.clamp(0, 1),
             onChanged: (v) {
@@ -566,6 +568,58 @@ class _TripReplayScreenState extends State<TripReplayScreen>
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  /// Compact speed-over-trip graph with a live marker at the playback point.
+  Widget _buildSpeedGraph() {
+    if (_points.length < 2) return const SizedBox.shrink();
+    var maxSpeed = 1.0;
+    final spots = <FlSpot>[];
+    for (var i = 0; i < _points.length; i++) {
+      final s = _points[i].speed.toDouble();
+      if (s > maxSpeed) maxSpeed = s;
+      spots.add(FlSpot(i.toDouble(), s));
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: SizedBox(
+        height: 54,
+        child: LineChart(
+          LineChartData(
+            minY: 0,
+            maxY: maxSpeed * 1.15,
+            minX: 0,
+            maxX: (_points.length - 1).toDouble(),
+            gridData: const FlGridData(show: false),
+            titlesData: const FlTitlesData(show: false),
+            borderData: FlBorderData(show: false),
+            lineTouchData: const LineTouchData(enabled: false),
+            lineBarsData: <LineChartBarData>[
+              LineChartBarData(
+                spots: spots,
+                isCurved: true,
+                barWidth: 2,
+                color: AppTheme.primaryBlue,
+                dotData: const FlDotData(show: false),
+                belowBarData: BarAreaData(
+                  show: true,
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.12),
+                ),
+              ),
+            ],
+            extraLinesData: ExtraLinesData(
+              verticalLines: <VerticalLine>[
+                VerticalLine(
+                  x: _currentIndex.toDouble(),
+                  color: AppColors.red,
+                  strokeWidth: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

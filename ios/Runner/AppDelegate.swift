@@ -1,4 +1,5 @@
 import Flutter
+import GoogleMaps
 import UIKit
 
 // iOS push-notification bridge for Firebase Messaging.
@@ -34,6 +35,12 @@ import UIKit
     //    plugin captures it via the swizzled didRegisterForRemoteNotifications
     //    and exchanges it for an FCM registration token.
     application.registerForRemoteNotifications()
+
+    // Google Maps SDK for iOS key (native fleet map). Enable "Maps SDK for
+    // iOS" + billing on the same Google Cloud project as Android, create an
+    // iOS-restricted key (bundle id), and paste it here. A wrong/empty key
+    // renders a blank map. Run `pod install` after adding google_maps_flutter.
+    GMSServices.provideAPIKey("AIzaSyAUtlpCDQ52KHBR_AltqIReHr6QYEmnr88")
 
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)

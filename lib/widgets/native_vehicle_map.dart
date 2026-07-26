@@ -39,6 +39,7 @@ class NativeVehicleMap extends StatefulWidget {
     this.moveAnimationDuration = const Duration(milliseconds: 900),
     this.onVehicleTap,
     this.mapProvider = 'maplibre',
+    this.highlightFocus = false,
   });
 
   final List<VehicleRecord> vehicles;
@@ -67,6 +68,13 @@ class NativeVehicleMap extends StatefulWidget {
   /// picks the OpenFreeMap base style — 'satellite'/'dark' → the "positron"
   /// muted style, anything else → the colourful, Google-like "liberty" style.
   final String mapProvider;
+
+  /// When true (fleet-overview usage), [focusVehicle] is the user-SELECTED
+  /// vehicle: the camera pans to it on selection and a highlight ring is drawn
+  /// around it so the operator can see which vehicle's detail sheet is open.
+  /// The single-vehicle screen leaves this false (it already follows one
+  /// vehicle and needs no ring).
+  final bool highlightFocus;
 
   @override
   State<NativeVehicleMap> createState() => _NativeVehicleMapState();
@@ -120,6 +128,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// Last geometry actually pushed to a symbol — lets us skip channel chatter
   /// for parked vehicles during the animation loop.
   final Map<int, LatLng> _lastPushed = <int, LatLng>{};
+
+  /// Highlight ring drawn around the user-selected vehicle in fleet-overview
+  /// mode (see [NativeVehicleMap.highlightFocus]). Null when nothing selected.
+  Circle? _highlightCircle;
+  int? _highlightVehicleId;
 
   Line? _trailLine;
   // Geometry currently drawn for the trail. _rebuild() runs on every data
@@ -196,9 +209,15 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       _animationController.duration = widget.moveAnimationDuration;
     }
 
-    // A new vehicle to follow → allow the camera to recentre on it once.
+    // A new vehicle to follow / select → allow the camera to recentre on it.
     if (oldWidget.focusVehicle?.id != widget.focusVehicle?.id) {
       _userInteracted = false;
+      // Fleet-overview selection: pan to the tapped vehicle and (re)draw the
+      // highlight ring so the open sheet's vehicle is obvious on the map.
+      if (widget.highlightFocus && _styleReady) {
+        unawaited(_centerOnFocus());
+        unawaited(_syncHighlight());
+      }
     }
 
     if (_styleReady) {
@@ -391,6 +410,9 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     // so _drawTrail re-adds it instead of diffing against a line that's gone.
     _trailLine = null;
     _renderedTrailPoints = <LatLng>[];
+    // Same for the selection highlight ring — the reloaded style dropped it.
+    _highlightCircle = null;
+    _highlightVehicleId = null;
 
     // The same applies to style IMAGES and symbols: a style (re)load — e.g.
     // the map-provider setting flipping between liberty and positron, which
@@ -770,6 +792,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       }
 
       await _drawTrail();
+      await _syncHighlight();
     } finally {
       _rebuildBusy = false;
       if (_rebuildDirty) {
@@ -1040,10 +1063,103 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       ..addAll(nextCourseFrame);
 
     _updateSymbolPositions();
+    _moveHighlight();
 
     if (widget.followFocusedVehicle) {
       _followCamera();
     }
+  }
+
+  // ── Selection highlight (fleet-overview mode) ──────────────────────────
+
+  /// Pan the camera to the freshly-selected vehicle so the open sheet's
+  /// vehicle is centred and obvious. Zoom is left as-is to avoid a jarring
+  /// jump; the ring + centred position identify the vehicle.
+  Future<void> _centerOnFocus() async {
+    final controller = _controller;
+    final focus = widget.focusVehicle;
+    if (controller == null ||
+        !_styleReady ||
+        !widget.highlightFocus ||
+        focus == null ||
+        !focus.hasLiveLocation) {
+      return;
+    }
+    final target = _renderedPositions[focus.id] ?? _toLatLng(focus);
+    _programmaticMove = true;
+    _lastCameraTarget = target;
+    try {
+      await controller.animateCamera(CameraUpdate.newLatLng(target));
+    } catch (_) {}
+  }
+
+  /// Create / move / remove the highlight ring so it always sits on the
+  /// currently selected vehicle. Cheap: no-ops when the ring already matches.
+  Future<void> _syncHighlight() async {
+    final controller = _controller;
+    if (controller == null || !_styleReady) {
+      return;
+    }
+    final focus = widget.highlightFocus ? widget.focusVehicle : null;
+    if (focus == null || !focus.hasLiveLocation) {
+      if (_highlightCircle != null) {
+        try {
+          await controller.removeCircle(_highlightCircle!);
+        } catch (_) {}
+        _highlightCircle = null;
+        _highlightVehicleId = null;
+      }
+      return;
+    }
+    if (_highlightVehicleId == focus.id && _highlightCircle != null) {
+      return; // already drawn for this vehicle; movement handled per tick
+    }
+    if (_highlightCircle != null) {
+      try {
+        await controller.removeCircle(_highlightCircle!);
+      } catch (_) {}
+      _highlightCircle = null;
+      _highlightVehicleId = null;
+    }
+    final pos = _renderedPositions[focus.id] ?? _toLatLng(focus);
+    try {
+      _highlightCircle = await controller.addCircle(
+        CircleOptions(
+          geometry: pos,
+          circleRadius: 28,
+          circleColor: _hex(AppTheme.primaryBlue),
+          circleOpacity: 0.12,
+          circleStrokeColor: _hex(AppTheme.primaryBlue),
+          circleStrokeWidth: 3,
+          circleStrokeOpacity: 0.9,
+        ),
+      );
+      _highlightVehicleId = focus.id;
+    } catch (_) {}
+  }
+
+  void _moveHighlight() {
+    final controller = _controller;
+    final id = _highlightVehicleId;
+    final circle = _highlightCircle;
+    if (controller == null || circle == null || id == null) {
+      return;
+    }
+    final pos = _renderedPositions[id];
+    if (pos == null) {
+      return;
+    }
+    unawaited(_safeUpdateCircle(controller, circle, pos));
+  }
+
+  Future<void> _safeUpdateCircle(
+    MapLibreMapController controller,
+    Circle circle,
+    LatLng position,
+  ) async {
+    try {
+      await controller.updateCircle(circle, CircleOptions(geometry: position));
+    } catch (_) {}
   }
 
   // ── Camera ─────────────────────────────────────────────────────────────

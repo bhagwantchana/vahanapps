@@ -1,0 +1,1109 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:dio/dio.dart';
+import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/models/vehicle_record.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+/// Native **Google Maps** fleet overview (the owner wants the real Google look,
+/// not the OSM/MapLibre tiles). Every vehicle is a CLEAN car marker — its own
+/// icon laid flat on the road, rotated to heading, with a soft ground shadow
+/// tinted the live STATUS colour (moving green / idle orange / stopped red /
+/// offline grey). No ring/circle overlay. When zoomed in, each car also carries
+/// a small "frosted glass" registration-number label (a SECOND, non-rotating
+/// marker) so the operator can read which vehicle is which.
+///
+/// Requires a valid "Maps SDK for Android/iOS" key (see AndroidManifest.xml
+/// meta-data `com.google.android.geo.API_KEY` → res/values/strings.xml). A
+/// missing/wrong key renders a blank grey map.
+class GoogleFleetMap extends StatefulWidget {
+  const GoogleFleetMap({
+    super.key,
+    required this.vehicles,
+    this.focusVehicleId,
+    this.onVehicleTap,
+    this.onMapTap,
+    this.fitKey,
+    this.recenterTick = 0,
+    this.followVehicleId,
+    this.trailPoints = const <LatLng>[],
+  });
+
+  final List<VehicleRecord> vehicles;
+
+  /// Single-vehicle mode: when set, the camera continuously follows this
+  /// vehicle (until the user pans, then resumes) and [trailPoints] draws its
+  /// route line — the same live-tracking behaviour as the web map.
+  final int? followVehicleId;
+
+  /// Route/trail polyline points (single-vehicle mode). Empty = no line.
+  final List<LatLng> trailPoints;
+
+  /// The user-selected vehicle: the camera pans to it (clean — no ring). Null
+  /// clears the selection (no camera move).
+  final int? focusVehicleId;
+
+  final void Function(VehicleRecord vehicle)? onVehicleTap;
+
+  /// Tapping empty map (not a marker) — used to dismiss the details sheet.
+  final VoidCallback? onMapTap;
+
+  /// Changes whenever the caller wants the camera to re-fit to the current
+  /// vehicle set (e.g. a status filter was tapped). Same value across polls =
+  /// no refit, so a live fleet isn't constantly re-framed.
+  final String? fitKey;
+
+  /// Bump to force a re-fit to the whole current set (the recenter button).
+  final int recenterTick;
+
+  @override
+  State<GoogleFleetMap> createState() => _GoogleFleetMapState();
+}
+
+// Compact Google Maps night + retro themes for the theme picker.
+const String _darkStyle =
+    '[{"elementType":"geometry","stylers":[{"color":"#212121"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#9aa4ad"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#212121"}]},{"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#2c2c2c"}]},{"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#b5b5b5"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3c3c3c"}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#e0d18c"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#152431"}]}]';
+const String _retroStyle =
+    '[{"elementType":"geometry","stylers":[{"color":"#ebe3cd"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#523735"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#fdfcf8"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#f8c967"}]},{"featureType":"water","elementType":"geometry.fill","stylers":[{"color":"#b9d3c2"}]}]';
+
+class _GoogleFleetMapState extends State<GoogleFleetMap>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  // Battery: the fleet ease/pulse ticker must not run while this map is off
+  // the visible tab (IndexedStack → TickerMode off) or the app is backgrounded.
+  bool _tickerEnabled = true;
+  bool _appActive = true;
+  static const LatLng _defaultCenter = LatLng(30.9, 75.8);
+  // Reg labels are only worth showing once the cars are far enough apart to
+  // read — below this zoom they'd overlap into noise, so we hide them.
+  static const double _labelMinZoom = 12.5;
+
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 8),
+  ));
+
+  GoogleMapController? _controller;
+  double _dpr = 2.0;
+  double _zoom = 11;
+  bool _labelsShown = false;
+
+  // User map controls: theme (default|dark|retro|satellite|terrain), traffic,
+  // and single-vehicle navigation mode (3D tilt + heading-up).
+  String _mapTheme = 'default';
+  bool _traffic = false;
+  bool _navMode = false;
+
+  MapType get _resolvedMapType {
+    switch (_mapTheme) {
+      case 'satellite':
+        return MapType.hybrid;
+      case 'terrain':
+        return MapType.terrain;
+      default:
+        return MapType.normal;
+    }
+  }
+
+  String? get _resolvedStyle {
+    switch (_mapTheme) {
+      case 'dark':
+        return _darkStyle;
+      case 'retro':
+        return _retroStyle;
+      default:
+        return null; // default = full-detail Google styling
+    }
+  }
+
+  /// icon-url|status → composed car bitmap. Kept for the session so a parked
+  /// fleet never re-composes.
+  final Map<String, BitmapDescriptor> _iconCache = <String, BitmapDescriptor>{};
+  final Set<String> _iconLoading = <String>{};
+  BitmapDescriptor? _fallbackIcon;
+
+  /// registration text → composed glass label bitmap.
+  final Map<String, BitmapDescriptor> _labelCache =
+      <String, BitmapDescriptor>{};
+  final Set<String> _labelLoading = <String>{};
+
+  /// count → composed cluster-bubble bitmap.
+  final Map<int, BitmapDescriptor> _clusterCache = <int, BitmapDescriptor>{};
+  final Set<int> _clusterLoading = <int>{};
+  // Below this zoom (fleet mode only), overlapping vehicles collapse into a
+  // numbered cluster bubble; tapping it zooms in to split them.
+  static const double _clusterMaxZoom = 11.5;
+
+  Set<Marker> _markers = <Marker>{};
+  bool _fitDone = false;
+
+  // Fleet "alive" animation (small fleets only, so it never janks a big one):
+  // markers ease between fixes (#2) and running cars breathe a status glow (#1).
+  static const int _fleetAnimMax = 25;
+  final Map<int, LatLng> _renderedFleet = <int, LatLng>{};
+  int _pulseTick = 0;
+  Timer? _fleetTimer;
+
+  bool get _fleetAnimActive =>
+      widget.followVehicleId == null &&
+      _visible.isNotEmpty &&
+      _visible.length <= _fleetAnimMax &&
+      !(_zoom < _clusterMaxZoom && _visible.length > 10); // not while clustering
+
+  // 4-step breathing sequence (up-down) → glow index 0..2.
+  int get _glowFrame => const <int>[0, 1, 2, 1][(_pulseTick ~/ 3) % 4];
+
+  // Single-vehicle follow: pan with the vehicle, but pause for 8s after the
+  // user manually moves the camera so we never fight their gesture.
+  bool _programmaticMove = false;
+  bool _followPaused = false;
+  Timer? _followResume;
+
+  // Single-vehicle CONTINUOUS follow: a 60 fps ticker eases the marker + camera
+  // toward the latest fix every frame, so the map shifts smoothly with the
+  // vehicle (like Google Maps navigation) — never a move-then-pause jerk.
+  LatLng? _followRendered;
+  late final AnimationController _glide = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1), // cadence only; value is unused
+  )..addListener(_onGlideTick);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _preloadFallback();
+    _refreshMarkers();
+    // ~12 fps driver for the fleet ease + running-pulse (gated to small fleets).
+    _fleetTimer =
+        Timer.periodic(const Duration(milliseconds: 80), (_) => _fleetAnimTick());
+    // Continuous 60 fps follow ticker for the single-vehicle screen.
+    if (widget.followVehicleId != null) _glide.repeat();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Foreground only — stop the animation work when the app is backgrounded.
+    _appActive = state == AppLifecycleState.resumed;
+  }
+
+  void _fleetAnimTick() {
+    if (!mounted || !_tickerEnabled || !_appActive) return; // idle when hidden
+    if (!_fleetAnimActive) {
+      if (_renderedFleet.isNotEmpty) _renderedFleet.clear();
+      return;
+    }
+    final list = _visible;
+    var changed = false;
+    for (final v in list) {
+      final target = LatLng(v.latitude, v.longitude);
+      final cur = _renderedFleet[v.id];
+      if (cur == null) {
+        _renderedFleet[v.id] = target;
+        changed = true;
+        continue;
+      }
+      final dLat = target.latitude - cur.latitude;
+      final dLng = target.longitude - cur.longitude;
+      if (dLat.abs() < 1e-7 && dLng.abs() < 1e-7) continue;
+      if (dLat.abs() > 0.02 || dLng.abs() > 0.02) {
+        _renderedFleet[v.id] = target; // teleport → snap
+        changed = true;
+        continue;
+      }
+      _renderedFleet[v.id] =
+          LatLng(cur.latitude + dLat * 0.22, cur.longitude + dLng * 0.22);
+      changed = true;
+    }
+    _renderedFleet.removeWhere((id, _) => !list.any((v) => v.id == id));
+    final prevFrame = (_pulseTick ~/ 3) % 4;
+    _pulseTick = (_pulseTick + 1) % 1000000;
+    final curFrame = (_pulseTick ~/ 3) % 4;
+    final hasMoving = list.any((v) => _status(v) == 'moving');
+    // Rebuild on real movement, or when the pulse frame flips (~240 ms).
+    if (changed || (hasMoving && prevFrame != curFrame)) {
+      _refreshMarkers();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 2.0;
+    // Depending on TickerMode registers a rebuild when this map goes off/on the
+    // visible tab, so the animation ticker can idle while offstage.
+    _tickerEnabled = TickerMode.valuesOf(context).enabled;
+  }
+
+  @override
+  void didUpdateWidget(covariant GoogleFleetMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _refreshMarkers();
+    if (oldWidget.focusVehicleId != widget.focusVehicleId) {
+      unawaited(_centerOnFocus());
+    }
+    if (oldWidget.fitKey != widget.fitKey ||
+        oldWidget.recenterTick != widget.recenterTick) {
+      _fitDone = false;
+      unawaited(_fitToFleet());
+    }
+    // Start/stop the continuous follow ticker as follow mode toggles.
+    if (oldWidget.followVehicleId != widget.followVehicleId) {
+      if (widget.followVehicleId != null) {
+        if (!_glide.isAnimating) _glide.repeat();
+      } else {
+        _glide.stop();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _followResume?.cancel();
+    _fleetTimer?.cancel();
+    _glide.dispose();
+    _dio.close(force: true);
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  List<VehicleRecord> get _visible =>
+      widget.vehicles.where((v) => v.hasLiveLocation).toList();
+
+  // ── Status ──────────────────────────────────────────────────────────────
+  String _status(VehicleRecord v) {
+    final ts = v.tsEpochMs;
+    if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000) {
+      return 'offline';
+    }
+    if (v.isStopped) return 'stopped';
+    if (v.isMoving) return 'moving';
+    return 'idle';
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'offline':
+        return AppColors.grey;
+      case 'stopped':
+        return AppColors.red;
+      case 'moving':
+        return AppColors.green;
+      default:
+        return AppColors.orange;
+    }
+  }
+
+  String _statusIconUrl(String iconUrl, String status) {
+    final slash = iconUrl.lastIndexOf('/');
+    if (slash < 0) return '';
+    final dir = iconUrl.substring(0, slash);
+    final file = iconUrl.substring(slash + 1);
+    final dot = file.lastIndexOf('.');
+    final stem = dot > 0 ? file.substring(0, dot) : file;
+    return '$dir/status/${stem}_$status.png';
+  }
+
+  // ── Car marker bitmaps ────────────────────────────────────────────────────
+  Future<void> _preloadFallback() async {
+    try {
+      final raw =
+          (await rootBundle.load('assets/images/map.png')).buffer.asUint8List();
+      final png = await _composePng(raw, AppColors.grey);
+      if (!mounted) return;
+      _fallbackIcon = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
+      _refreshMarkers();
+    } catch (_) {}
+  }
+
+  /// Car icon centred on a transparent canvas with a soft, status-coloured
+  /// ground shadow beneath — the clean "on-the-road" look with just a status
+  /// glow (no ring). Aspect ratio preserved so trucks/cars never squash.
+  Future<Uint8List> _composePng(Uint8List raw, Color shadowColor,
+      {bool selected = false, double glowScale = 1.0}) async {
+    // Selected car = just a touch BIGGER (clean size emphasis) — same modest
+    // shadow, so it never turns into a glowing blob. glowScale > 1 = the running
+    // "pulse" frame (a subtle breathing halo).
+    final iconPx = ((selected ? 60 : 52) * _dpr).round();
+    final canvasPx = ((selected ? 80 : 74) * _dpr).round();
+
+    final codec = await ui.instantiateImageCodec(raw);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final size = canvasPx.toDouble();
+    final center = Offset(size / 2, size / 2);
+
+    final shadowPaint = Paint()
+      ..color = shadowColor.withValues(
+          alpha: (0.4 * (glowScale > 1 ? 1.1 : 1.0)).clamp(0.0, 1.0))
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * _dpr * glowScale);
+    canvas.drawCircle(
+      Offset(center.dx, center.dy + (2 * _dpr)),
+      (iconPx / 2) * 0.7 * glowScale,
+      shadowPaint,
+    );
+
+    final srcW = image.width.toDouble();
+    final srcH = image.height.toDouble();
+    final longest = srcW > srcH ? srcW : srcH;
+    final scale = longest > 0 ? (iconPx / longest) : 1.0;
+    final dstRect = Rect.fromCenter(
+      center: center,
+      width: srcW * scale,
+      height: srcH * scale,
+    );
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, srcW, srcH),
+      dstRect,
+      Paint()..filterQuality = FilterQuality.high,
+    );
+
+    final picture = recorder.endRecording();
+    final rendered = await picture.toImage(canvasPx, canvasPx);
+    final bytes = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    rendered.dispose();
+    return bytes!.buffer.asUint8List();
+  }
+
+  Future<void> _loadIcon(String key, String iconUrl, String status,
+      bool selected,
+      {double glowScale = 1.0}) async {
+    final shadow = _statusColor(status);
+    Uint8List? raw;
+    final candidates = <String>[
+      if (iconUrl.isNotEmpty) _statusIconUrl(iconUrl, status),
+      if (iconUrl.isNotEmpty) iconUrl,
+    ];
+    for (final url in candidates) {
+      if (url.isEmpty) continue;
+      try {
+        final resp = await _dio.get<List<int>>(
+          url,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final data = resp.data;
+        if (data != null && data.isNotEmpty) {
+          raw = Uint8List.fromList(data);
+          break;
+        }
+      } catch (_) {}
+    }
+    raw ??=
+        (await rootBundle.load('assets/images/map.png')).buffer.asUint8List();
+    try {
+      final png = await _composePng(raw, shadow,
+          selected: selected, glowScale: glowScale);
+      if (!mounted) return;
+      _iconCache[key] = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
+      _iconLoading.remove(key);
+      _refreshMarkers();
+    } catch (_) {
+      _iconLoading.remove(key);
+    }
+  }
+
+  // ── Registration "glass" label bitmaps ────────────────────────────────────
+  /// A small frosted-glass pill with the reg text, transparent padding on top
+  /// so the pill hangs just BELOW the car when anchored at (0.5, 0.0).
+  Future<Uint8List> _composeLabel(String reg) async {
+    final fontSize = 11.5 * _dpr;
+    final padH = 8.0 * _dpr;
+    final padV = 3.5 * _dpr;
+    final topPad = 20.0 * _dpr; // gap so the pill sits under the car
+
+    final builder = ui.ParagraphBuilder(ui.ParagraphStyle(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w800,
+    ))
+      ..pushStyle(ui.TextStyle(color: const Color(0xFF14304A)))
+      ..addText(reg);
+    final para = builder.build()
+      ..layout(const ui.ParagraphConstraints(width: 600));
+    final textW = para.maxIntrinsicWidth;
+    final textH = para.height;
+    para.layout(ui.ParagraphConstraints(width: textW.ceilToDouble()));
+
+    final pillW = textW + padH * 2;
+    final pillH = textH + padV * 2;
+    final canvasW = pillW.ceil();
+    final canvasH = (topPad + pillH).ceil();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final pillRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, topPad, pillW, pillH),
+      Radius.circular(pillH / 2),
+    );
+    // soft shadow
+    canvas.drawRRect(
+      pillRect.shift(Offset(0, 1.0 * _dpr)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.18)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2.0 * _dpr),
+    );
+    // frosted glass fill + hairline border
+    canvas.drawRRect(
+      pillRect,
+      Paint()..color = Colors.white.withValues(alpha: 0.86),
+    );
+    canvas.drawRRect(
+      pillRect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0 * _dpr
+        ..color = Colors.white.withValues(alpha: 0.95),
+    );
+    canvas.drawParagraph(para, Offset(padH, topPad + padV));
+
+    final picture = recorder.endRecording();
+    final rendered = await picture.toImage(canvasW, canvasH);
+    final bytes = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    rendered.dispose();
+    return bytes!.buffer.asUint8List();
+  }
+
+  Future<void> _loadLabel(String reg) async {
+    try {
+      final png = await _composeLabel(reg);
+      if (!mounted) return;
+      _labelCache[reg] = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
+      _labelLoading.remove(reg);
+      _refreshMarkers();
+    } catch (_) {
+      _labelLoading.remove(reg);
+    }
+  }
+
+  // ── Markers ───────────────────────────────────────────────────────────────
+  void _refreshMarkers() {
+    final markers = <Marker>{};
+    final list = _visible;
+    // Fleet mode + zoomed out + enough vehicles → cluster overlapping cars.
+    final doCluster = widget.followVehicleId == null &&
+        _zoom < _clusterMaxZoom &&
+        list.length > 10;
+    if (doCluster) {
+      _addClusterMarkers(markers, list);
+    } else {
+      for (final v in list) {
+        _addVehicleMarkers(markers, v);
+      }
+    }
+    if (!mounted) {
+      _markers = markers;
+      return;
+    }
+    setState(() => _markers = markers);
+  }
+
+  void _addVehicleMarkers(Set<Marker> markers, VehicleRecord v) {
+    final status = _status(v);
+    // Emphasise the selected car AND the single-vehicle followed car (bigger).
+    final selected =
+        widget.focusVehicleId == v.id || widget.followVehicleId == v.id;
+    // Running-car breathing pulse (small fleets only): cycle 3 glow frames.
+    final pulse = status == 'moving' && _fleetAnimActive && !selected;
+    final glowIdx = pulse ? _glowFrame : -1;
+    final glowScale = pulse ? const <double>[0.85, 1.2, 1.55][glowIdx] : 1.0;
+    final key =
+        '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}${pulse ? '|g$glowIdx' : ''}';
+    // Never fall back to the default red pin — only a COMPOSED car bitmap. If
+    // nothing is ready yet, skip this frame (the icon appears a beat later).
+    final icon = _iconCache[key] ?? _fallbackIcon;
+    if (icon == null) return;
+    // Followed (single) uses the eased glide; fleet uses the fleet ease.
+    final pos = (widget.followVehicleId == v.id && _followRendered != null)
+        ? _followRendered!
+        : (_fleetAnimActive && _renderedFleet.containsKey(v.id))
+            ? _renderedFleet[v.id]!
+            : LatLng(v.latitude, v.longitude);
+    // In navigation mode the followed car is a BILLBOARD (flat:false) so the
+    // camera tilt never foreshortens/stretches it; the heading-up map already
+    // conveys direction, so it points straight up.
+    final navBillboard = _navMode && widget.followVehicleId == v.id;
+    markers.add(
+      Marker(
+        markerId: MarkerId(v.id.toString()),
+        position: pos,
+        icon: icon,
+        anchor: const Offset(0.5, 0.5),
+        rotation: navBillboard ? 0 : v.course % 360,
+        flat: !navBillboard,
+        zIndexInt: selected ? 3 : 1,
+        onTap: () => widget.onVehicleTap?.call(v),
+      ),
+    );
+    if (!_iconCache.containsKey(key) && !_iconLoading.contains(key)) {
+      _iconLoading.add(key);
+      unawaited(_loadIcon(key, v.vehicleIconUrl, status, selected,
+          glowScale: glowScale));
+    }
+
+    // Reg-number glass label — a SECOND, non-rotating marker just below the
+    // car, only when zoomed in enough to read them.
+    final reg = v.registrationNumber.trim();
+    if (_labelsShown && reg.isNotEmpty) {
+      final labelIcon = _labelCache[reg];
+      if (labelIcon != null) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('lbl_${v.id}'),
+            position: pos,
+            icon: labelIcon,
+            anchor: const Offset(0.5, 0.0),
+            flat: false,
+            zIndexInt: selected ? 4 : 2,
+            onTap: () => widget.onVehicleTap?.call(v),
+          ),
+        );
+      } else if (!_labelLoading.contains(reg)) {
+        _labelLoading.add(reg);
+        unawaited(_loadLabel(reg));
+      }
+    }
+  }
+
+  void _addClusterMarkers(Set<Marker> markers, List<VehicleRecord> list) {
+    // Geo-grid whose cell shrinks as you zoom in, so clusters split naturally.
+    final cellDeg =
+        0.9 / math.pow(2, (_zoom - 8).clamp(0, 14).toDouble()).toDouble();
+    final groups = <String, List<VehicleRecord>>{};
+    for (final v in list) {
+      final gx = (v.latitude / cellDeg).floor();
+      final gy = (v.longitude / cellDeg).floor();
+      (groups['${gx}_$gy'] ??= <VehicleRecord>[]).add(v);
+    }
+    groups.forEach((k, g) {
+      if (g.length == 1) {
+        _addVehicleMarkers(markers, g.first);
+        return;
+      }
+      var lat = 0.0, lng = 0.0;
+      for (final v in g) {
+        lat += v.latitude;
+        lng += v.longitude;
+      }
+      final centroid = LatLng(lat / g.length, lng / g.length);
+      final count = g.length;
+      final icon = _clusterCache[count];
+      if (icon != null) {
+        markers.add(
+          Marker(
+            markerId: MarkerId('cluster_$k'),
+            position: centroid,
+            icon: icon,
+            anchor: const Offset(0.5, 0.5),
+            zIndexInt: 5,
+            onTap: () async {
+              final c = _controller;
+              if (c == null) return;
+              try {
+                await c.animateCamera(CameraUpdate.newLatLngZoom(
+                    centroid, (_zoom + 2.5).clamp(3, 20).toDouble()));
+              } catch (_) {}
+            },
+          ),
+        );
+      } else if (!_clusterLoading.contains(count)) {
+        // Not composed yet → trigger it, skip this frame (no red-pin flash).
+        _clusterLoading.add(count);
+        unawaited(_loadCluster(count));
+      }
+    });
+  }
+
+  Future<Uint8List> _composeCluster(int count) async {
+    final label = count > 99 ? '99+' : '$count';
+    final diameter = ((count > 9 ? 52 : 46) * _dpr);
+    final builder = ui.ParagraphBuilder(ui.ParagraphStyle(
+      fontSize: 15 * _dpr,
+      fontWeight: FontWeight.w900,
+      textAlign: TextAlign.center,
+    ))
+      ..pushStyle(ui.TextStyle(color: Colors.white))
+      ..addText(label);
+    final para = builder.build()
+      ..layout(ui.ParagraphConstraints(width: diameter));
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final c = Offset(diameter / 2, diameter / 2);
+    final inner = diameter / 2 - 4 * _dpr;
+    // Soft outer glow.
+    canvas.drawCircle(
+      c,
+      diameter / 2,
+      Paint()
+        ..color = AppTheme.primaryBlue.withValues(alpha: 0.22)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3 * _dpr),
+    );
+    // Glossy radial-gradient fill (lighter top-left → deep blue).
+    final grad = ui.Gradient.radial(
+      Offset(c.dx - inner * 0.3, c.dy - inner * 0.35),
+      inner * 1.4,
+      <Color>[const Color(0xFF5B93CC), AppTheme.primaryBlue],
+    );
+    canvas.drawCircle(c, inner, Paint()..shader = grad);
+    // Crisp white ring.
+    canvas.drawCircle(
+      c,
+      inner,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4 * _dpr
+        ..color = Colors.white,
+    );
+    canvas.drawParagraph(para, Offset(0, c.dy - para.height / 2));
+
+    final picture = recorder.endRecording();
+    final rendered = await picture.toImage(diameter.ceil(), diameter.ceil());
+    final bytes = await rendered.toByteData(format: ui.ImageByteFormat.png);
+    rendered.dispose();
+    return bytes!.buffer.asUint8List();
+  }
+
+  Future<void> _loadCluster(int count) async {
+    try {
+      final png = await _composeCluster(count);
+      if (!mounted) return;
+      _clusterCache[count] = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
+      _clusterLoading.remove(count);
+      _refreshMarkers();
+    } catch (_) {
+      _clusterLoading.remove(count);
+    }
+  }
+
+  // ── Camera ────────────────────────────────────────────────────────────────
+  Future<void> _onMapCreated(GoogleMapController controller) async {
+    _controller = controller;
+    await _fitToFleet();
+  }
+
+  void _onCameraMove(CameraPosition pos) {
+    final wasClustering = widget.followVehicleId == null &&
+        _zoom < _clusterMaxZoom &&
+        _visible.length > 10;
+    _zoom = pos.zoom;
+    final nowClustering = widget.followVehicleId == null &&
+        _zoom < _clusterMaxZoom &&
+        _visible.length > 10;
+    final show = _zoom >= _labelMinZoom;
+    if (show != _labelsShown || wasClustering != nowClustering) {
+      _labelsShown = show;
+      _refreshMarkers();
+    }
+  }
+
+  Future<void> _fitToFleet() async {
+    final controller = _controller;
+    if (controller == null || _fitDone) return;
+    final pts = _visible
+        .map((v) => LatLng(v.latitude, v.longitude))
+        .where((p) => p.latitude != 0 || p.longitude != 0)
+        .toList();
+    if (pts.isEmpty) return;
+    _fitDone = true;
+    _programmaticMove = true;
+    if (pts.length == 1) {
+      try {
+        await controller.animateCamera(
+          CameraUpdate.newLatLngZoom(pts.first, 15),
+        );
+      } catch (_) {}
+      return;
+    }
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(_bounds(pts), 60),
+      );
+    } catch (_) {}
+  }
+
+  LatLngBounds _bounds(List<LatLng> pts) {
+    var south = pts.first.latitude;
+    var north = pts.first.latitude;
+    var west = pts.first.longitude;
+    var east = pts.first.longitude;
+    for (final p in pts) {
+      south = p.latitude < south ? p.latitude : south;
+      north = p.latitude > north ? p.latitude : north;
+      west = p.longitude < west ? p.longitude : west;
+      east = p.longitude > east ? p.longitude : east;
+    }
+    return LatLngBounds(
+      southwest: LatLng(south, west),
+      northeast: LatLng(north, east),
+    );
+  }
+
+  Future<void> _centerOnFocus() async {
+    final controller = _controller;
+    final id = widget.focusVehicleId;
+    if (controller == null || id == null) return;
+    VehicleRecord? focus;
+    for (final v in _visible) {
+      if (v.id == id) {
+        focus = v;
+        break;
+      }
+    }
+    if (focus == null) return;
+    _programmaticMove = true;
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLng(LatLng(focus.latitude, focus.longitude)),
+      );
+    } catch (_) {}
+  }
+
+  // ── Single-vehicle continuous follow ──────────────────────────────────────
+  // Runs every frame (~60 fps): ease the rendered pose a fraction toward the
+  // latest fix, and move the camera to match. Because it always chases the
+  // freshest target, the marker + map glide continuously with no start/stop
+  // jerk — the Google-Maps navigation feel.
+  void _onGlideTick() {
+    if (widget.followVehicleId == null || !_tickerEnabled || !_appActive) return;
+    VehicleRecord? v;
+    for (final x in _visible) {
+      if (x.id == widget.followVehicleId) {
+        v = x;
+        break;
+      }
+    }
+    if (v == null) return;
+    final target = LatLng(v.latitude, v.longitude);
+    final cur = _followRendered;
+    if (cur == null) {
+      _followRendered = target;
+      _refreshMarkers();
+      unawaited(_followCamera());
+      return;
+    }
+    final dLat = target.latitude - cur.latitude;
+    final dLng = target.longitude - cur.longitude;
+    // Close enough → nothing to do this frame (parked car = still camera).
+    if (dLat.abs() < 4e-8 && dLng.abs() < 4e-8) return;
+    if (dLat.abs() > 0.02 || dLng.abs() > 0.02) {
+      _followRendered = target; // teleport → snap, no crawl across the map
+    } else {
+      // Exponential ease: smooth, frame-rate independent enough at 60 fps.
+      _followRendered =
+          LatLng(cur.latitude + dLat * 0.14, cur.longitude + dLng * 0.14);
+    }
+    _refreshMarkers();
+    unawaited(_followCamera());
+  }
+
+  Future<void> _followCamera() async {
+    final controller = _controller;
+    if (controller == null || widget.followVehicleId == null || _followPaused) {
+      return;
+    }
+    final target = _followRendered;
+    if (target == null) return;
+    _programmaticMove = true;
+    try {
+      // moveCamera (instant) not animateCamera: the pose is ALREADY eased per
+      // frame, so animating on top would fight itself and stutter.
+      if (_navMode) {
+        // Navigation mode: 3D tilt + heading-up (map rotates to travel dir).
+        double bearing = 0;
+        for (final x in _visible) {
+          if (x.id == widget.followVehicleId) {
+            bearing = x.course % 360;
+            break;
+          }
+        }
+        await controller.moveCamera(CameraUpdate.newCameraPosition(
+          CameraPosition(
+              target: target, zoom: 17, tilt: 55, bearing: bearing),
+        ));
+      } else {
+        await controller.moveCamera(CameraUpdate.newLatLng(target));
+      }
+    } catch (_) {}
+    // Clear promptly so a real user pan between frames is still detected
+    // (onCameraMoveStarted pauses follow for 8 s).
+    _programmaticMove = false;
+  }
+
+  void _toggleNavMode() {
+    setState(() => _navMode = !_navMode);
+    final controller = _controller;
+    if (controller != null && !_navMode) {
+      // Leaving nav mode → level the camera back to flat, north-up.
+      final target = _followRendered;
+      if (target != null) {
+        _programmaticMove = true;
+        try {
+          controller.animateCamera(CameraUpdate.newCameraPosition(
+            CameraPosition(target: target, zoom: 15, tilt: 0, bearing: 0),
+          ));
+        } catch (_) {}
+      }
+    }
+  }
+
+  Future<void> _openThemePicker() async {
+    final options = <List<String>>[
+      <String>['default', 'Default'],
+      <String>['dark', 'Night'],
+      <String>['retro', 'Retro'],
+      <String>['satellite', 'Satellite'],
+      <String>['terrain', 'Terrain'],
+    ];
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 14),
+            const Text('Map style',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            for (final o in options)
+              ListTile(
+                leading: Icon(
+                  _mapTheme == o[0]
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: _mapTheme == o[0] ? AppTheme.primaryBlue : Colors.grey,
+                ),
+                title: Text(o[1],
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(ctx, o[0]),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => _mapTheme = picked);
+  }
+
+  Future<void> _shareSnapshot() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      final bytes = await controller.takeSnapshot();
+      if (bytes == null || !mounted) return;
+      final dir = await getTemporaryDirectory();
+      final file = File(
+          '${dir.path}/vc_location_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles(<XFile>[XFile(file.path)],
+          text: 'Vehicle location');
+    } catch (_) {}
+  }
+
+  void _onCameraMoveStarted() {
+    if (_programmaticMove || widget.followVehicleId == null) return;
+    // A real user gesture → pause follow, resume after they stop exploring.
+    _followPaused = true;
+    _followResume?.cancel();
+    _followResume = Timer(const Duration(seconds: 8), () {
+      _followPaused = false;
+      if (mounted) unawaited(_followCamera());
+    });
+  }
+
+  void _onCameraIdle() {
+    _programmaticMove = false;
+    // Re-group clusters for the settled zoom (grid cells depend on zoom).
+    if (widget.followVehicleId == null && _visible.length > 10) {
+      _refreshMarkers();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = _visible.isNotEmpty
+        ? LatLng(_visible.first.latitude, _visible.first.longitude)
+        : _defaultCenter;
+    final polylines = <Polyline>{};
+    if (widget.trailPoints.length >= 2) {
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('trail'),
+          points: widget.trailPoints,
+          color: AppTheme.primaryBlue.withValues(alpha: 0.75),
+          width: 5,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      );
+    }
+    return Stack(
+      children: <Widget>[
+        GoogleMap(
+          initialCameraPosition: CameraPosition(target: first, zoom: 11),
+          // Default theme = null style = FULL-detail Google map; dark/retro
+          // themes apply a style (only meaningful on the normal base map).
+          style: _resolvedMapType == MapType.normal ? _resolvedStyle : null,
+          onMapCreated: _onMapCreated,
+          onCameraMove: _onCameraMove,
+          onCameraMoveStarted: _onCameraMoveStarted,
+          onCameraIdle: _onCameraIdle,
+          markers: _markers,
+          polylines: polylines,
+          // Keep the fit-bounds framing + Google logo clear of the top counts
+          // bar and bottom controls/card, so nothing hides under the overlays.
+          padding: EdgeInsets.only(
+            top: widget.followVehicleId == null ? 56 : 12,
+            bottom: 24,
+          ),
+          onTap: (_) => widget.onMapTap?.call(),
+          mapType: _resolvedMapType,
+          trafficEnabled: _traffic,
+          myLocationEnabled: false,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          compassEnabled: false,
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
+          },
+        ),
+        // Map controls: theme picker, live traffic, snapshot-share, and (single
+        // vehicle) 3D navigation mode.
+        Positioned(
+          top: 62,
+          right: 12,
+          child: Column(
+            children: <Widget>[
+              _MapCtrlButton(
+                icon: Icons.layers_outlined,
+                active: _mapTheme != 'default',
+                onTap: _openThemePicker,
+              ),
+              const SizedBox(height: 8),
+              _MapCtrlButton(
+                icon: Icons.traffic_outlined,
+                active: _traffic,
+                onTap: () => setState(() => _traffic = !_traffic),
+              ),
+              const SizedBox(height: 8),
+              _MapCtrlButton(
+                icon: Icons.ios_share,
+                active: false,
+                onTap: _shareSnapshot,
+              ),
+              if (widget.followVehicleId != null) ...<Widget>[
+                const SizedBox(height: 8),
+                _MapCtrlButton(
+                  icon: Icons.navigation,
+                  active: _navMode,
+                  onTap: _toggleNavMode,
+                ),
+              ],
+            ],
+          ),
+        ),
+        // Empty state — fleet mode with no locatable vehicles.
+        if (widget.followVehicleId == null && _visible.isEmpty)
+          const IgnorePointer(child: _EmptyMapOverlay()),
+      ],
+    );
+  }
+}
+
+class _EmptyMapOverlay extends StatelessWidget {
+  const _EmptyMapOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: (theme.cardTheme.color ?? theme.cardColor)
+              .withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 14,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.location_off_outlined,
+                size: 30, color: Colors.grey.shade500),
+            const SizedBox(height: 8),
+            Text(
+              'No vehicles to show',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Live vehicles will appear here',
+              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small circular map-control button (satellite / traffic).
+class _MapCtrlButton extends StatelessWidget {
+  const _MapCtrlButton({
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: active ? AppTheme.primaryBlue : (theme.cardTheme.color ?? theme.cardColor),
+      elevation: 3,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Icon(
+            icon,
+            size: 20,
+            color: active ? Colors.white : AppTheme.primaryBlue,
+          ),
+        ),
+      ),
+    );
+  }
+}

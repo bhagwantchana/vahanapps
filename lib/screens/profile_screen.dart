@@ -330,6 +330,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sectionHeader(AppStrings.of(context).t('preferences')),
                   _buildLanguageTile(),
                   _buildThemeTile(),
+                  _buildDashboardTile(),
+                  _buildAlertsTile(),
                   GapWidget(size: 16),
                   Text(
                     '${AppStrings.of(context).t('app_version')} 1.0.0',
@@ -425,6 +427,106 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: _showThemePicker,
         );
       },
+    );
+  }
+
+  Widget _buildDashboardTile() {
+    return BlocBuilder<SettingsCubit, SettingsState>(
+      builder: (context, settings) {
+        return _settingsItem(
+          Icons.dashboard_rounded,
+          'Dashboard style',
+          settings.dashboardStyle == 'overview'
+              ? 'Overview (chart)'
+              : 'Live map',
+          onTap: _showDashboardPicker,
+        );
+      },
+    );
+  }
+
+  Widget _buildAlertsTile() {
+    return BlocBuilder<SettingsCubit, SettingsState>(
+      builder: (context, settings) {
+        return _settingsItem(
+          Icons.notifications_active_rounded,
+          'Notifications',
+          settings.alertFilterMode == 'essential'
+              ? 'Only start/stop & overspeed'
+              : 'All alerts',
+          onTap: _showAlertsPicker,
+        );
+      },
+    );
+  }
+
+  Future<void> _showDashboardPicker() async {
+    final cubit = context.read<SettingsCubit>();
+    final current = cubit.state.dashboardStyle;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: 16),
+              _optionTile(sheetCtx, 'map', 'Live map', current,
+                  'Full-screen fleet map'),
+              _optionTile(sheetCtx, 'overview', 'Overview (chart)', current,
+                  'Status pie chart, tap to see on map'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    await cubit.setDashboardStyle(selected);
+  }
+
+  Future<void> _showAlertsPicker() async {
+    final cubit = context.read<SettingsCubit>();
+    final current = cubit.state.alertFilterMode;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: 16),
+              _optionTile(sheetCtx, 'all', 'All alerts', current,
+                  'Every notification'),
+              _optionTile(sheetCtx, 'essential', 'Essential only', current,
+                  'Only ignition start/stop & overspeed'),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    await cubit.setAlertFilterMode(selected);
+  }
+
+  Widget _optionTile(BuildContext ctx, String value, String label,
+      String current, String subtitle) {
+    final selected = value == current;
+    return ListTile(
+      leading: Icon(
+        selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+        color: selected ? AppColors.primary : AppColors.grey,
+      ),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      onTap: () => Navigator.pop(ctx, value),
     );
   }
 

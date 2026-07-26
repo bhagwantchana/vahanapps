@@ -78,6 +78,11 @@
 
             
         </activity>
+        <!-- Google Maps SDK for Android key (native fleet map). Value lives in
+             res/values/strings.xml so it's swapped in one place. -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="@string/google_maps_api_key" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

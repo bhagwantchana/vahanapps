@@ -19,7 +19,9 @@ import 'package:fleet_monitor/services/lifecycle_refresh.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/live_address_text.dart';
+import 'package:fleet_monitor/widgets/google_fleet_map.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -234,6 +236,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     if (_liveTrail.isNotEmpty) {
       final last = _liveTrail.last;
       final meters = const Distance().as(LengthUnit.Meter, last, next);
+      // Teleport (device reconnected far away / GPS glitch): start a FRESH
+      // trail so we never draw a long straight line across the map.
+      if (meters > 2000) {
+        _liveTrail
+          ..clear()
+          ..add(next);
+        return;
+      }
       if (meters < 5) return;
     }
     _liveTrail.add(next);
@@ -1182,23 +1192,31 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ];
                                 return Stack(
                                   children: <Widget>[
-                                    NativeVehicleMap(
-                                      vehicles: <VehicleRecord>[vehicle],
-                                      focusVehicle: vehicle,
-                                      trailPoints: trailPoints,
-                                      emptyTitle: vehicle.hasLiveLocation
-                                          ? 'Map data not available'
-                                          : 'No live location yet',
-                                      emptySubtitle:
-                                          'Native map is enabled from superadmin settings',
-                                      followFocusedVehicle: true,
-                                      // Shorter glide than the home overview:
-                                      // SSE pushes land every few seconds, so
-                                      // 2.5 s keeps the marker close to the
-                                      // real position without visible jumps.
-                                      moveAnimationDuration:
-                                          const Duration(milliseconds: 2500),
-                                    ),
+                                    settings.mobileMapProvider.toLowerCase() ==
+                                            'google'
+                                        ? GoogleFleetMap(
+                                            vehicles: <VehicleRecord>[vehicle],
+                                            followVehicleId: vehicle.id,
+                                            trailPoints: trailPoints
+                                                .map((p) => gmaps.LatLng(
+                                                    p.latitude, p.longitude))
+                                                .toList(),
+                                          )
+                                        : NativeVehicleMap(
+                                            vehicles: <VehicleRecord>[vehicle],
+                                            focusVehicle: vehicle,
+                                            trailPoints: trailPoints,
+                                            followFocusedVehicle: true,
+                                            moveAnimationDuration: const Duration(
+                                                milliseconds: 2500),
+                                            mapProvider:
+                                                settings.mobileMapProvider,
+                                            emptyTitle: vehicle.hasLiveLocation
+                                                ? 'Map data not available'
+                                                : 'No live location yet',
+                                            emptySubtitle:
+                                                'Native map is enabled from superadmin settings',
+                                          ),
                                     if (snapshot.connectionState ==
                                         ConnectionState.waiting)
                                       Positioned(
@@ -2388,6 +2406,13 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
     final next = LatLng(vehicle.latitude, vehicle.longitude);
     if (_liveTrail.isNotEmpty) {
       final meters = const Distance().as(LengthUnit.Meter, _liveTrail.last, next);
+      // Teleport → fresh trail (no long straight line across the map).
+      if (meters > 2000) {
+        _liveTrail
+          ..clear()
+          ..add(next);
+        return;
+      }
       if (meters < 5) return;
     }
     _liveTrail.add(next);
@@ -2410,17 +2435,29 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
           return Stack(
             children: <Widget>[
               Positioned.fill(
-                child: NativeVehicleMap(
-                  vehicles: <VehicleRecord>[vehicle],
-                  focusVehicle: vehicle,
-                  trailPoints: _liveTrail,
-                  followFocusedVehicle: true,
-                  moveAnimationDuration: const Duration(milliseconds: 2500),
-                  emptyTitle: vehicle.hasLiveLocation
-                      ? 'Map data not available'
-                      : 'No live location yet',
-                  emptySubtitle: 'Waiting for the vehicle to report',
-                ),
+                child: (vehicle.settings?.mobileMapProvider.toLowerCase() ==
+                        'google')
+                    ? GoogleFleetMap(
+                        vehicles: <VehicleRecord>[vehicle],
+                        followVehicleId: vehicle.id,
+                        trailPoints: _liveTrail
+                            .map((p) => gmaps.LatLng(p.latitude, p.longitude))
+                            .toList(),
+                      )
+                    : NativeVehicleMap(
+                        vehicles: <VehicleRecord>[vehicle],
+                        focusVehicle: vehicle,
+                        trailPoints: _liveTrail,
+                        followFocusedVehicle: true,
+                        moveAnimationDuration:
+                            const Duration(milliseconds: 2500),
+                        mapProvider:
+                            vehicle.settings?.mobileMapProvider ?? 'maplibre',
+                        emptyTitle: vehicle.hasLiveLocation
+                            ? 'Map data not available'
+                            : 'No live location yet',
+                        emptySubtitle: 'Waiting for the vehicle to report',
+                      ),
               ),
               Positioned(
                 left: 0,

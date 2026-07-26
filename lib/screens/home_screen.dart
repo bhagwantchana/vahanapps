@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
 import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
+import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/models/dashboard_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
@@ -15,6 +16,8 @@ import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/drawer.dart';
+import 'package:fleet_monitor/widgets/fleet_full_map.dart';
+import 'package:fleet_monitor/widgets/overview_dashboard.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
@@ -50,6 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
   String _loadedUrl = '';
   bool _isMapExpanded = false;
+  // Overview dashboard → full map drill-down (which status the map opened on).
+  bool _overviewMapOpen = false;
+  String _overviewMapFilter = 'all';
   Timer? _autoRefreshTimer;
   // bool _isAutoRefreshing = false;
 
@@ -402,6 +408,39 @@ class _HomeScreenState extends State<HomeScreen> {
             _initWebView(dashboardMap);
           }
 
+          // NATIVE mode → the schools' "front look": a full-screen fleet map
+          // and nothing else. Tap a vehicle → status-coloured highlight + a
+          // details sheet; Track → the full single-vehicle screen. The `url`
+          // mode keeps the dashboard below, so both options stay available.
+          if (useNativeMap) {
+            final liveList = _liveVehicles.isNotEmpty ? _liveVehicles : vehicles;
+            final dashStyle =
+                context.watch<SettingsCubit>().state.dashboardStyle;
+            // Overview dashboard (pie) unless the user drilled into the map.
+            if (dashStyle == 'overview' && !_overviewMapOpen) {
+              return OverviewDashboard(
+                vehicles: liveList,
+                onOpenMap: (filter) => setState(() {
+                  _overviewMapOpen = true;
+                  _overviewMapFilter = filter;
+                }),
+              );
+            }
+            final fromOverview = dashStyle == 'overview';
+            return FleetFullMap(
+              vehicles: liveList,
+              moveAnimationDuration: _mapMoveDuration,
+              mapProvider: dashboardData?.mobileMapProvider ?? 'maplibre',
+              emptyTitle: AppStrings.of(context).t('no_vehicles_found'),
+              emptySubtitle: AppStrings.of(context).t('connect_device_hint'),
+              onTrack: _openVehicleDetail,
+              initialFilter: fromOverview ? _overviewMapFilter : 'all',
+              onBack: fromOverview
+                  ? () => setState(() => _overviewMapOpen = false)
+                  : null,
+            );
+          }
+
           // Stat tiles read the 4 s live poll (engineOn/speed are carried by
           // those records) so Moving/Idle/Stopped flip within seconds, same
           // as the map. Fall back to the dashboard list before the first poll.
@@ -487,6 +526,20 @@ class _HomeScreenState extends State<HomeScreen> {
           vehicle: vehicle,
         ),
       ),
+    );
+  }
+
+  /// Opens the full single-vehicle tracking screen (path replay / live share /
+  /// call driver / engine control all live there) for a vehicle picked on the
+  /// full-screen fleet map. Primes the track cubit so the screen has live data
+  /// + SSE the instant it opens — same path the vehicle list uses.
+  void _openVehicleDetail(VehicleRecord vehicle) {
+    if (vehicle.imei.isNotEmpty) {
+      context.read<SingleTrackCubit>().fetchVehicleTrack(vehicle.imei);
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const VehicleDetailScreen()),
     );
   }
 

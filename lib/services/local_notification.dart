@@ -413,7 +413,30 @@ class CustomNotificationSoundService {
     );
   }
 
+  /// Essential = ignition start/stop + overspeed. Used by the "Essential only"
+  /// notification filter (Settings → Notifications) to cut the alert noise.
+  static bool _isEssentialAlert(Map<String, dynamic> data) {
+    final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
+    final kind =
+        (data['notification_kind'] ?? '').toString().trim().toLowerCase();
+    if (alertType == 'overspeed' || alertType == 'speed_camera') return true;
+    if (alertType == 'ignition_on' || alertType == 'ignition_off') return true;
+    if (alertType.startsWith('engine_') || kind.startsWith('engine_')) {
+      return true;
+    }
+    if (kind.contains('ignition')) return true;
+    return false;
+  }
+
   static Future<void> _showNotificationStatic(RemoteMessage message) async {
+    // Notification filter (Settings → Notifications). 'essential' suppresses
+    // everything except ignition start/stop + overspeed. Defaults to 'all'.
+    final filterMode =
+        await LocalStorage.readValue(PreferencesKey.alertFilterMode) ?? 'all';
+    if (filterMode == 'essential' && !_isEssentialAlert(message.data)) {
+      return;
+    }
+
     final title =
         message.notification?.title ?? message.data['title']?.toString() ?? 'VahanConnect';
     final body =

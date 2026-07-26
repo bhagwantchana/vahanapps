@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Google Maps SDK for Android key for the native fleet map.
+         REQUIRED for the map to render (a wrong/empty key = blank grey map).
+         In Google Cloud Console on the SAME project as the web key:
+           1) Enable "Maps SDK for Android" (and "Maps SDK for iOS").
+           2) Enable billing on the project.
+           3) Create/restrict a key to THIS app: package
+              com.globynix.fleetmonitor (see applicationId) + the release
+              SHA-1, then paste it below.
+         The web JS key (referrer-restricted) will NOT work here. -->
+    <string name="google_maps_api_key">AIzaSyAUtlpCDQ52KHBR_AltqIReHr6QYEmnr88</string>
+</resources>
