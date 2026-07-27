@@ -181,6 +181,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // (the "hold data + animate" model the operator asked for). A 60 fps ticker
   // drives it.
   LatLng? _followRendered;
+  double? _followBearing; // heading computed from actual movement (accurate)
   final List<_Fix> _fixQueue = <_Fix>[];
   int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
   int? _lastWallMs;
@@ -276,6 +277,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _playMs = null;
       _lastWallMs = null;
       _followRendered = null;
+      _followBearing = null;
       if (widget.followVehicleId != null) {
         if (!_glide.isAnimating) _glide.repeat();
       } else {
@@ -297,13 +299,48 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       }
     }
     if (v == null) return;
+    if (v.latitude == 0 && v.longitude == 0) return; // invalid fix
     final ts = v.tsEpochMs > 0
         ? v.tsEpochMs
         : DateTime.now().millisecondsSinceEpoch;
     // Only buffer a genuinely newer fix (a parked poll re-sends the same ts).
     if (_fixQueue.isNotEmpty && ts <= _fixQueue.last.ts) return;
+    // GPS OUTLIER FILTER: a fix implying an impossible ground speed over a
+    // short interval is a glitch — drop it so the marker never teleports/wiggles.
+    // (A real reconnect covers a big distance over a LONG gap → low speed →
+    // kept, and the playback teleport-snap handles it cleanly.)
+    if (_fixQueue.isNotEmpty) {
+      final last = _fixQueue.last;
+      final meters = _distM(last.lat, last.lng, v.latitude, v.longitude);
+      final secs = (ts - last.ts) / 1000.0;
+      if (secs > 0 && meters > 150 && (meters / secs) * 3.6 > 220) {
+        return; // > 220 km/h over a short hop → GPS error
+      }
+    }
     _fixQueue.add(_Fix(v.latitude, v.longitude, ts));
     if (_fixQueue.length > 240) _fixQueue.removeAt(0);
+  }
+
+  static double _distM(double lat1, double lng1, double lat2, double lng2) {
+    const r = 6371000.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return 2 * r * math.asin(math.min(1.0, math.sqrt(a)));
+  }
+
+  static double _bearing(double lat1, double lng1, double lat2, double lng2) {
+    final rLat1 = lat1 * math.pi / 180;
+    final rLat2 = lat2 * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final y = math.sin(dLng) * math.cos(rLat2);
+    final x = math.cos(rLat1) * math.sin(rLat2) -
+        math.sin(rLat1) * math.cos(rLat2) * math.cos(dLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 
   @override
@@ -575,14 +612,22 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // In navigation mode the followed car is a BILLBOARD (flat:false) so the
     // camera tilt never foreshortens/stretches it; the heading-up map already
     // conveys direction, so it points straight up.
-    final navBillboard = _navMode && widget.followVehicleId == v.id;
+    final followed = widget.followVehicleId == v.id;
+    final navBillboard = _navMode && followed;
+    // Followed car points along its ACTUAL movement bearing (more accurate
+    // than the device's reported course); fleet keeps the device course.
+    final rotation = navBillboard
+        ? 0.0
+        : (followed && _followBearing != null
+            ? _followBearing!
+            : v.course % 360);
     markers.add(
       Marker(
         markerId: MarkerId(v.id.toString()),
         position: pos,
         icon: icon,
         anchor: const Offset(0.5, 0.5),
-        rotation: navBillboard ? 0 : v.course % 360,
+        rotation: rotation,
         flat: !navBillboard,
         zIndexInt: selected ? 3 : 1,
         onTap: () => widget.onVehicleTap?.call(v),
@@ -857,6 +902,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         a.lat + (b.lat - a.lat) * f,
         a.lng + (b.lng - a.lng) * f,
       );
+      // Heading from ACTUAL movement (accurate; device course can be noisy).
+      // Hold the last heading while effectively stationary so a parked car
+      // doesn't spin.
+      if (_distM(a.lat, a.lng, b.lat, b.lng) > 3) {
+        _followBearing = _bearing(a.lat, a.lng, b.lat, b.lng);
+      }
     }
 
     // Drop fixes we've fully played past (keep the current segment start).
@@ -880,12 +931,15 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       // moveCamera (instant) not animateCamera: the pose is ALREADY eased per
       // frame, so animating on top would fight itself and stutter.
       if (_navMode) {
-        // Navigation mode: 3D tilt + heading-up (map rotates to travel dir).
-        double bearing = 0;
-        for (final x in _visible) {
-          if (x.id == widget.followVehicleId) {
-            bearing = x.course % 360;
-            break;
+        // Navigation mode: 3D tilt + heading-up (map rotates to travel dir),
+        // using the accurate movement bearing when we have it.
+        double bearing = _followBearing ?? 0;
+        if (_followBearing == null) {
+          for (final x in _visible) {
+            if (x.id == widget.followVehicleId) {
+              bearing = x.course % 360;
+              break;
+            }
           }
         }
         await controller.moveCamera(CameraUpdate.newCameraPosition(
