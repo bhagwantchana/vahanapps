@@ -75,6 +75,14 @@ const String _darkStyle =
 const String _retroStyle =
     '[{"elementType":"geometry","stylers":[{"color":"#ebe3cd"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#523735"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#fdfcf8"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#f8c967"}]},{"featureType":"water","elementType":"geometry.fill","stylers":[{"color":"#b9d3c2"}]}]';
 
+/// One buffered GPS fix (single-vehicle smooth playback).
+class _Fix {
+  const _Fix(this.lat, this.lng, this.ts);
+  final double lat;
+  final double lng;
+  final int ts; // epoch ms of the fix
+}
+
 class _GoogleFleetMapState extends State<GoogleFleetMap>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Battery: the fleet ease/pulse ticker must not run while this map is off
@@ -167,10 +175,16 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   bool _followPaused = false;
   Timer? _followResume;
 
-  // Single-vehicle CONTINUOUS follow: a 60 fps ticker eases the marker + camera
-  // toward the latest fix every frame, so the map shifts smoothly with the
-  // vehicle (like Google Maps navigation) — never a move-then-pause jerk.
+  // Single-vehicle SMOOTH PLAYBACK: buffer incoming fixes and replay the marker
+  // through them at real pace, a small cushion behind live — so it glides along
+  // the ACTUAL route at the vehicle's real speed with no jerk or corner-cutting
+  // (the "hold data + animate" model the operator asked for). A 60 fps ticker
+  // drives it.
   LatLng? _followRendered;
+  final List<_Fix> _fixQueue = <_Fix>[];
+  int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
+  int? _lastWallMs;
+  static const int _cushionMs = 1800; // render this far behind the newest fix
   late final AnimationController _glide = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 1), // cadence only; value is unused
@@ -255,14 +269,41 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _fitDone = false;
       unawaited(_fitToFleet());
     }
-    // Start/stop the continuous follow ticker as follow mode toggles.
+    // Start/stop the follow ticker + reset the playback buffer as follow mode
+    // (or the followed vehicle) changes.
     if (oldWidget.followVehicleId != widget.followVehicleId) {
+      _fixQueue.clear();
+      _playMs = null;
+      _lastWallMs = null;
+      _followRendered = null;
       if (widget.followVehicleId != null) {
         if (!_glide.isAnimating) _glide.repeat();
       } else {
         _glide.stop();
       }
     }
+    // Buffer every fresh fix for the single-vehicle playback.
+    if (widget.followVehicleId != null) _enqueueFollowFix();
+  }
+
+  void _enqueueFollowFix() {
+    final id = widget.followVehicleId;
+    if (id == null) return;
+    VehicleRecord? v;
+    for (final x in _visible) {
+      if (x.id == id) {
+        v = x;
+        break;
+      }
+    }
+    if (v == null) return;
+    final ts = v.tsEpochMs > 0
+        ? v.tsEpochMs
+        : DateTime.now().millisecondsSinceEpoch;
+    // Only buffer a genuinely newer fix (a parked poll re-sends the same ts).
+    if (_fixQueue.isNotEmpty && ts <= _fixQueue.last.ts) return;
+    _fixQueue.add(_Fix(v.latitude, v.longitude, ts));
+    if (_fixQueue.length > 240) _fixQueue.removeAt(0);
   }
 
   @override
@@ -778,33 +819,51 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // jerk — the Google-Maps navigation feel.
   void _onGlideTick() {
     if (widget.followVehicleId == null || !_tickerEnabled || !_appActive) return;
-    VehicleRecord? v;
-    for (final x in _visible) {
-      if (x.id == widget.followVehicleId) {
-        v = x;
-        break;
-      }
-    }
-    if (v == null) return;
-    final target = LatLng(v.latitude, v.longitude);
-    final cur = _followRendered;
-    if (cur == null) {
-      _followRendered = target;
+    final q = _fixQueue;
+    if (q.isEmpty) return;
+    if (q.length == 1) {
+      _followRendered = LatLng(q.first.lat, q.first.lng);
       _refreshMarkers();
       unawaited(_followCamera());
       return;
     }
-    final dLat = target.latitude - cur.latitude;
-    final dLng = target.longitude - cur.longitude;
-    // Close enough → nothing to do this frame (parked car = still camera).
-    if (dLat.abs() < 4e-8 && dLng.abs() < 4e-8) return;
-    if (dLat.abs() > 0.02 || dLng.abs() > 0.02) {
-      _followRendered = target; // teleport → snap, no crawl across the map
-    } else {
-      // Exponential ease: smooth, frame-rate independent enough at 60 fps.
-      _followRendered =
-          LatLng(cur.latitude + dLat * 0.14, cur.longitude + dLng * 0.14);
+
+    final nowWall = DateTime.now().millisecondsSinceEpoch;
+    _playMs ??= q.first.ts;
+    final dt = nowWall - (_lastWallMs ?? nowWall);
+    _lastWallMs = nowWall;
+    _playMs = _playMs! + dt;
+    // Stay a fixed cushion behind the newest fix; never run past it.
+    final upper = q.last.ts - _cushionMs;
+    if (_playMs! > upper) _playMs = upper;
+    if (_playMs! < q.first.ts) _playMs = q.first.ts;
+
+    // Segment [a,b] bracketing the playback clock.
+    var i = 0;
+    while (i < q.length - 1 && q[i + 1].ts <= _playMs!) {
+      i++;
     }
+    final a = q[i];
+    final b = q[i + 1 < q.length ? i + 1 : i];
+    if (b.ts <= a.ts) {
+      _followRendered = LatLng(b.lat, b.lng);
+    } else if ((a.lat - b.lat).abs() > 0.02 || (a.lng - b.lng).abs() > 0.02) {
+      // Teleport (reconnect / glitch): snap across the gap, don't crawl.
+      _followRendered = LatLng(b.lat, b.lng);
+      _playMs = b.ts;
+    } else {
+      final f = ((_playMs! - a.ts) / (b.ts - a.ts)).clamp(0.0, 1.0);
+      _followRendered = LatLng(
+        a.lat + (b.lat - a.lat) * f,
+        a.lng + (b.lng - a.lng) * f,
+      );
+    }
+
+    // Drop fixes we've fully played past (keep the current segment start).
+    while (_fixQueue.length > 2 && _fixQueue[1].ts <= _playMs!) {
+      _fixQueue.removeAt(0);
+    }
+
     _refreshMarkers();
     unawaited(_followCamera());
   }

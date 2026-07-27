@@ -581,12 +581,14 @@ class _VehicleDetailsCard extends StatelessWidget {
                     ),
                     child: vehicle.vehicleIconUrl.isNotEmpty
                         ? Image.network(
-                            vehicle.vehicleIconUrl,
+                            vehicle.statusIconUrl,
                             fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => Icon(
-                                LucideIcons.car,
-                                size: 20,
-                                color: _statusColor),
+                            errorBuilder: (_, _, _) => Image.network(
+                              vehicle.vehicleIconUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => Icon(LucideIcons.car,
+                                  size: 20, color: _statusColor),
+                            ),
                           )
                         : Icon(LucideIcons.car, size: 20, color: _statusColor),
                   ),

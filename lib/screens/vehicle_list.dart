@@ -560,10 +560,17 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
       width: 50,
       height: 50,
       decoration: BoxDecoration(color: const Color(0xFFF1F4F8), borderRadius: BorderRadius.circular(10)),
+      // Status-coloured vehicle icon (green/orange/red/grey), same as the map.
+      // Falls back to the plain icon if the status variant is missing.
       child: CachedNetworkImage(
-        imageUrl: vehicle.vehicleIconUrl,
+        imageUrl: vehicle.statusIconUrl,
         fit: BoxFit.contain,
-        errorWidget: (c, u, e) => Icon(LucideIcons.truck, color: Colors.blue, size: 20),
+        errorWidget: (c, u, e) => CachedNetworkImage(
+          imageUrl: vehicle.vehicleIconUrl,
+          fit: BoxFit.contain,
+          errorWidget: (c, u, e) =>
+              Icon(LucideIcons.truck, color: Colors.blue, size: 20),
+        ),
       ),
     );
   }

@@ -484,4 +484,32 @@ class VehicleRecord {
 
   String get primaryMapUrl =>
       trackingUrl.isNotEmpty ? trackingUrl : singleMapUrl;
+
+  /// Live status bucket (same rule as the map): fix older than 30 min =
+  /// offline, ACC off = stopped, > 5 km/h = moving, else idle.
+  String get statusKey {
+    final ts = tsEpochMs;
+    if (ts > 0 &&
+        DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000) {
+      return 'offline';
+    }
+    if (isStopped) return 'stopped';
+    if (isMoving) return 'moving';
+    return 'idle';
+  }
+
+  /// Status-coloured variant of [vehicleIconUrl]
+  /// (`…/status/<stem>_<status>.png`) — moving green / idle orange / stopped
+  /// red / offline grey, the same coloured icons the map uses. Falls back to
+  /// the plain icon URL if a variant is missing.
+  String get statusIconUrl {
+    final url = vehicleIconUrl.trim();
+    final slash = url.lastIndexOf('/');
+    if (slash < 0) return url;
+    final dir = url.substring(0, slash);
+    final file = url.substring(slash + 1);
+    final dot = file.lastIndexOf('.');
+    final stem = dot > 0 ? file.substring(0, dot) : file;
+    return '$dir/status/${stem}_$statusKey.png';
+  }
 }
