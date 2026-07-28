@@ -190,6 +190,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
   int? _lastWallMs;
   static const int _cushionMs = 1800; // render this far behind the newest fix
+  /// Lag past the cushion that triggers a hard snap to live. Beyond this the
+  /// marker is showing history, not a live position.
+  static const int _maxLagMs = 8000;
+  /// Lag past the cushion where playback speeds up to 2x to close the gap.
+  static const int _catchUpMs = 2000;
   late final AnimationController _glide = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 1), // cadence only; value is unused
@@ -879,12 +884,28 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
 
     final nowWall = DateTime.now().millisecondsSinceEpoch;
-    _playMs ??= q.first.ts;
+    // Seed at the NEWEST fix, not the oldest. Devices buffer during a GSM gap
+    // and then dump several fixes at once, so the queue can span minutes the
+    // moment the screen opens. Starting at q.first replayed that whole backlog
+    // at 1x — the marker crawled through minutes-old positions while the real
+    // vehicle was streets away.
+    _playMs ??= q.last.ts - _cushionMs;
     final dt = nowWall - (_lastWallMs ?? nowWall);
     _lastWallMs = nowWall;
-    _playMs = _playMs! + dt;
     // Stay a fixed cushion behind the newest fix; never run past it.
     final upper = q.last.ts - _cushionMs;
+    // The clock advances at 1x wall time, so any lag it picks up (backgrounded
+    // app, a burst of buffered fixes, a slow frame) would otherwise be
+    // PERMANENT — 1x can never catch up to 1x. Snap when hopelessly behind,
+    // and run at up to 2x to close a small gap smoothly.
+    final lag = upper - _playMs!;
+    if (lag > _maxLagMs) {
+      _playMs = upper; // hopeless backlog — jump to live rather than crawl
+    } else if (lag > _catchUpMs) {
+      _playMs = _playMs! + (dt * 2);
+    } else {
+      _playMs = _playMs! + dt;
+    }
     if (_playMs! > upper) _playMs = upper;
     if (_playMs! < q.first.ts) _playMs = q.first.ts;
 
