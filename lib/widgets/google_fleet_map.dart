@@ -306,21 +306,30 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
     if (v == null) return;
     if (v.latitude == 0 && v.longitude == 0) return; // invalid fix
-    final ts = v.tsEpochMs > 0
-        ? v.tsEpochMs
-        : DateTime.now().millisecondsSinceEpoch;
+    // Server fix time only. Falling back to the PHONE clock mixed two clocks in
+    // one queue: a phone running ahead of the server stamped an entry the real
+    // (older) server timestamps could never beat, and the `ts <= last.ts` guard
+    // below then dropped every following fix — the marker froze for good.
+    if (v.tsEpochMs <= 0) return;
+    final ts = v.tsEpochMs;
     // Only buffer a genuinely newer fix (a parked poll re-sends the same ts).
     if (_fixQueue.isNotEmpty && ts <= _fixQueue.last.ts) return;
     // GPS OUTLIER FILTER: a fix implying an impossible ground speed over a
     // short interval is a glitch — drop it so the marker never teleports/wiggles.
-    // (A real reconnect covers a big distance over a LONG gap → low speed →
-    // kept, and the playback teleport-snap handles it cleanly.)
+    // Capped at 2 km: `ts` is server RECEIVE time, so a device that buffered
+    // through a dead zone and dumped its backlog lands a large distance under a
+    // tiny receive-time delta. That reads as an impossible speed but is a
+    // genuine reconnect, and dropping it stalled the marker for the whole
+    // catch-up. Past 2 km we accept and let the playback teleport-snap handle it.
     if (_fixQueue.isNotEmpty) {
       final last = _fixQueue.last;
       final meters = _distM(last.lat, last.lng, v.latitude, v.longitude);
       final secs = (ts - last.ts) / 1000.0;
-      if (secs > 0 && meters > 150 && (meters / secs) * 3.6 > 220) {
-        return; // > 220 km/h over a short hop → GPS error
+      if (secs > 0 &&
+          meters > 150 &&
+          meters < 2000 &&
+          (meters / secs) * 3.6 > 220) {
+        return; // implausible short hop → GPS error
       }
     }
     _fixQueue.add(_Fix(v.latitude, v.longitude, ts));

@@ -382,11 +382,14 @@ class VehicleRecord {
 
   bool get engineOn => acc > 0;
 
-  bool get isMoving => engineOn && speed > 5;
+  /// Real road speed means the vehicle is moving, whatever the ACC bit says.
+  /// OBD and PT06 units flicker or stick that bit, and a bus doing 60 km/h
+  /// rendering as a red "Stopped" marker is the worst thing the map can do.
+  bool get isMoving => speed > 5;
 
-  bool get isIdle => engineOn && speed <= 5;
+  bool get isIdle => !isMoving && engineOn;
 
-  bool get isStopped => !engineOn;
+  bool get isStopped => !isMoving && !engineOn;
 
   // ── Device/plan expiry → red badge on the vehicle cards ──────────────────
   /// Parsed expiry date, or null when the device has no valid expiry set.
