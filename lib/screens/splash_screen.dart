@@ -10,6 +10,7 @@ import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/screens/student_map_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
 import 'package:fleet_monitor/services/force_update_service.dart';
+import 'package:fleet_monitor/screens/update_required_screen.dart';
 import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -59,6 +60,20 @@ class _SplashScreenState extends State<SplashScreen>
     // If an update is found, a full-screen blocking UI appears and
     // the app restarts automatically after install.
     await ForceUpdateService.checkAndForceUpdate();
+
+    // Server-driven minimum-version gate. Play's flow above covers Android;
+    // this is what reaches iOS and side-loaded builds. A blocked build stops
+    // here permanently — no route past UpdateRequiredScreen.
+    final updateRequirement = await ForceUpdateService.checkServerRequirement();
+    if (updateRequirement != null) {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => UpdateRequiredScreen(requirement: updateRequirement),
+        ),
+      );
+      return;
+    }
 
     await Functions.getDeviceTokenToSendNotification();
     await Future<void>.delayed(const Duration(seconds: 3));

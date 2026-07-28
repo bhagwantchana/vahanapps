@@ -5,6 +5,7 @@ import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/models/auth_model.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
+import 'package:fleet_monitor/services/force_update_service.dart';
 import 'package:flutter/foundation.dart';
 
 class AuthRepository {
@@ -20,12 +21,17 @@ class AuthRepository {
               ? fcmTokenGet!.trim()
               : (await LocalStorage.readValue(PreferencesKey.fcmToken) ?? '');
 
+      // app_version lets the server refuse logins from builds below the
+      // configured minimum. Builds shipped before this field existed send
+      // nothing, which the server treats as "outdated" — that is what makes
+      // the update gate reach already-installed apps.
       final formData = FormData.fromMap(<String, dynamic>{
         'email': email,
         'password': pass,
         'fcm_token': cachedFcmToken,
         'platform': _platformName,
         'device_type': _platformName,
+        'app_version': await ForceUpdateService.currentVersion(),
       });
 
       final response = await _networkApi.sendRequest.post(

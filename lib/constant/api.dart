@@ -32,6 +32,9 @@ class AppUrl {
   /// the identical address as mobile drivers do.
   static const String geocodeAddress = '${baseUrl}geocodeAddress';
 
+  /// Public (token-less) update gate — hit on every cold start, before login.
+  static const String appVersion = '${baseUrl}appVersion';
+
   // SSE / live stream endpoint exposed by the Node tracking server on its
   // HTTP port (default 5101). When subscribed, the server pushes one
   // `vehicle` event per GPS fix for every vehicle the user has access to.
