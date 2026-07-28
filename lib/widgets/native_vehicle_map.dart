@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 /// Live vehicle map rendered with **MapLibre GL Native** vector tiles from
@@ -338,10 +339,59 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// Subtle 3D camera pitch for the single focused vehicle — reveals the
   /// liberty style's built-in 3D buildings for a premium, Google-tracking
   /// look. The multi-vehicle fleet overview stays flat top-down.
+  /// Navigation mode — 3D pitch + heading-up, same idea as the Google engine's
+  /// nav button. Off by default so the plain follow view is unchanged.
+  bool _navMode = false;
+
   double _focusTilt() {
+    if (_navMode) return 60.0;
     return widget.followFocusedVehicle && widget.focusVehicle != null
         ? 45.0
         : 0.0;
+  }
+
+  /// Heading the camera should face in nav mode: the followed vehicle's course.
+  double _navBearing() {
+    final focus = widget.focusVehicle;
+    if (focus == null) return 0;
+    return focus.course % 360;
+  }
+
+  Future<void> _toggleNavMode() async {
+    final controller = _controller;
+    if (controller == null || !_styleReady) return;
+    setState(() => _navMode = !_navMode);
+    final focus = widget.focusVehicle;
+    final target = focus != null
+        ? (_renderedPositions[focus.id] ?? _toLatLng(focus))
+        : _centerPoint();
+    if (target == null) return;
+    _userInteracted = false;
+    _programmaticMove = true;
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: target,
+            zoom: _navMode ? 17.5 : _zoomLevel(),
+            tilt: _focusTilt(),
+            bearing: _navMode ? _navBearing() : 0,
+          ),
+        ),
+      );
+    } catch (_) {
+      // Controller torn down mid-animation — nothing to recover.
+    }
+  }
+
+  /// Re-frame the map: back onto the followed vehicle, or the whole fleet.
+  Future<void> _recenter() async {
+    _userInteracted = false;
+    if (widget.focusVehicle != null && widget.highlightFocus) {
+      await _centerOnFocus();
+    } else {
+      await _fitToVehicles();
+    }
   }
 
   double _zoomLevel() {
@@ -606,8 +656,10 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// natural grounding shadow at any rotation. Composited at the device
   /// pixel ratio so it stays crisp on hi-dpi screens (iconSize = 1.0).
   Future<Uint8List> _renderMarkerPng(Uint8List raw) async {
-    final iconPx = (40 * _dpr).round();
-    final canvasPx = (54 * _dpr).round();
+    // Matches the Google engine's marker size (52 px) — at 40 px the vehicle
+    // read as noticeably smaller than the same fleet on the Google map.
+    final iconPx = (52 * _dpr).round();
+    final canvasPx = (72 * _dpr).round();
 
     // Decode at the icon's NATIVE size so we know its true aspect ratio. The
     // old code forced targetWidth == targetHeight, which squashed every
@@ -1357,6 +1409,30 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             ),
           ),
         ),
+        // Map controls — the MapLibre engine had none, so a customer switched
+        // to it lost the recenter / heading-up buttons the Google engine has.
+        Positioned(
+          right: 10,
+          bottom: 56,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (widget.followFocusedVehicle && widget.focusVehicle != null)
+                _MapControlButton(
+                  icon: _navMode ? LucideIcons.map : LucideIcons.navigation,
+                  active: _navMode,
+                  tooltip: _navMode ? 'Exit navigation view' : 'Heading-up view',
+                  onTap: _toggleNavMode,
+                ),
+              const SizedBox(height: 8),
+              _MapControlButton(
+                icon: LucideIcons.crosshair,
+                tooltip: 'Recentre',
+                onTap: _recenter,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -1420,5 +1496,45 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         ),
       ),
     );
+  }
+}
+
+/// Floating round map control, styled to match the Google engine's buttons so
+/// switching map engines doesn't change how the controls look.
+class _MapControlButton extends StatelessWidget {
+  const _MapControlButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final button = Material(
+      color: active ? AppTheme.primaryBlue : theme.cardColor,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(
+            icon,
+            size: 20,
+            color: active ? Colors.white : theme.iconTheme.color,
+          ),
+        ),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }

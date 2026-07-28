@@ -182,6 +182,10 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // drives it.
   LatLng? _followRendered;
   double? _followBearing; // heading computed from actual movement (accurate)
+  /// Heading actually drawn. Chases [_followBearing] a few degrees per frame
+  /// instead of snapping, so a corner reads as the car turning rather than the
+  /// icon flicking round while it slides sideways across the junction.
+  double? _renderBearing;
   final List<_Fix> _fixQueue = <_Fix>[];
   int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
   int? _lastWallMs;
@@ -278,6 +282,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _lastWallMs = null;
       _followRendered = null;
       _followBearing = null;
+      _renderBearing = null;
       if (widget.followVehicleId != null) {
         if (!_glide.isAnimating) _glide.repeat();
       } else {
@@ -618,8 +623,8 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // than the device's reported course); fleet keeps the device course.
     final rotation = navBillboard
         ? 0.0
-        : (followed && _followBearing != null
-            ? _followBearing!
+        : (followed && (_renderBearing ?? _followBearing) != null
+            ? (_renderBearing ?? _followBearing)!
             : v.course % 360);
     markers.add(
       Marker(
@@ -898,16 +903,39 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _playMs = b.ts;
     } else {
       final f = ((_playMs! - a.ts) / (b.ts - a.ts)).clamp(0.0, 1.0);
-      _followRendered = LatLng(
-        a.lat + (b.lat - a.lat) * f,
-        a.lng + (b.lng - a.lng) * f,
-      );
+      // Curved (Catmull-Rom) interpolation using the fixes either side of the
+      // segment. A straight lerp cuts the corner, which is exactly the
+      // "sideways slide" through a junction — the marker leaves the road and
+      // slides diagonally to the next fix. The spline arcs through the turn
+      // instead. p0/p3 fall back to the segment ends at the queue edges, where
+      // Catmull-Rom degenerates to the old straight line.
+      final p0 = i > 0 ? q[i - 1] : a;
+      final p3 = (i + 2) < q.length ? q[i + 2] : b;
+      _followRendered = _catmullRom(p0, a, b, p3, f);
       // Heading from ACTUAL movement (accurate; device course can be noisy).
+      // Sampled slightly ahead on the same curve so the icon points where it is
+      // about to go — the car noses into the corner like a real vehicle.
       // Hold the last heading while effectively stationary so a parked car
       // doesn't spin.
       if (_distM(a.lat, a.lng, b.lat, b.lng) > 3) {
-        _followBearing = _bearing(a.lat, a.lng, b.lat, b.lng);
+        final ahead = _catmullRom(p0, a, b, p3, (f + 0.08).clamp(0.0, 1.0));
+        final here = _followRendered!;
+        _followBearing = _distM(here.latitude, here.longitude,
+                    ahead.latitude, ahead.longitude) >
+                0.5
+            ? _bearing(
+                here.latitude, here.longitude, ahead.latitude, ahead.longitude)
+            : _bearing(a.lat, a.lng, b.lat, b.lng);
       }
+    }
+
+    // Ease the DRAWN heading toward the target instead of snapping. ~240 ms to
+    // close the gap keeps a turn readable without lagging the actual motion.
+    final target = _followBearing;
+    if (target != null) {
+      final cur = _renderBearing;
+      _renderBearing =
+          cur == null ? target : _lerpAngle(cur, target, (dt / 240).clamp(0.0, 1.0));
     }
 
     // Drop fixes we've fully played past (keep the current segment start).
@@ -917,6 +945,36 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
     _refreshMarkers();
     unawaited(_followCamera());
+  }
+
+  /// Catmull-Rom through p1→p2 using p0/p3 as the surrounding tangents.
+  /// Guarded: a sharp direction change can make the spline overshoot well off
+  /// the road, so if it strays more than 25 m from the straight-line point we
+  /// keep the straight one — a slightly cut corner beats a wild loop.
+  static LatLng _catmullRom(_Fix p0, _Fix p1, _Fix p2, _Fix p3, double t) {
+    final t2 = t * t;
+    final t3 = t2 * t;
+    double axis(double v0, double v1, double v2, double v3) =>
+        0.5 *
+        ((2 * v1) +
+            (-v0 + v2) * t +
+            (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 +
+            (-v0 + 3 * v1 - 3 * v2 + v3) * t3);
+
+    final lat = axis(p0.lat, p1.lat, p2.lat, p3.lat);
+    final lng = axis(p0.lng, p1.lng, p2.lng, p3.lng);
+    final linLat = p1.lat + (p2.lat - p1.lat) * t;
+    final linLng = p1.lng + (p2.lng - p1.lng) * t;
+    if (_distM(lat, lng, linLat, linLng) > 25) {
+      return LatLng(linLat, linLng);
+    }
+    return LatLng(lat, lng);
+  }
+
+  /// Shortest-path angular interpolation (handles the 359°→1° wrap).
+  static double _lerpAngle(double from, double to, double t) {
+    final diff = (((to - from) % 360) + 540) % 360 - 180;
+    return ((from + diff * t) % 360 + 360) % 360;
   }
 
   Future<void> _followCamera() async {
@@ -933,8 +991,10 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       if (_navMode) {
         // Navigation mode: 3D tilt + heading-up (map rotates to travel dir),
         // using the accurate movement bearing when we have it.
-        double bearing = _followBearing ?? 0;
-        if (_followBearing == null) {
+        // Same eased heading the marker uses, so the map doesn't swing round
+        // faster than the car appears to turn.
+        double bearing = _renderBearing ?? _followBearing ?? 0;
+        if ((_renderBearing ?? _followBearing) == null) {
           for (final x in _visible) {
             if (x.id == widget.followVehicleId) {
               bearing = x.course % 360;
