@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
+import 'package:fleet_monitor/widgets/map_motion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -190,11 +191,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
   int? _lastWallMs;
   static const int _cushionMs = 1800; // render this far behind the newest fix
-  /// Lag past the cushion that triggers a hard snap to live. Beyond this the
-  /// marker is showing history, not a live position.
-  static const int _maxLagMs = 8000;
-  /// Lag past the cushion where playback speeds up to 2x to close the gap.
-  static const int _catchUpMs = 2000;
   late final AnimationController _glide = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 1), // cadence only; value is unused
@@ -894,20 +890,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     _lastWallMs = nowWall;
     // Stay a fixed cushion behind the newest fix; never run past it.
     final upper = q.last.ts - _cushionMs;
-    // The clock advances at 1x wall time, so any lag it picks up (backgrounded
-    // app, a burst of buffered fixes, a slow frame) would otherwise be
-    // PERMANENT — 1x can never catch up to 1x. Snap when hopelessly behind,
-    // and run at up to 2x to close a small gap smoothly.
-    final lag = upper - _playMs!;
-    if (lag > _maxLagMs) {
-      _playMs = upper; // hopeless backlog — jump to live rather than crawl
-    } else if (lag > _catchUpMs) {
-      _playMs = _playMs! + (dt * 2);
-    } else {
-      _playMs = _playMs! + dt;
-    }
-    if (_playMs! > upper) _playMs = upper;
-    if (_playMs! < q.first.ts) _playMs = q.first.ts;
+    // Clock advance + catch-up — see advancePlaybackClock in map_motion.dart,
+    // where the behaviour is unit-tested.
+    _playMs = advancePlaybackClock(
+      playMs: _playMs!,
+      dtMs: dt,
+      upperMs: upper,
+      floorMs: q.first.ts,
+    );
 
     // Segment [a,b] bracketing the playback clock.
     var i = 0;
@@ -956,7 +946,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (target != null) {
       final cur = _renderBearing;
       _renderBearing =
-          cur == null ? target : _lerpAngle(cur, target, (dt / 240).clamp(0.0, 1.0));
+          cur == null ? target : lerpAngle(cur, target, (dt / 240).clamp(0.0, 1.0));
     }
 
     // Drop fixes we've fully played past (keep the current segment start).
@@ -968,34 +958,17 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     unawaited(_followCamera());
   }
 
-  /// Catmull-Rom through p1→p2 using p0/p3 as the surrounding tangents.
-  /// Guarded: a sharp direction change can make the spline overshoot well off
-  /// the road, so if it strays more than 25 m from the straight-line point we
-  /// keep the straight one — a slightly cut corner beats a wild loop.
+  /// Curved position along the segment — see [catmullRom] in map_motion.dart,
+  /// where the behaviour is unit-tested.
   static LatLng _catmullRom(_Fix p0, _Fix p1, _Fix p2, _Fix p3, double t) {
-    final t2 = t * t;
-    final t3 = t2 * t;
-    double axis(double v0, double v1, double v2, double v3) =>
-        0.5 *
-        ((2 * v1) +
-            (-v0 + v2) * t +
-            (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 +
-            (-v0 + 3 * v1 - 3 * v2 + v3) * t3);
-
-    final lat = axis(p0.lat, p1.lat, p2.lat, p3.lat);
-    final lng = axis(p0.lng, p1.lng, p2.lng, p3.lng);
-    final linLat = p1.lat + (p2.lat - p1.lat) * t;
-    final linLng = p1.lng + (p2.lng - p1.lng) * t;
-    if (_distM(lat, lng, linLat, linLng) > 25) {
-      return LatLng(linLat, linLng);
-    }
-    return LatLng(lat, lng);
-  }
-
-  /// Shortest-path angular interpolation (handles the 359°→1° wrap).
-  static double _lerpAngle(double from, double to, double t) {
-    final diff = (((to - from) % 360) + 540) % 360 - 180;
-    return ((from + diff * t) % 360 + 360) % 360;
+    final p = catmullRom(
+      MotionFix(p0.lat, p0.lng, p0.ts),
+      MotionFix(p1.lat, p1.lng, p1.ts),
+      MotionFix(p2.lat, p2.lng, p2.ts),
+      MotionFix(p3.lat, p3.lng, p3.ts),
+      t,
+    );
+    return LatLng(p.lat, p.lng);
   }
 
   Future<void> _followCamera() async {
