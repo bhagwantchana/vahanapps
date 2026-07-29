@@ -6,9 +6,11 @@ import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
 import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/models/dashboard_model.dart';
+import 'package:fleet_monitor/models/vechile_list_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/repositorys/vehicle_repository.dart';
+import 'package:fleet_monitor/services/sse_client.dart';
 import 'package:fleet_monitor/services/assigned_vehicle_reminder_service.dart';
 import 'package:fleet_monitor/services/geofence_monitor_service.dart';
 import 'package:fleet_monitor/services/lifecycle_refresh.dart';
@@ -64,6 +66,11 @@ class _HomeScreenState extends State<HomeScreen> {
   /// (not dashboardModel directly) so it moves markers between polls; the
   /// dashboard fetch only reconciles the vehicle SET (added/removed devices).
   List<VehicleRecord> _liveVehicles = <VehicleRecord>[];
+
+  /// Live push stream for the fleet map. Null until the first poll tells us
+  /// which user to subscribe as.
+  SseClient? _sseClient;
+  StreamSubscription<SseEvent>? _sseSubscription;
 
   // Dashboard refresh: every 45 s while foreground, immediate on resume,
   // cancelled when app backgrounded. Slightly longer cadence than the
@@ -132,9 +139,46 @@ class _HomeScreenState extends State<HomeScreen> {
       final result = await _vehicleRepository.fetchVehicles();
       if (!mounted) return;
       _mergeLivePositions(result.data);
+      _ensureLiveStream(result);
     } catch (_) {
       // Swallow — keep last positions, never surface an error on the map.
     }
+  }
+
+  /// Subscribe the fleet map to the live push stream.
+  ///
+  /// The vehicle-list and single-vehicle screens have consumed SSE for a while,
+  /// but THIS map — the one the operator actually watches — ran on the 4 s poll
+  /// alone, so a fix could sit on the server for up to four seconds before the
+  /// marker knew about it. The poll stays as the fallback: SSE only ever
+  /// overwrites positions, so a dropped stream degrades to exactly the old
+  /// behaviour rather than freezing the map.
+  void _ensureLiveStream(VehicleListModel result) {
+    if (_sseClient != null) return;
+    if (result.data.isEmpty) return;
+    final userId = result.data.first.userId;
+    if (userId <= 0) return;
+
+    // sig: server-computed HMAC, empty while GPS_SSE_SECRET is unarmed.
+    _sseClient = SseClient(userId: userId, sig: result.sseSig);
+    _sseSubscription = _sseClient!.stream.listen(_onSseEvent);
+    _sseClient!.connect();
+  }
+
+  void _onSseEvent(SseEvent event) {
+    if (event.event != 'vehicle' || !mounted) return;
+    final VehicleRecord incoming;
+    try {
+      incoming = VehicleRecord.fromJson(event.data);
+    } catch (_) {
+      return;
+    }
+    if (incoming.id <= 0) return;
+    final index = _liveVehicles.indexWhere((v) => v.id == incoming.id);
+    if (index < 0) return; // not in the current set — the dashboard adds it
+    final updated = List<VehicleRecord>.from(_liveVehicles);
+    updated[index] = incoming;
+    setState(() => _liveVehicles = List<VehicleRecord>.unmodifiable(updated));
   }
 
   /// Swaps in the freshly-polled vehicle records (newest positions/headings)
@@ -224,6 +268,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _sseSubscription?.cancel();
+    _sseClient?.close();
     _mapPoll.dispose();
     _lifecycle.dispose();
     super.dispose();

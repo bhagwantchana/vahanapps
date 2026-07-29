@@ -39,8 +39,13 @@ class AppUrl {
   // HTTP port (default 5101). When subscribed, the server pushes one
   // `vehicle` event per GPS fix for every vehicle the user has access to.
   // Polling stays as a fallback if the SSE connection ever drops.
-  static const String liveStreamUrl =
-      'https://vahanconnect.com:5101/live/stream';
+  // Goes through the SITE's HTTPS (443), reverse-proxied to the tracking
+  // server's 5101 by nginx. Hitting :5101 directly could never work: that
+  // listener is plain HTTP (Express app.listen, no TLS) so an https:// request
+  // failed the handshake even when the port was open — and mobile carriers
+  // routinely block non-standard ports anyway. Every SSE connection was
+  // therefore dying silently and every client fell back to 4-second polling.
+  static const String liveStreamUrl = 'https://vahanconnect.com/live/stream';
 
   /// Admin-managed help/support contacts. Returns {emails:[...], phones:[...]}.
   /// Updated from superadmin → Settings → Help & Support Contacts, so the
