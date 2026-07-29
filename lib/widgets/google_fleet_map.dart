@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -6,8 +6,8 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
-import 'package:fleet_monitor/widgets/marker_placeholder.dart';
 import 'package:fleet_monitor/widgets/map_motion.dart';
+import 'package:fleet_monitor/widgets/marker_placeholder.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Native **Google Maps** fleet overview (the owner wants the real Google look,
-/// not the OSM/MapLibre tiles). Every vehicle is a CLEAN car marker â€” its own
+/// not the OSM/MapLibre tiles). Every vehicle is a CLEAN car marker — its own
 /// icon laid flat on the road, rotated to heading, with a soft ground shadow
 /// tinted the live STATUS colour (moving green / idle orange / stopped red /
 /// offline grey). No ring/circle overlay. When zoomed in, each car also carries
@@ -24,7 +24,7 @@ import 'package:share_plus/share_plus.dart';
 /// marker) so the operator can read which vehicle is which.
 ///
 /// Requires a valid "Maps SDK for Android/iOS" key (see AndroidManifest.xml
-/// meta-data `com.google.android.geo.API_KEY` â†’ res/values/strings.xml). A
+/// meta-data `com.google.android.geo.API_KEY` → res/values/strings.xml). A
 /// missing/wrong key renders a blank grey map.
 class GoogleFleetMap extends StatefulWidget {
   const GoogleFleetMap({
@@ -43,19 +43,19 @@ class GoogleFleetMap extends StatefulWidget {
 
   /// Single-vehicle mode: when set, the camera continuously follows this
   /// vehicle (until the user pans, then resumes) and [trailPoints] draws its
-  /// route line â€” the same live-tracking behaviour as the web map.
+  /// route line — the same live-tracking behaviour as the web map.
   final int? followVehicleId;
 
   /// Route/trail polyline points (single-vehicle mode). Empty = no line.
   final List<LatLng> trailPoints;
 
-  /// The user-selected vehicle: the camera pans to it (clean â€” no ring). Null
+  /// The user-selected vehicle: the camera pans to it (clean — no ring). Null
   /// clears the selection (no camera move).
   final int? focusVehicleId;
 
   final void Function(VehicleRecord vehicle)? onVehicleTap;
 
-  /// Tapping empty map (not a marker) â€” used to dismiss the details sheet.
+  /// Tapping empty map (not a marker) — used to dismiss the details sheet.
   final VoidCallback? onMapTap;
 
   /// Changes whenever the caller wants the camera to re-fit to the current
@@ -87,12 +87,12 @@ class _Fix {
 class _GoogleFleetMapState extends State<GoogleFleetMap>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // Battery: the fleet ease/pulse ticker must not run while this map is off
-  // the visible tab (IndexedStack â†’ TickerMode off) or the app is backgrounded.
+  // the visible tab (IndexedStack → TickerMode off) or the app is backgrounded.
   bool _tickerEnabled = true;
   bool _appActive = true;
   static const LatLng _defaultCenter = LatLng(30.9, 75.8);
   // Reg labels are only worth showing once the cars are far enough apart to
-  // read â€” below this zoom they'd overlap into noise, so we hide them.
+  // read — below this zoom they'd overlap into noise, so we hide them.
   static const double _labelMinZoom = 12.5;
 
   final Dio _dio = Dio(BaseOptions(
@@ -133,18 +133,18 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
-  /// icon-url|status â†’ composed car bitmap. Kept for the session so a parked
+  /// icon-url|status → composed car bitmap. Kept for the session so a parked
   /// fleet never re-composes.
   final Map<String, BitmapDescriptor> _iconCache = <String, BitmapDescriptor>{};
   final Set<String> _iconLoading = <String>{};
   BitmapDescriptor? _fallbackIcon;
 
-  /// registration text â†’ composed glass label bitmap.
+  /// registration text → composed glass label bitmap.
   final Map<String, BitmapDescriptor> _labelCache =
       <String, BitmapDescriptor>{};
   final Set<String> _labelLoading = <String>{};
 
-  /// count â†’ composed cluster-bubble bitmap.
+  /// count → composed cluster-bubble bitmap.
   final Map<int, BitmapDescriptor> _clusterCache = <int, BitmapDescriptor>{};
   final Set<int> _clusterLoading = <int>{};
   // Below this zoom (fleet mode only), overlapping vehicles collapse into a
@@ -158,6 +158,16 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // markers ease between fixes (#2) and running cars breathe a status glow (#1).
   static const int _fleetAnimMax = 25;
   final Map<int, LatLng> _renderedFleet = <int, LatLng>{};
+
+  /// Per-vehicle playback for the FLEET map. The single-vehicle view has had
+  /// curved motion and eased heading for a while; this map — the one the
+  /// operator actually watches — was still doing a straight lerp toward the
+  /// newest fix and drawing the device's raw course, which is exactly the
+  /// "slides sideways through the corner" report.
+  final Map<int, List<MotionFix>> _fleetQueues = <int, List<MotionFix>>{};
+  final Map<int, int> _fleetPlayMs = <int, int>{};
+  final Map<int, double> _fleetBearing = <int, double>{};
+  int? _fleetLastWallMs;
   int _pulseTick = 0;
   Timer? _fleetTimer;
 
@@ -167,7 +177,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _visible.length <= _fleetAnimMax &&
       !(_zoom < _clusterMaxZoom && _visible.length > 10); // not while clustering
 
-  // 4-step breathing sequence (up-down) â†’ glow index 0..2.
+  // 4-step breathing sequence (up-down) → glow index 0..2.
   int get _glowFrame => const <int>[0, 1, 2, 1][(_pulseTick ~/ 3) % 4];
 
   // Single-vehicle follow: pan with the vehicle, but pause for 8s after the
@@ -177,7 +187,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   Timer? _followResume;
 
   // Single-vehicle SMOOTH PLAYBACK: buffer incoming fixes and replay the marker
-  // through them at real pace, a small cushion behind live â€” so it glides along
+  // through them at real pace, a small cushion behind live — so it glides along
   // the ACTUAL route at the vehicle's real speed with no jerk or corner-cutting
   // (the "hold data + animate" model the operator asked for). A 60 fps ticker
   // drives it.
@@ -204,46 +214,138 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     _refreshMarkers();
     // ~12 fps driver for the fleet ease + running-pulse (gated to small fleets).
     _fleetTimer =
-        Timer.periodic(const Duration(milliseconds: 80), (_) => _fleetAnimTick());
+        Timer.periodic(const Duration(milliseconds: 40), (_) => _fleetAnimTick());
     // Continuous 60 fps follow ticker for the single-vehicle screen.
-    if (widget.followVehicleId != null) _glide.repeat();
+    if (widget.followVehicleId != null) {
+      _glide.repeat();
+      // Heading-up by default when following one vehicle: that is what a
+      // driver expects from a navigation view, and the button is right there
+      // to switch back to north-up.
+      _navMode = true;
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Foreground only â€” stop the animation work when the app is backgrounded.
+    // Foreground only — stop the animation work when the app is backgrounded.
     _appActive = state == AppLifecycleState.resumed;
+  }
+
+  /// Buffer a vehicle's newest fix for the fleet playback, with the same guards
+  /// the single-vehicle queue uses.
+  void _enqueueFleetFix(VehicleRecord v) {
+    if (v.latitude == 0 && v.longitude == 0) return;
+    if (v.tsEpochMs <= 0) return; // server fix time only, never the phone clock
+    final q = _fleetQueues.putIfAbsent(v.id, () => <MotionFix>[]);
+    if (q.isNotEmpty && v.tsEpochMs <= q.last.ts) return;
+    if (q.isNotEmpty) {
+      final last = q.last;
+      final meters =
+          distanceMeters(last.lat, last.lng, v.latitude, v.longitude);
+      final secs = (v.tsEpochMs - last.ts) / 1000.0;
+      // Reconnect-aware: an implausible SHORT hop is a glitch, a long one is a
+      // device flushing the backlog it buffered through a dead zone.
+      if (secs > 0 &&
+          meters > 150 &&
+          meters < 2000 &&
+          (meters / secs) * 3.6 > 220) {
+        return;
+      }
+    }
+    q.add(MotionFix(v.latitude, v.longitude, v.tsEpochMs));
+    if (q.length > 60) q.removeAt(0);
   }
 
   void _fleetAnimTick() {
     if (!mounted || !_tickerEnabled || !_appActive) return; // idle when hidden
     if (!_fleetAnimActive) {
       if (_renderedFleet.isNotEmpty) _renderedFleet.clear();
+      if (_fleetQueues.isNotEmpty) {
+        _fleetQueues.clear();
+        _fleetPlayMs.clear();
+        _fleetBearing.clear();
+      }
       return;
     }
     final list = _visible;
+    final nowWall = DateTime.now().millisecondsSinceEpoch;
+    final dt = nowWall - (_fleetLastWallMs ?? nowWall);
+    _fleetLastWallMs = nowWall;
     var changed = false;
+
     for (final v in list) {
-      final target = LatLng(v.latitude, v.longitude);
-      final cur = _renderedFleet[v.id];
-      if (cur == null) {
-        _renderedFleet[v.id] = target;
-        changed = true;
+      _enqueueFleetFix(v);
+      final q = _fleetQueues[v.id];
+      if (q == null || q.isEmpty) continue;
+
+      if (q.length == 1) {
+        final only = LatLng(q.first.lat, q.first.lng);
+        if (_renderedFleet[v.id] != only) {
+          _renderedFleet[v.id] = only;
+          changed = true;
+        }
         continue;
       }
-      final dLat = target.latitude - cur.latitude;
-      final dLng = target.longitude - cur.longitude;
-      if (dLat.abs() < 1e-7 && dLng.abs() < 1e-7) continue;
-      if (dLat.abs() > 0.02 || dLng.abs() > 0.02) {
-        _renderedFleet[v.id] = target; // teleport â†’ snap
-        changed = true;
-        continue;
+
+      // Same playback clock the follow view uses: paced by DEVICE fix time,
+      // held a cushion behind live, and allowed to catch up so a lag can never
+      // become permanent.
+      var play = _fleetPlayMs[v.id] ?? (q.last.ts - _cushionMs);
+      play = advancePlaybackClock(
+        playMs: play,
+        dtMs: dt,
+        upperMs: q.last.ts - _cushionMs,
+        floorMs: q.first.ts,
+      );
+      _fleetPlayMs[v.id] = play;
+
+      var i = 0;
+      while (i < q.length - 1 && q[i + 1].ts <= play) {
+        i++;
       }
-      _renderedFleet[v.id] =
-          LatLng(cur.latitude + dLat * 0.22, cur.longitude + dLng * 0.22);
+      final a = q[i];
+      final b = q[i + 1 < q.length ? i + 1 : i];
+
+      if (b.ts <= a.ts) {
+        _renderedFleet[v.id] = LatLng(b.lat, b.lng);
+      } else if ((a.lat - b.lat).abs() > 0.02 || (a.lng - b.lng).abs() > 0.02) {
+        _renderedFleet[v.id] = LatLng(b.lat, b.lng); // teleport → snap
+        _fleetPlayMs[v.id] = b.ts;
+      } else {
+        final f = ((play - a.ts) / (b.ts - a.ts)).clamp(0.0, 1.0);
+        // CURVED, not straight. A straight lerp cuts the corner, and cutting
+        // the corner IS the sideways slide through a junction.
+        final p0 = i > 0 ? q[i - 1] : a;
+        final p3 = (i + 2) < q.length ? q[i + 2] : b;
+        final p = catmullRom(p0, a, b, p3, f);
+        _renderedFleet[v.id] = LatLng(p.lat, p.lng);
+
+        // Heading from real movement, sampled slightly ahead so the vehicle
+        // noses into the turn, then eased toward that target instead of the
+        // device's raw course snapping.
+        if (distanceMeters(a.lat, a.lng, b.lat, b.lng) > 3) {
+          final ahead = catmullRom(p0, a, b, p3, (f + 0.08).clamp(0.0, 1.0));
+          final target =
+              distanceMeters(p.lat, p.lng, ahead.lat, ahead.lng) > 0.5
+                  ? bearingDegrees(p.lat, p.lng, ahead.lat, ahead.lng)
+                  : bearingDegrees(a.lat, a.lng, b.lat, b.lng);
+          final cur = _fleetBearing[v.id];
+          _fleetBearing[v.id] = cur == null
+              ? target
+              : lerpAngle(cur, target, (dt / 240).clamp(0.0, 1.0));
+        }
+      }
+
+      while (q.length > 2 && q[1].ts <= play) {
+        q.removeAt(0);
+      }
       changed = true;
     }
+
     _renderedFleet.removeWhere((id, _) => !list.any((v) => v.id == id));
+    _fleetQueues.removeWhere((id, _) => !list.any((v) => v.id == id));
+    _fleetPlayMs.removeWhere((id, _) => !list.any((v) => v.id == id));
+    _fleetBearing.removeWhere((id, _) => !list.any((v) => v.id == id));
     final prevFrame = (_pulseTick ~/ 3) % 4;
     _pulseTick = (_pulseTick + 1) % 1000000;
     final curFrame = (_pulseTick ~/ 3) % 4;
@@ -309,13 +411,13 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // Server fix time only. Falling back to the PHONE clock mixed two clocks in
     // one queue: a phone running ahead of the server stamped an entry the real
     // (older) server timestamps could never beat, and the `ts <= last.ts` guard
-    // below then dropped every following fix â€” the marker froze for good.
+    // below then dropped every following fix — the marker froze for good.
     if (v.tsEpochMs <= 0) return;
     final ts = v.tsEpochMs;
     // Only buffer a genuinely newer fix (a parked poll re-sends the same ts).
     if (_fixQueue.isNotEmpty && ts <= _fixQueue.last.ts) return;
     // GPS OUTLIER FILTER: a fix implying an impossible ground speed over a
-    // short interval is a glitch â€” drop it so the marker never teleports/wiggles.
+    // short interval is a glitch — drop it so the marker never teleports/wiggles.
     // Capped at 2 km: `ts` is server RECEIVE time, so a device that buffered
     // through a dead zone and dumped its backlog lands a large distance under a
     // tiny receive-time delta. That reads as an impossible speed but is a
@@ -329,7 +431,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           meters > 150 &&
           meters < 2000 &&
           (meters / secs) * 3.6 > 220) {
-        return; // implausible short hop â†’ GPS error
+        return; // implausible short hop → GPS error
       }
     }
     _fixQueue.add(_Fix(v.latitude, v.longitude, ts));
@@ -372,7 +474,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   List<VehicleRecord> get _visible =>
       widget.vehicles.where((v) => v.hasLiveLocation).toList();
 
-  // â”€â”€ Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Status ──────────────────────────────────────────────────────────────
   String _status(VehicleRecord v) {
     final ts = v.tsEpochMs;
     if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000) {
@@ -406,10 +508,10 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     return '$dir/status/${stem}_$status.png';
   }
 
-  // â”€â”€ Car marker bitmaps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Car marker bitmaps ────────────────────────────────────────────────────
   Future<void> _preloadFallback() async {
     try {
-      // A status-coloured chevron, NOT assets/images/map.png â€” that asset is a
+      // A status-coloured chevron, NOT assets/images/map.png — that asset is a
       // green folded-map illustration, so every vehicle rendered as a picture
       // of a map until its real icon downloaded.
       final raw = await buildPlaceholderVehiclePng(color: AppColors.grey);
@@ -421,11 +523,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   }
 
   /// Car icon centred on a transparent canvas with a soft, status-coloured
-  /// ground shadow beneath â€” the clean "on-the-road" look with just a status
+  /// ground shadow beneath — the clean "on-the-road" look with just a status
   /// glow (no ring). Aspect ratio preserved so trucks/cars never squash.
   Future<Uint8List> _composePng(Uint8List raw, Color shadowColor,
       {bool selected = false, double glowScale = 1.0}) async {
-    // Selected car = just a touch BIGGER (clean size emphasis) â€” same modest
+    // Selected car = just a touch BIGGER (clean size emphasis) — same modest
     // shadow, so it never turns into a glowing blob. glowScale > 1 = the running
     // "pulse" frame (a subtle breathing halo).
     final iconPx = ((selected ? 60 : 52) * _dpr).round();
@@ -497,7 +599,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         }
       } catch (_) {}
     }
-    // Icon still downloading (or missing on the server) â€” show a status-coloured
+    // Icon still downloading (or missing on the server) — show a status-coloured
     // chevron rather than the folded-map asset the old fallback used.
     raw ??= await buildPlaceholderVehiclePng(color: shadow);
     try {
@@ -512,7 +614,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
-  // â”€â”€ Registration "glass" label bitmaps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Registration "glass" label bitmaps ────────────────────────────────────
   /// A small frosted-glass pill with the reg text, transparent padding on top
   /// so the pill hangs just BELOW the car when anchored at (0.5, 0.0).
   Future<Uint8List> _composeLabel(String reg) async {
@@ -584,11 +686,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
-  // â”€â”€ Markers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Markers ───────────────────────────────────────────────────────────────
   void _refreshMarkers() {
     final markers = <Marker>{};
     final list = _visible;
-    // Fleet mode + zoomed out + enough vehicles â†’ cluster overlapping cars.
+    // Fleet mode + zoomed out + enough vehicles → cluster overlapping cars.
     final doCluster = widget.followVehicleId == null &&
         _zoom < _clusterMaxZoom &&
         list.length > 10;
@@ -617,7 +719,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final glowScale = pulse ? const <double>[0.85, 1.2, 1.55][glowIdx] : 1.0;
     final key =
         '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}${pulse ? '|g$glowIdx' : ''}';
-    // Never fall back to the default red pin â€” only a COMPOSED car bitmap. If
+    // Never fall back to the default red pin — only a COMPOSED car bitmap. If
     // nothing is ready yet, skip this frame (the icon appears a beat later).
     final icon = _iconCache[key] ?? _fallbackIcon;
     if (icon == null) return;
@@ -632,13 +734,17 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // conveys direction, so it points straight up.
     final followed = widget.followVehicleId == v.id;
     final navBillboard = _navMode && followed;
-    // Followed car points along its ACTUAL movement bearing (more accurate
-    // than the device's reported course); fleet keeps the device course.
+    // Every car points along its ACTUAL movement bearing, eased. The device's
+    // reported course jumps between fixes, and using it on the fleet map made
+    // the icon flick round mid-slide instead of turning through the corner.
+    // Falls back to the reported course until the vehicle has moved far enough
+    // for movement to define a heading.
+    final easedBearing = followed
+        ? (_renderBearing ?? _followBearing)
+        : _fleetBearing[v.id];
     final rotation = navBillboard
         ? 0.0
-        : (followed && (_renderBearing ?? _followBearing) != null
-            ? (_renderBearing ?? _followBearing)!
-            : v.course % 360);
+        : (easedBearing ?? (v.course % 360));
     markers.add(
       Marker(
         markerId: MarkerId(v.id.toString()),
@@ -657,7 +763,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           glowScale: glowScale));
     }
 
-    // Reg-number glass label â€” a SECOND, non-rotating marker just below the
+    // Reg-number glass label — a SECOND, non-rotating marker just below the
     // car, only when zoomed in enough to read them.
     final reg = v.registrationNumber.trim();
     if (_labelsShown && reg.isNotEmpty) {
@@ -723,7 +829,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           ),
         );
       } else if (!_clusterLoading.contains(count)) {
-        // Not composed yet â†’ trigger it, skip this frame (no red-pin flash).
+        // Not composed yet → trigger it, skip this frame (no red-pin flash).
         _clusterLoading.add(count);
         unawaited(_loadCluster(count));
       }
@@ -755,7 +861,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         ..color = AppTheme.primaryBlue.withValues(alpha: 0.22)
         ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3 * _dpr),
     );
-    // Glossy radial-gradient fill (lighter top-left â†’ deep blue).
+    // Glossy radial-gradient fill (lighter top-left → deep blue).
     final grad = ui.Gradient.radial(
       Offset(c.dx - inner * 0.3, c.dy - inner * 0.35),
       inner * 1.4,
@@ -792,7 +898,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
-  // â”€â”€ Camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Camera ────────────────────────────────────────────────────────────────
   Future<void> _onMapCreated(GoogleMapController controller) async {
     _controller = controller;
     await _fitToFleet();
@@ -875,11 +981,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     } catch (_) {}
   }
 
-  // â”€â”€ Single-vehicle continuous follow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Single-vehicle continuous follow ──────────────────────────────────────
   // Runs every frame (~60 fps): ease the rendered pose a fraction toward the
   // latest fix, and move the camera to match. Because it always chases the
   // freshest target, the marker + map glide continuously with no start/stop
-  // jerk â€” the Google-Maps navigation feel.
+  // jerk — the Google-Maps navigation feel.
   void _onGlideTick() {
     if (widget.followVehicleId == null || !_tickerEnabled || !_appActive) return;
     final q = _fixQueue;
@@ -895,14 +1001,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // Seed at the NEWEST fix, not the oldest. Devices buffer during a GSM gap
     // and then dump several fixes at once, so the queue can span minutes the
     // moment the screen opens. Starting at q.first replayed that whole backlog
-    // at 1x â€” the marker crawled through minutes-old positions while the real
+    // at 1x — the marker crawled through minutes-old positions while the real
     // vehicle was streets away.
     _playMs ??= q.last.ts - _cushionMs;
     final dt = nowWall - (_lastWallMs ?? nowWall);
     _lastWallMs = nowWall;
     // Stay a fixed cushion behind the newest fix; never run past it.
     final upper = q.last.ts - _cushionMs;
-    // Clock advance + catch-up â€” see advancePlaybackClock in map_motion.dart,
+    // Clock advance + catch-up — see advancePlaybackClock in map_motion.dart,
     // where the behaviour is unit-tested.
     _playMs = advancePlaybackClock(
       playMs: _playMs!,
@@ -928,7 +1034,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       final f = ((_playMs! - a.ts) / (b.ts - a.ts)).clamp(0.0, 1.0);
       // Curved (Catmull-Rom) interpolation using the fixes either side of the
       // segment. A straight lerp cuts the corner, which is exactly the
-      // "sideways slide" through a junction â€” the marker leaves the road and
+      // "sideways slide" through a junction — the marker leaves the road and
       // slides diagonally to the next fix. The spline arcs through the turn
       // instead. p0/p3 fall back to the segment ends at the queue edges, where
       // Catmull-Rom degenerates to the old straight line.
@@ -937,7 +1043,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _followRendered = _catmullRom(p0, a, b, p3, f);
       // Heading from ACTUAL movement (accurate; device course can be noisy).
       // Sampled slightly ahead on the same curve so the icon points where it is
-      // about to go â€” the car noses into the corner like a real vehicle.
+      // about to go — the car noses into the corner like a real vehicle.
       // Hold the last heading while effectively stationary so a parked car
       // doesn't spin.
       if (_distM(a.lat, a.lng, b.lat, b.lng) > 3) {
@@ -970,7 +1076,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     unawaited(_followCamera());
   }
 
-  /// Curved position along the segment â€” see [catmullRom] in map_motion.dart,
+  /// Curved position along the segment — see [catmullRom] in map_motion.dart,
   /// where the behaviour is unit-tested.
   static LatLng _catmullRom(_Fix p0, _Fix p1, _Fix p2, _Fix p3, double t) {
     final p = catmullRom(
@@ -1025,7 +1131,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     setState(() => _navMode = !_navMode);
     final controller = _controller;
     if (controller != null && !_navMode) {
-      // Leaving nav mode â†’ level the camera back to flat, north-up.
+      // Leaving nav mode → level the camera back to flat, north-up.
       final target = _followRendered;
       if (target != null) {
         _programmaticMove = true;
@@ -1096,7 +1202,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
   void _onCameraMoveStarted() {
     if (_programmaticMove || widget.followVehicleId == null) return;
-    // A real user gesture â†’ pause follow, resume after they stop exploring.
+    // A real user gesture → pause follow, resume after they stop exploring.
     _followPaused = true;
     _followResume?.cancel();
     _followResume = Timer(const Duration(seconds: 8), () {
@@ -1198,7 +1304,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             ],
           ),
         ),
-        // Empty state â€” fleet mode with no locatable vehicles.
+        // Empty state — fleet mode with no locatable vehicles.
         if (widget.followVehicleId == null && _visible.isEmpty)
           const IgnorePointer(child: _EmptyMapOverlay()),
       ],
@@ -1286,5 +1392,3 @@ class _MapCtrlButton extends StatelessWidget {
     );
   }
 }
-
-

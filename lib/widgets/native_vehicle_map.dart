@@ -1,27 +1,27 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
-import 'package:fleet_monitor/widgets/marker_placeholder.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:fleet_monitor/widgets/marker_placeholder.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 /// Live vehicle map rendered with **MapLibre GL Native** vector tiles from
-/// **OpenFreeMap** â€” completely free: no API key, no billing account, no
+/// **OpenFreeMap** — completely free: no API key, no billing account, no
 /// sign-up. This is the "professional, Google-Maps-look, smooth, no
 /// tile-refresh" map the operator asked for, without any paid service:
-///   â€¢ Vector tiles â†’ pinch-zoom is continuous and never re-tiles / goes
+///   • Vector tiles → pinch-zoom is continuous and never re-tiles / goes
 ///     blurry the way the old raster (flutter_map) layers did.
-///   â€¢ Markers are "3D-on-the-road" car icons: the vehicle's own icon baked
+///   • Markers are "3D-on-the-road" car icons: the vehicle's own icon baked
 ///     into a bitmap with a soft ground shadow, laid on the map and rotated
 ///     to its heading, so it looks like it is actually driving, top-down.
-///   â€¢ Position changes glide via an eased lerp (no teleporting) and the
+///   • Position changes glide via an eased lerp (no teleporting) and the
 ///     camera follows the focused vehicle until the user pans/zooms.
 ///
 /// No native API keys are required (OpenFreeMap needs none). For maximum
@@ -54,7 +54,7 @@ class NativeVehicleMap extends StatefulWidget {
   /// How long a marker takes to glide from its current rendered position to a
   /// freshly received position. The single-vehicle detail map keeps the snappy
   /// 900 ms default; the home overview passes ~the poll interval (e.g. 4.5 s)
-  /// so the marker is *always* gliding â€” it re-targets from the current
+  /// so the marker is *always* gliding — it re-targets from the current
   /// interpolated point on each poll, giving continuous motion with no
   /// visible move-then-freeze.
   final Duration moveAnimationDuration;
@@ -64,10 +64,10 @@ class NativeVehicleMap extends StatefulWidget {
   /// matches the list cell), speed, last-update time and a Track button.
   final void Function(VehicleRecord vehicle)? onVehicleTap;
 
-  /// Map style from superadmin Settings â†’ "Default Map Engine". Both options
+  /// Map style from superadmin Settings → "Default Map Engine". Both options
   /// now render through MapLibre's smooth vector renderer; the value only
-  /// picks the OpenFreeMap base style â€” 'satellite'/'dark' â†’ the "positron"
-  /// muted style, anything else â†’ the colourful, Google-like "liberty" style.
+  /// picks the OpenFreeMap base style — 'satellite'/'dark' → the "positron"
+  /// muted style, anything else → the colourful, Google-like "liberty" style.
   final String mapProvider;
 
   /// When true (fleet-overview usage), [focusVehicle] is the user-SELECTED
@@ -120,13 +120,13 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   final Map<String, DateTime> _iconFailedAt = <String, DateTime>{};
   static const Duration _iconRetryCooldown = Duration(seconds: 45);
 
-  /// vehicleId â†’ live Symbol on the map.
+  /// vehicleId → live Symbol on the map.
   final Map<int, Symbol> _symbols = <int, Symbol>{};
 
   /// vehicleIds whose Symbol is mid-creation, so we never add twice.
   final Set<int> _addingSymbols = <int>{};
 
-  /// Last geometry actually pushed to a symbol â€” lets us skip channel chatter
+  /// Last geometry actually pushed to a symbol — lets us skip channel chatter
   /// for parked vehicles during the animation loop.
   final Map<int, LatLng> _lastPushed = <int, LatLng>{};
 
@@ -138,7 +138,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   Line? _trailLine;
   // Geometry currently drawn for the trail. _rebuild() runs on every data
   // tick (SSE push + the 5s silent poll); redrawing the line each time made
-  // it BLINK â€” the map looked like it "refreshed" every few seconds even for
+  // it BLINK — the map looked like it "refreshed" every few seconds even for
   // a parked vehicle. We diff against this and skip / update-in-place instead.
   List<LatLng> _renderedTrailPoints = <LatLng>[];
 
@@ -147,13 +147,13 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   Map<int, LatLng> _animationEnd = <int, LatLng>{};
 
   /// Heading (course) is interpolated alongside position so turns glide
-  /// instead of snapping at each SSE packet â€” the "really driving" feel.
+  /// instead of snapping at each SSE packet — the "really driving" feel.
   final Map<int, double> _renderedCourse = <int, double>{};
   Map<int, double> _courseStart = <int, double>{};
   Map<int, double> _courseEnd = <int, double>{};
   final Map<int, double> _lastPushedCourse = <int, double>{};
 
-  /// Icon image name currently applied to each symbol â€” lets the status-
+  /// Icon image name currently applied to each symbol — lets the status-
   /// colored icon swap (moving/idle/stopped/offline) skip the channel when
   /// nothing changed, so a parked vehicle never re-pushes its image.
   final Map<int, String> _lastPushedIcon = <int, String>{};
@@ -210,7 +210,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       _animationController.duration = widget.moveAnimationDuration;
     }
 
-    // A new vehicle to follow / select â†’ allow the camera to recentre on it.
+    // A new vehicle to follow / select → allow the camera to recentre on it.
     if (oldWidget.focusVehicle?.id != widget.focusVehicle?.id) {
       _userInteracted = false;
       // Fleet-overview selection: pan to the tapped vehicle and (re)draw the
@@ -234,14 +234,14 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     // Release the map controller listener + the Dio client so the disposed
     // State isn't retained via the controller's listener list and the
     // underlying HttpClient is freed (this widget mounts on Home + every
-    // detail screen â€” leaks would accumulate).
+    // detail screen — leaks would accumulate).
     _controller?.onSymbolTapped.remove(_handleSymbolTapped);
     _controller = null;
     _dio.close(force: true);
     super.dispose();
   }
 
-  // â”€â”€ Vehicle helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Vehicle helpers ────────────────────────────────────────────────────
 
   List<VehicleRecord> get _visibleVehicles {
     return widget.vehicles.where((vehicle) => vehicle.hasLiveLocation).toList();
@@ -269,10 +269,10 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// Same status buckets as the webmaps' getVehicleStatus(): a fix older
   /// than 30 minutes is offline (grey), ACC off is stopped (red), >5 km/h
   /// is moving (green), otherwise idle (orange). The offline gate uses the
-  /// epoch `ts` the wire carries â€” NEVER the created_at string, which is a
+  /// epoch `ts` the wire carries — NEVER the created_at string, which is a
   /// zone-less server-local timestamp that parsed phone-local flags every
   /// live vehicle offline (the exact incident the webmaps documented and
-  /// fixed the same way). No ts on the record â†’ no offline bucket, so a
+  /// fixed the same way). No ts on the record → no offline bucket, so a
   /// missing field can never paint a moving vehicle grey.
   String _vehicleStatus(VehicleRecord vehicle) {
     final tsMs = vehicle.tsEpochMs;
@@ -290,7 +290,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   }
 
   /// URL of the pre-generated status-colored variant that the webmaps also
-  /// use: assets/icons/car.png â†’ assets/icons/status/car_moving.png. Falls
+  /// use: assets/icons/car.png → assets/icons/status/car_moving.png. Falls
   /// back to the plain icon at download time if the variant doesn't exist.
   String _statusIconUrl(String iconUrl, String status) {
     final slash = iconUrl.lastIndexOf('/');
@@ -315,7 +315,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     return (a.latitude - b.latitude).abs() + (a.longitude - b.longitude).abs();
   }
 
-  /// Shortest-path angle interpolation (handles the 350Â°â†’10Â° wrap) so the car
+  /// Shortest-path angle interpolation (handles the 350°→10° wrap) so the car
   /// turns the short way and never spins all the way around.
   double _lerpAngle(double start, double end, double t) {
     var delta = (end - start) % 360;
@@ -336,10 +336,10 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     return _renderedCourse[vehicle.id] ?? (vehicle.course % 360);
   }
 
-  /// Subtle 3D camera pitch for the single focused vehicle â€” reveals the
+  /// Subtle 3D camera pitch for the single focused vehicle — reveals the
   /// liberty style's built-in 3D buildings for a premium, Google-tracking
   /// look. The multi-vehicle fleet overview stays flat top-down.
-  /// Navigation mode â€” 3D pitch + heading-up, same idea as the Google engine's
+  /// Navigation mode — 3D pitch + heading-up, same idea as the Google engine's
   /// nav button. Off by default so the plain follow view is unchanged.
   bool _navMode = false;
 
@@ -380,7 +380,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         ),
       );
     } catch (_) {
-      // Controller torn down mid-animation â€” nothing to recover.
+      // Controller torn down mid-animation — nothing to recover.
     }
   }
 
@@ -442,7 +442,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       );
   }
 
-  // â”€â”€ Map / style lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Map / style lifecycle ──────────────────────────────────────────────
 
   void _onMapCreated(MapLibreMapController controller) {
     _controller = controller;
@@ -456,17 +456,17 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
     _styleReady = true;
 
-    // A (re)loaded style wipes all annotations â€” forget the old trail handle
+    // A (re)loaded style wipes all annotations — forget the old trail handle
     // so _drawTrail re-adds it instead of diffing against a line that's gone.
     _trailLine = null;
     _renderedTrailPoints = <LatLng>[];
-    // Same for the selection highlight ring â€” the reloaded style dropped it.
+    // Same for the selection highlight ring — the reloaded style dropped it.
     _highlightCircle = null;
     _highlightVehicleId = null;
 
-    // The same applies to style IMAGES and symbols: a style (re)load â€” e.g.
+    // The same applies to style IMAGES and symbols: a style (re)load — e.g.
     // the map-provider setting flipping between liberty and positron, which
-    // recreates the platform view via the ValueKey â€” starts with zero
+    // recreates the platform view via the ValueKey — starts with zero
     // registered images and zero annotations. Stale caches here would make
     // _ensureImages skip re-registering and the add loop skip re-adding,
     // leaving every marker invisible until the screen is left.
@@ -480,7 +480,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     _lastPushedCourse.clear();
     _lastPushedIcon.clear();
 
-    // Vehicle markers must always be visible â€” never hidden by MapLibre's
+    // Vehicle markers must always be visible — never hidden by MapLibre's
     // default label/icon collision detection.
     await controller.setSymbolIconAllowOverlap(true);
     await controller.setSymbolIconIgnorePlacement(true);
@@ -513,7 +513,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
   }
 
-  // â”€â”€ Marker bitmaps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Marker bitmaps ─────────────────────────────────────────────────────
 
   Future<void> _ensureImages(
     List<VehicleRecord> vehicles,
@@ -534,7 +534,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       try {
         await _controller!.addImage(_fallbackImageName, bytes);
       } catch (_) {
-        return; // transient channel failure â€” retry on the next data tick
+        return; // transient channel failure — retry on the next data tick
       }
       if (generation != _styleGeneration) {
         // Style reloaded mid-push: the bytes landed in the dead style. Do
@@ -544,7 +544,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       _registeredImages.add(_fallbackImageName);
     }
 
-    // Names already attempted in THIS pass â€” several vehicles often share
+    // Names already attempted in THIS pass — several vehicles often share
     // one icon+status, and on the failure path the name wouldn't reach
     // _registeredImages, so without this each sharer would re-pay the full
     // download timeout inside a single pass.
@@ -566,11 +566,11 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       final failedAt = _iconFailedAt[name];
       if (failedAt != null &&
           DateTime.now().difference(failedAt) < _iconRetryCooldown) {
-        continue; // recently failed â€” don't stall this pass, retry later
+        continue; // recently failed — don't stall this pass, retry later
       }
       attempted.add(name);
       // Status-colored variant first (what the webmaps show), plain icon as
-      // the fallback â€” so a missing variant can never break a marker.
+      // the fallback — so a missing variant can never break a marker.
       final (bytes, fetched) = await _composeIconBytes(<String>[
         _statusIconUrl(url, status),
         url,
@@ -583,7 +583,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       } else {
         _iconFailedAt[name] = DateTime.now();
         if (_placeholderImages.contains(name)) {
-          // Placeholder is already in the style â€” nothing new to push.
+          // Placeholder is already in the style — nothing new to push.
           continue;
         }
       }
@@ -592,23 +592,23 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       } catch (_) {
         // Push failed WITHOUT a style reload (e.g. surface teardown while
         // backgrounding). Clear the cooldown so the next tick retries
-        // immediately â€” otherwise new symbols could point at a missing
+        // immediately — otherwise new symbols could point at a missing
         // image for the whole cooldown window.
         _iconFailedAt.remove(name);
         return;
       }
       if (generation != _styleGeneration) {
-        // Style reloaded mid-push: bytes landed in the dead style â€” bail
+        // Style reloaded mid-push: bytes landed in the dead style — bail
         // without committing so the new generation re-registers cleanly.
         return;
       }
       if (fetched) {
-        // Real icon bytes â€” done for the session.
+        // Real icon bytes — done for the session.
         _registeredImages.add(name);
         _placeholderImages.remove(name);
       } else {
         // Transient failure (dead zone / server blip): the bundled bytes
-        // keep the marker visible, but do NOT cache the name as registered â€”
+        // keep the marker visible, but do NOT cache the name as registered —
         // after the cooldown the download is retried, and addImage under
         // the same name replaces the placeholder in the style, healing the
         // marker in place. The swap loop's registered-image gate also keeps
@@ -641,13 +641,14 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         }
         return (await _renderMarkerPng(Uint8List.fromList(data)), true);
       } catch (_) {
-        // bad candidate (network error or undecodable body) â€” try the next
+        // bad candidate (network error or undecodable body) — try the next
       }
     }
-    // A status-coloured chevron, NOT assets/images/map.png â€” that asset is a
+    // A status-coloured chevron, NOT assets/images/map.png — that asset is a
     // green folded-map illustration, so a vehicle whose icon had not arrived
-    // rendered as a picture of a map. Server icons are 72-102 KB with no cache
-    // headers, so this fallback was on screen for much of every cold start.
+    // rendered as a picture of a map. Server icons are large and were served
+    // with no cache headers, so this fallback was on screen for much of every
+    // cold start rather than the instant it was designed for.
     final raw = await buildPlaceholderVehiclePng(color: AppColors.grey);
     return (await _renderMarkerPng(raw), candidateUrls.isEmpty);
   }
@@ -659,7 +660,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   /// natural grounding shadow at any rotation. Composited at the device
   /// pixel ratio so it stays crisp on hi-dpi screens (iconSize = 1.0).
   Future<Uint8List> _renderMarkerPng(Uint8List raw) async {
-    // Matches the Google engine's marker size (52 px) â€” at 40 px the vehicle
+    // Matches the Google engine's marker size (52 px) — at 40 px the vehicle
     // read as noticeably smaller than the same fleet on the Google map.
     final iconPx = (52 * _dpr).round();
     final canvasPx = (72 * _dpr).round();
@@ -712,7 +713,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     return bytes!.buffer.asUint8List();
   }
 
-  // â”€â”€ Symbols (add / remove / move) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Symbols (add / remove / move) ──────────────────────────────────────
 
   /// Registers any new icons, adds symbols for new vehicles, removes symbols
   /// for vehicles that disappeared, and redraws the trail. Serialized so two
@@ -731,7 +732,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       // Style generation this pass belongs to. If the style reloads while an
       // await below is in flight (map-provider flip recreating the platform
       // view), the pass must NOT commit its dead symbols / image names into
-      // the caches _onStyleLoaded just cleared â€” the dirty re-run rebuilds
+      // the caches _onStyleLoaded just cleared — the dirty re-run rebuilds
       // everything against the fresh style instead.
       final gen = _styleGeneration;
       final visible = _visibleVehicles;
@@ -790,7 +791,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
           );
           if (gen != _styleGeneration) {
             // Style reloaded mid-add: this symbol belongs to the dead style.
-            // Drop it (best effort) instead of committing it to the caches â€”
+            // Drop it (best effort) instead of committing it to the caches —
             // the dirty re-run re-adds against the fresh style.
             try {
               await _controller?.removeSymbol(symbol);
@@ -802,18 +803,18 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
           _lastPushedCourse[vehicle.id] = rotation;
           _lastPushedIcon[vehicle.id] = iconName;
         } catch (_) {
-          // ignore â€” will retry on the next data update
+          // ignore — will retry on the next data update
         } finally {
           _addingSymbols.remove(vehicle.id);
         }
       }
 
       // Swap the status-colored icon in place when a vehicle's status
-      // changed (moving green / idle orange / stopped red / offline grey â€”
+      // changed (moving green / idle orange / stopped red / offline grey —
       // the same variants the webmaps show). updateSymbol touches ONLY
       // iconImage: geometry, rotation and the glide animation are untouched,
       // so there is no jump and no blink. Skipped entirely while the image
-      // name is unchanged â€” a parked fleet costs nothing per tick.
+      // name is unchanged — a parked fleet costs nothing per tick.
       for (final vehicle in visible) {
         final symbol = _symbols[vehicle.id];
         if (symbol == null) {
@@ -824,7 +825,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         if (_lastPushedIcon[vehicle.id] == iconName) {
           continue;
         }
-        // Never point a symbol at an image that isn't registered â€” that
+        // Never point a symbol at an image that isn't registered — that
         // would blank the marker. _ensureImages above registers current
         // statuses; if it bailed early, keep the old icon this tick.
         if (!_registeredImages.contains(iconName)) {
@@ -837,7 +838,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             SymbolOptions(iconImage: iconName),
           );
         } catch (_) {
-          // Push failed â†’ forget it so the next data tick retries instead
+          // Push failed → forget it so the next data tick retries instead
           // of the stale color sticking for the whole session.
           _lastPushedIcon.remove(vehicle.id);
         }
@@ -877,13 +878,13 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       final posSame = last != null && _manhattan(last, position) < _epsilon;
       final rotSame = lastCourse != null && (lastCourse - rotation).abs() < 0.5;
       // Skip channel chatter only when BOTH position and heading are stable
-      // (e.g. a parked car) â€” otherwise a pure turn would not redraw.
+      // (e.g. a parked car) — otherwise a pure turn would not redraw.
       if (posSame && rotSame) {
         continue;
       }
       _lastPushed[vehicle.id] = position;
       _lastPushedCourse[vehicle.id] = rotation;
-      // Fire-and-forget â€” awaiting per frame would serialize the channel.
+      // Fire-and-forget — awaiting per frame would serialize the channel.
       unawaited(_safeUpdateSymbol(controller, symbol, position, rotation));
     }
   }
@@ -912,14 +913,14 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
         .map((point) => LatLng(point.latitude, point.longitude))
         .toList();
 
-    // Unchanged since the last draw â†’ do NOTHING. This is the fix for the
+    // Unchanged since the last draw → do NOTHING. This is the fix for the
     // "map refreshes every few seconds" report: without it, every SSE push
     // and every 5s silent poll removed + re-added the line, blinking it.
     if (_sameTrail(points, _renderedTrailPoints)) {
       return;
     }
 
-    // Too few points to draw a line â†’ drop any existing one.
+    // Too few points to draw a line → drop any existing one.
     if (points.length < 2) {
       if (_trailLine != null) {
         try {
@@ -955,7 +956,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       } catch (_) {
         // Draw FAILED (transient platform-channel error). Leave
         // _renderedTrailPoints STALE so the next _drawTrail() fails the
-        // _sameTrail guard and RETRIES the add â€” otherwise committing the
+        // _sameTrail guard and RETRIES the add — otherwise committing the
         // cache here would make the guard skip every retry and the trail
         // would stay hidden for the whole session until the vehicle moves.
         return;
@@ -1002,7 +1003,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
   }
 
-  // â”€â”€ Movement animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Movement animation ─────────────────────────────────────────────────
 
   void _animateToLatestPositions() {
     final visible = _visibleVehicles;
@@ -1014,7 +1015,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     };
 
     // Nothing actually moved (e.g. a parked fleet re-emitting the same SSE
-    // position on every poll) â†’ don't restart the controller. Re-running
+    // position on every poll) → don't restart the controller. Re-running
     // forward(from: 0) each tick was causing visible marker jitter for idle
     // vehicles and needless work.
     if (!_animationController.isAnimating &&
@@ -1044,7 +1045,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
     // Re-target the glide from where each marker CURRENTLY is (the live
     // interpolated pose in _renderedPositions, kept fresh by _handleAnimationTick)
-    // toward the new fix â€” even when a glide is still in flight. Restarting from
+    // toward the new fix — even when a glide is still in flight. Restarting from
     // the current pose (not snapping to the raw fix) means fast position polls
     // (~4 s) re-aim continuously with no jump, so the marker never freezes or
     // teleports between updates.
@@ -1062,8 +1063,8 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     _animationController.forward(from: 0);
   }
 
-  /// True when two idâ†’position maps have the same keys and effectively the
-  /// same coordinates (â‰ˆ0.1 m). Used to skip redundant marker re-animations.
+  /// True when two id→position maps have the same keys and effectively the
+  /// same coordinates (≈0.1 m). Used to skip redundant marker re-animations.
   bool _sameLatLngMap(Map<int, LatLng> a, Map<int, LatLng> b) {
     if (a.length != b.length) {
       return false;
@@ -1125,7 +1126,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
   }
 
-  // â”€â”€ Selection highlight (fleet-overview mode) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Selection highlight (fleet-overview mode) ──────────────────────────
 
   /// Pan the camera to the freshly-selected vehicle so the open sheet's
   /// vehicle is centred and obvious. Zoom is left as-is to avoid a jarring
@@ -1217,7 +1218,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     } catch (_) {}
   }
 
-  // â”€â”€ Camera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Camera ─────────────────────────────────────────────────────────────
 
   LatLng? _focusTarget() {
     final focus = widget.focusVehicle;
@@ -1321,7 +1322,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     _programmaticMove = false;
     // Follow auto-resume: a single accidental pan used to disengage the
     // camera FOREVER (nothing reset _userInteracted on the single-vehicle
-    // screen). After 10s of no touching, glide back onto the vehicle â€”
+    // screen). After 10s of no touching, glide back onto the vehicle —
     // the behaviour users know from the web tracker's follow mode.
     if (widget.followFocusedVehicle && _userInteracted) {
       _followResumeTimer?.cancel();
@@ -1333,7 +1334,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     }
   }
 
-  // â”€â”€ Build â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Build ──────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -1400,7 +1401,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   color: Colors.white.withValues(alpha: 0.62),
                   child: Text(
-                    'Â© OpenStreetMap',
+                    '© OpenStreetMap',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w500,
@@ -1412,7 +1413,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
             ),
           ),
         ),
-        // Map controls â€” the MapLibre engine had none, so a customer switched
+        // Map controls — the MapLibre engine had none, so a customer switched
         // to it lost the recenter / heading-up buttons the Google engine has.
         Positioned(
           right: 10,
@@ -1541,5 +1542,3 @@ class _MapControlButton extends StatelessWidget {
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
-
-
