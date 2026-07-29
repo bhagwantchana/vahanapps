@@ -490,10 +490,25 @@ class VehicleRecord {
 
   /// Live status bucket (same rule as the map): fix older than 30 min =
   /// offline, ACC off = stopped, > 5 km/h = moving, else idle.
+  /// How old a fix may be before the app stops claiming to know what the
+  /// vehicle is doing.
+  ///
+  /// This was 30 minutes while the tracking server calls a device offline after
+  /// 3 (GPS_OFFLINE_AFTER_SECONDS), leaving a 27-minute window in which the map
+  /// painted a confident colour from a fix that was minutes old. Real GPS gaps
+  /// mid-drive run 3-9 minutes on this fleet, so the classic failure was: a bus
+  /// halts at a school gate (correctly orange, engine idling), pulls away, its
+  /// signal drops — and the map kept insisting "idle" for the whole gap while
+  /// the bus was driving. Grey is the honest answer there.
+  ///
+  /// Floor is set by the server's parked-vehicle write interval
+  /// (GPS_STATIONARY_SAVE_INTERVAL_SECONDS, 5 min): anything shorter would
+  /// grey out every legitimately parked vehicle.
+  static const int _staleFixMs = 8 * 60 * 1000;
+
   String get statusKey {
     final ts = tsEpochMs;
-    if (ts > 0 &&
-        DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000) {
+    if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > _staleFixMs) {
       return 'offline';
     }
     if (isStopped) return 'stopped';

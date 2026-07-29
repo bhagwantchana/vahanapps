@@ -94,17 +94,39 @@ void main() {
     });
   });
 
-  group('offline wins over everything', () {
-    test('a fix older than 30 minutes is offline', () {
-      final stale = DateTime.now().subtract(const Duration(minutes: 45));
-      final v = VehicleRecord(
-        id: 1,
-        speed: 60,
-        acc: 1,
-        tsEpochMs: stale.millisecondsSinceEpoch,
-      );
-      expect(v.statusKey, 'offline',
+  group('a stale fix must not be painted as a live status', () {
+    VehicleRecord agedFix(Duration age, {double speed = 0, int acc = 1}) =>
+        VehicleRecord(
+          id: 1,
+          speed: speed,
+          acc: acc,
+          tsEpochMs:
+              DateTime.now().subtract(age).millisecondsSinceEpoch,
+        );
+
+    test('45 minutes old is offline', () {
+      expect(agedFix(const Duration(minutes: 45), speed: 60).statusKey,
+          'offline',
           reason: 'a stale fix must not be shown as live movement');
+    });
+
+    test('12 minutes old is offline, not idle', () {
+      // The bug the schools hit: bus idles at the gate, pulls away, signal
+      // drops. The old 30-minute window kept insisting "idle" the whole time.
+      expect(agedFix(const Duration(minutes: 12)).statusKey, 'offline',
+          reason: 'app claimed idle from a fix minutes old while driving');
+    });
+
+    test('a parked vehicle on its 5-minute write interval stays idle', () {
+      // Must not grey out vehicles that are simply parked — the server only
+      // writes their position every 5 minutes by design.
+      expect(agedFix(const Duration(minutes: 6)).statusKey, 'idle',
+          reason: 'parked vehicles would flicker to offline');
+    });
+
+    test('a fresh fix is unaffected', () {
+      expect(agedFix(const Duration(seconds: 20), speed: 60).statusKey,
+          'moving');
     });
   });
 }
