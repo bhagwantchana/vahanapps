@@ -33,7 +33,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class CustomNotificationSoundService {
-  static const String _channelId = 'fleet_monitor_alert_channel_v3';
+  static const String _channelId = 'fleet_monitor_alert_channel_v6';
   static const String _channelName = 'VahanConnect Alerts';
   static const String _defaultAndroidSoundName = 'default_sound';
   static const String _defaultIosSoundFile = 'default_sound.wav';
@@ -49,19 +49,19 @@ class CustomNotificationSoundService {
   // channel IDs stay in lockstep.
   static const Map<String, _NotificationChannelConfig> _vehicleSoundChannels = {
     'generic_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_generic_v4',
+      id: 'fleet_monitor_ignition_generic_v6',
       name: 'VahanConnect Ignition Generic',
       soundName: 'generic_ignition_on',
       iosSoundFile: 'generic_ignition_on.wav',
     ),
     'activa_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_activa_v4',
+      id: 'fleet_monitor_ignition_activa_v6',
       name: 'VahanConnect Ignition Activa',
       soundName: 'activa_ignition_on',
       iosSoundFile: 'activa_ignition_on.wav',
     ),
     'bike_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_bike_v4',
+      id: 'fleet_monitor_ignition_bike_v6',
       name: 'VahanConnect Ignition Bike',
       soundName: 'bike_ignition_on',
       iosSoundFile: 'bike_ignition_on.wav',
@@ -71,25 +71,25 @@ class CustomNotificationSoundService {
       // replaced. Android channels are immutable, so the sound only changes
       // if the channel ID is new — otherwise the device keeps the old cached
       // sound forever. Server fcm.js android_channel_id bumped to match.
-      id: 'fleet_monitor_ignition_car_v5',
+      id: 'fleet_monitor_ignition_car_v6',
       name: 'VahanConnect Ignition Car',
       soundName: 'car_ignition_on',
       iosSoundFile: 'car_ignition_on.wav',
     ),
     'car_ignition_off': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_car_off_v4',
+      id: 'fleet_monitor_ignition_car_off_v6',
       name: 'VahanConnect Ignition Car Off',
       soundName: 'car_ignition_off',
       iosSoundFile: 'car_ignition_off.wav',
     ),
     'bus_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_bus_v4',
+      id: 'fleet_monitor_ignition_bus_v6',
       name: 'VahanConnect Ignition Bus',
       soundName: 'bus_ignition_on',
       iosSoundFile: 'bus_ignition_on.wav',
     ),
     'truck_ignition_on': _NotificationChannelConfig(
-      id: 'fleet_monitor_ignition_truck_v4',
+      id: 'fleet_monitor_ignition_truck_v6',
       name: 'VahanConnect Ignition Truck',
       soundName: 'truck_ignition_on',
       iosSoundFile: 'truck_ignition_on.wav',
@@ -101,37 +101,37 @@ class CustomNotificationSoundService {
     // exist (even with default sound) lets Android users mute / un-mute
     // each alert type independently from system Settings.
     'overspeed': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_overspeed_v3',
+      id: 'fleet_monitor_alert_overspeed_v6',
       name: 'VahanConnect Overspeed Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
     ),
     'geofence': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_geofence_v3',
+      id: 'fleet_monitor_alert_geofence_v6',
       name: 'VahanConnect Geofence Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
     ),
     'sos': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_sos_v3',
+      id: 'fleet_monitor_alert_sos_v6',
       name: 'VahanConnect SOS Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
     ),
     'tampering': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_tampering_v3',
+      id: 'fleet_monitor_alert_tampering_v6',
       name: 'VahanConnect Tampering Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
     ),
     'low_battery': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_low_battery_v3',
+      id: 'fleet_monitor_alert_low_battery_v6',
       name: 'VahanConnect Low Battery Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
     ),
     'power_cut': _NotificationChannelConfig(
-      id: 'fleet_monitor_alert_power_cut_v3',
+      id: 'fleet_monitor_alert_power_cut_v6',
       name: 'VahanConnect Power Cut Alerts',
       soundName: _defaultAndroidSoundName,
       iosSoundFile: _defaultIosSoundFile,
@@ -311,6 +311,17 @@ class CustomNotificationSoundService {
     }
   }
 
+  /// Android plays a channel's sound on the stream named by the channel's
+  /// audio-attributes usage. The default is NOTIFICATION, and on a lot of
+  /// handsets (Xiaomi, Oppo, Vivo, Samsung) that stream is cut short after
+  /// about a second — which is why the ~4.7 s engine cue only ever played
+  /// halfway. ALARM usage is not truncated, so the whole sound plays.
+  ///
+  /// Channels are IMMUTABLE once Android has created them, so this only takes
+  /// effect on a NEW channel id — hence every id moved to _v6, in lockstep
+  /// with fcm.js VEHICLE_SOUND_CHANNELS.
+  static const AudioAttributesUsage _soundUsage = AudioAttributesUsage.alarm;
+
   Future<void> setupChannels() async {
     const channel = AndroidNotificationChannel(
       _channelId,
@@ -319,6 +330,7 @@ class CustomNotificationSoundService {
       importance: Importance.high,
       playSound: true,
       sound: _androidSound,
+      audioAttributesUsage: _soundUsage,
     );
 
     final androidPlugin = _localNotifications
@@ -337,6 +349,7 @@ class CustomNotificationSoundService {
           importance: Importance.high,
           playSound: true,
           sound: RawResourceAndroidNotificationSound(config.soundName),
+          audioAttributesUsage: _soundUsage,
         ),
       );
     }
@@ -470,6 +483,9 @@ class CustomNotificationSoundService {
         priority: Priority.high,
         playSound: true,
         sound: RawResourceAndroidNotificationSound(soundConfig.soundName),
+        // Match the channel's usage (see _soundUsage) so a foreground-shown
+        // notification isn't truncated either.
+        audioAttributesUsage: _soundUsage,
         icon: '@mipmap/ic_launcher',
         groupKey: groupKey,
         // setAsGroupSummary=false on the child notifications; Android will
