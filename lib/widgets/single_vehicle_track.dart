@@ -2643,7 +2643,7 @@ class _GlassVehicleBar extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Updated: ${vehicle.createdAt.isNotEmpty ? vehicle.createdAt : '—'}',
+                          'Updated: ${vehicle.lastUpdateLabel}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

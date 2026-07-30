@@ -506,6 +506,24 @@ class VehicleRecord {
   /// grey out every legitimately parked vehicle.
   static const int _staleFixMs = 8 * 60 * 1000;
 
+  /// "Just now" / "5m ago" / "2h ago", derived from [tsEpochMs].
+  ///
+  /// Never render `createdAt` directly. That is the server's own wall clock as
+  /// a plain string, and the box runs on UTC — so a phone in IST showed a fix
+  /// as 5h30 old the moment it arrived ("Updated: 02:27" at 07:57 local). The
+  /// epoch in [tsEpochMs] is unambiguous, and a relative label sidesteps the
+  /// question of whose timezone to print in.
+  String get lastUpdateLabel {
+    final ts = tsEpochMs;
+    if (ts <= 0) return '—';
+    final diff =
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ts));
+    if (diff.isNegative || diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
   String get statusKey {
     final ts = tsEpochMs;
     if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > _staleFixMs) {

@@ -54,11 +54,9 @@ class _FleetFullMapState extends State<FleetFullMap> {
   late String _filter = widget.initialFilter; // all|running|idle|stopped|offline|overspeed
   int _recenterTick = 0;
 
-  bool _isOffline(VehicleRecord v) {
-    final ts = v.tsEpochMs;
-    return ts > 0 &&
-        DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000;
-  }
+  // Delegate so the counts bar can never disagree with the marker colour: this
+  // used its own 30-minute window while statusKey moved to 8.
+  bool _isOffline(VehicleRecord v) => v.statusKey == 'offline';
 
   bool _isOverspeed(VehicleRecord v) =>
       v.overspeedLimit > 0 && v.speed > v.overspeedLimit;
@@ -489,11 +487,7 @@ class _VehicleDetailsCard extends StatelessWidget {
   final VoidCallback onClose;
   final void Function(VehicleRecord vehicle)? onTrack;
 
-  bool get _isOffline {
-    final ts = vehicle.tsEpochMs;
-    return ts > 0 &&
-        DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000;
-  }
+  bool get _isOffline => vehicle.statusKey == 'offline';
 
   Color get _statusColor {
     if (_isOffline) return AppColors.grey;
@@ -504,16 +498,7 @@ class _VehicleDetailsCard extends StatelessWidget {
 
   String get _statusLabel => _isOffline ? 'Offline' : vehicle.statusLabel;
 
-  String get _lastUpdate {
-    final ts = vehicle.tsEpochMs;
-    if (ts <= 0) return '—';
-    final diff =
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ts));
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
-  }
+  String get _lastUpdate => vehicle.lastUpdateLabel;
 
   void _shareLive() {
     final url = vehicle.primaryMapUrl.isNotEmpty

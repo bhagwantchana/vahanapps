@@ -45,8 +45,14 @@ class _LiveAddressTextState extends State<LiveAddressText> {
 
   String? _resolved;
 
+  /// ~110 m bucket, matching the server's own address cache.
+  ///
+  /// This was 4 decimals (~11 m). A vehicle at 11 km/h crosses that every few
+  /// seconds, so a moving vehicle minted a new key on almost every fix and
+  /// never reused anything - which is what put raw lat/lng on screen while the
+  /// next lookup ran.
   String _cacheKey(double lat, double lng) {
-    return '${lat.toStringAsFixed(4)},${lng.toStringAsFixed(4)}';
+    return '${lat.toStringAsFixed(3)},${lng.toStringAsFixed(3)}';
   }
 
   @override
@@ -58,11 +64,22 @@ class _LiveAddressTextState extends State<LiveAddressText> {
   @override
   void didUpdateWidget(covariant LiveAddressText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.latitude != widget.latitude ||
-        oldWidget.longitude != widget.longitude) {
-      _resolved = null;
-      _resolveAddress();
+    if (oldWidget.latitude == widget.latitude &&
+        oldWidget.longitude == widget.longitude) {
+      return;
     }
+    // Only look up again once the vehicle has actually left the bucket. A
+    // moving vehicle pushes new coordinates every few seconds and they nearly
+    // always land in the same ~110 m bucket.
+    if (_cacheKey(oldWidget.latitude, oldWidget.longitude) ==
+        _cacheKey(widget.latitude, widget.longitude)) {
+      return;
+    }
+    // Deliberately NOT clearing _resolved: the previous street is still the
+    // right answer 110 m ago and reads far better than the coordinates
+    // flashing up for a second every time the vehicle moves. It is replaced
+    // the moment the new lookup lands.
+    _resolveAddress();
   }
 
   Future<void> _resolveAddress() async {
