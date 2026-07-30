@@ -934,6 +934,37 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   Future<void> _onMapCreated(GoogleMapController controller) async {
     _controller = controller;
     await _fitToFleet();
+    // Nav mode is the default when following one vehicle, but its pitch and
+    // zoom are only applied on TOGGLE now that the follow camera preserves
+    // whatever the user has set. Without this the default view opened flat and
+    // north-up while the button read as active.
+    if (widget.followVehicleId != null && _navMode) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      final target = _followRendered ?? _firstFollowedPosition();
+      if (!mounted || target == null) return;
+      _markProgrammatic(900);
+      try {
+        await controller.animateCamera(CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: target,
+            zoom: 17,
+            tilt: 55,
+            bearing: _renderBearing ?? _followBearing ?? 0,
+          ),
+        ));
+      } catch (_) {}
+    }
+  }
+
+  /// Position of the followed vehicle straight from the data, for the first
+  /// frame before the playback buffer has produced anything.
+  LatLng? _firstFollowedPosition() {
+    for (final v in _visible) {
+      if (v.id == widget.followVehicleId) {
+        return LatLng(v.latitude, v.longitude);
+      }
+    }
+    return null;
   }
 
   void _onCameraMove(CameraPosition pos) {
