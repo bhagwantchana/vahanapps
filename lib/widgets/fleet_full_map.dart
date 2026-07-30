@@ -54,19 +54,16 @@ class _FleetFullMapState extends State<FleetFullMap> {
   late String _filter = widget.initialFilter; // all|running|idle|stopped|offline|overspeed
   int _recenterTick = 0;
 
-  // Delegate so the counts bar can never disagree with the marker colour: this
-  // used its own 30-minute window while statusKey moved to 8.
-  bool _isOffline(VehicleRecord v) => v.statusKey == 'offline';
-
+  // isMoving is stale-aware, so a fix minutes old can no longer raise an
+  // overspeed flag — the speed it carries is not a claim about right now.
   bool _isOverspeed(VehicleRecord v) =>
-      v.overspeedLimit > 0 && v.speed > v.overspeedLimit;
+      v.overspeedLimit > 0 && v.speed > v.overspeedLimit && v.isMoving;
 
   /// One exclusive bucket per vehicle (offline wins, matching the marker grey).
+  /// The map calls it `moving`; this counts bar's chip is labelled `running`.
   String _bucket(VehicleRecord v) {
-    if (_isOffline(v)) return 'offline';
-    if (v.isMoving) return 'running';
-    if (v.isStopped) return 'stopped';
-    return 'idle';
+    final key = v.statusKey;
+    return key == 'moving' ? 'running' : key;
   }
 
   bool _matchesFilter(VehicleRecord v) {
@@ -487,16 +484,20 @@ class _VehicleDetailsCard extends StatelessWidget {
   final VoidCallback onClose;
   final void Function(VehicleRecord vehicle)? onTrack;
 
-  bool get _isOffline => vehicle.statusKey == 'offline';
-
   Color get _statusColor {
-    if (_isOffline) return AppColors.grey;
-    if (vehicle.isStopped) return AppColors.red;
-    if (vehicle.isMoving) return AppColors.green;
-    return AppColors.orange;
+    switch (vehicle.statusKey) {
+      case 'offline':
+        return AppColors.grey;
+      case 'stopped':
+        return AppColors.red;
+      case 'moving':
+        return AppColors.green;
+      default:
+        return AppColors.orange;
+    }
   }
 
-  String get _statusLabel => _isOffline ? 'Offline' : vehicle.statusLabel;
+  String get _statusLabel => vehicle.statusLabel;
 
   String get _lastUpdate => vehicle.lastUpdateLabel;
 

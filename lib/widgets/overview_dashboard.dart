@@ -22,20 +22,16 @@ class OverviewDashboard extends StatelessWidget {
   /// offline|overspeed).
   final void Function(String filter) onOpenMap;
 
-  bool _isOffline(VehicleRecord v) {
-    final ts = v.tsEpochMs;
-    return ts > 0 &&
-        DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000;
-  }
-
+  // isMoving is stale-aware, so a fix minutes old can no longer raise an
+  // overspeed flag — the speed it carries is not a claim about right now.
   bool _isOverspeed(VehicleRecord v) =>
-      v.overspeedLimit > 0 && v.speed > v.overspeedLimit;
+      v.overspeedLimit > 0 && v.speed > v.overspeedLimit && v.isMoving;
 
+  /// One exclusive bucket per vehicle, so the tiles always sum to the fleet.
+  /// The map calls it `moving`; this dashboard's tile is labelled `running`.
   String _bucket(VehicleRecord v) {
-    if (_isOffline(v)) return 'offline';
-    if (v.isMoving) return 'running';
-    if (v.isStopped) return 'stopped';
-    return 'idle';
+    final key = v.statusKey;
+    return key == 'moving' ? 'running' : key;
   }
 
   @override

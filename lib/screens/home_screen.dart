@@ -676,9 +676,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       Row(
                         children: [
-                          _buildMapStatusMini(Colors.green, '${vehicles.where((v) => v.isMoving).length} ${AppStrings.of(context).t('status_moving')}'),
+                          _buildMapStatusMini(Colors.green, '${vehicles.where((v) => v.statusKey == 'moving').length} ${AppStrings.of(context).t('status_moving')}'),
                           const SizedBox(width: 8),
-                          _buildMapStatusMini(Colors.orange, '${vehicles.where((v) => v.isIdle).length} ${AppStrings.of(context).t('status_idle')}'),
+                          _buildMapStatusMini(Colors.orange, '${vehicles.where((v) => v.statusKey == 'idle').length} ${AppStrings.of(context).t('status_idle')}'),
                         ],
                       ),
                     ],

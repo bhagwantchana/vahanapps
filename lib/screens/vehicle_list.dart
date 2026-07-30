@@ -110,11 +110,14 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 vehicle.name.toLowerCase().contains(query) ||
                 vehicle.imei.toLowerCase().contains(query);
 
+            // Filter on the SAME key the counts are bucketed by, so a chip can
+            // never show a number the list it opens disagrees with.
+            final statusKey = vehicle.statusKey;
             final matchesStatus = _filterStatus == 'All' ||
-                (_filterStatus == 'Moving' && vehicle.isMoving) ||
-                (_filterStatus == 'Idle' && vehicle.isIdle) ||
-                (_filterStatus == 'Stopped' && vehicle.isStopped) ||
-                (_filterStatus == 'Offline' && _isOffline(vehicle)) ||
+                (_filterStatus == 'Moving' && statusKey == 'moving') ||
+                (_filterStatus == 'Idle' && statusKey == 'idle') ||
+                (_filterStatus == 'Stopped' && statusKey == 'stopped') ||
+                (_filterStatus == 'Offline' && statusKey == 'offline') ||
                 (_filterStatus == 'LowBattery' && _isLowBattery(vehicle)) ||
                 (_filterStatus == 'Overspeed' && _isOverspeed(vehicle));
 
@@ -161,14 +164,24 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     int lowBattery = 0;
     int overspeed = 0;
     for (var v in vehicles) {
-      if (v.isMoving) {
-        moving++;
-      } else if (v.isIdle) {
-        idle++;
-      } else {
-        stopped++;
+      // Exclusive buckets off the one status rule: moving + idle + stopped +
+      // offline always sums to the fleet. The old chain fell through to
+      // `stopped` for a stale vehicle while the Offline chip counted it too,
+      // so the numbers double-counted AND the Stopped chip opened a shorter
+      // list than its own count.
+      switch (v.statusKey) {
+        case 'moving':
+          moving++;
+          break;
+        case 'idle':
+          idle++;
+          break;
+        case 'stopped':
+          stopped++;
+          break;
+        default:
+          offline++;
       }
-      if (_isOffline(v)) offline++;
       if (_isLowBattery(v)) lowBattery++;
       if (_isOverspeed(v)) overspeed++;
     }
@@ -182,11 +195,6 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
       'overspeed': overspeed,
     };
   }
-
-  // A vehicle is "offline" when the device hasn't reported a real position
-  // recently. We use the `hasLiveLocation` flag the API already sets — true
-  // means lat/lng is non-zero AND fresh per the backend's threshold.
-  bool _isOffline(VehicleRecord v) => !v.hasLiveLocation;
 
   // Battery is a 0–100 integer on the device payload. Below 20 flags as
   // "low" — same threshold used by most fleet tools.

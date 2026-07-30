@@ -495,15 +495,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       widget.vehicles.where((v) => v.hasLiveLocation).toList();
 
   // ── Status ──────────────────────────────────────────────────────────────
-  String _status(VehicleRecord v) {
-    final ts = v.tsEpochMs;
-    if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > 30 * 60 * 1000) {
-      return 'offline';
-    }
-    if (v.isStopped) return 'stopped';
-    if (v.isMoving) return 'moving';
-    return 'idle';
-  }
+  /// Delegates to the single rule in VehicleRecord. This used to reimplement it
+  /// with a 30-minute offline window, which put every vehicle silent for 8-30
+  /// minutes on the `idle` fallthrough: orange, claiming an idling engine on a
+  /// device that had gone quiet.
+  String _status(VehicleRecord v) => v.statusKey;
 
   Color _statusColor(String status) {
     switch (status) {

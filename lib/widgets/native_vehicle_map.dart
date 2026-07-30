@@ -266,28 +266,18 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     return 'veh_${url.hashCode}_$status';
   }
 
-  /// Same status buckets as the webmaps' getVehicleStatus(): a fix older
-  /// than 30 minutes is offline (grey), ACC off is stopped (red), >5 km/h
-  /// is moving (green), otherwise idle (orange). The offline gate uses the
-  /// epoch `ts` the wire carries — NEVER the created_at string, which is a
-  /// zone-less server-local timestamp that parsed phone-local flags every
-  /// live vehicle offline (the exact incident the webmaps documented and
-  /// fixed the same way). No ts on the record → no offline bucket, so a
-  /// missing field can never paint a moving vehicle grey.
-  String _vehicleStatus(VehicleRecord vehicle) {
-    final tsMs = vehicle.tsEpochMs;
-    if (tsMs > 0 &&
-        DateTime.now().millisecondsSinceEpoch - tsMs > 30 * 60 * 1000) {
-      return 'offline';
-    }
-    if (vehicle.isStopped) {
-      return 'stopped';
-    }
-    if (vehicle.isMoving) {
-      return 'moving';
-    }
-    return 'idle';
-  }
+  /// Delegates to the single rule in VehicleRecord: stale is offline (grey),
+  /// ACC off is stopped (red), >5 km/h is moving (green), otherwise idle
+  /// (orange). This used to reimplement it with a 30-minute offline window,
+  /// which left every vehicle silent for 8-30 minutes on the `idle`
+  /// fallthrough — orange, on a device that had gone quiet.
+  ///
+  /// The offline gate uses the epoch `ts` the wire carries — NEVER the
+  /// created_at string, which is a zone-less server-local timestamp that
+  /// parsed phone-local flags every live vehicle offline (the exact incident
+  /// the webmaps documented and fixed the same way). No ts on the record → no
+  /// offline bucket, so a missing field can never paint a moving vehicle grey.
+  String _vehicleStatus(VehicleRecord vehicle) => vehicle.statusKey;
 
   /// URL of the pre-generated status-colored variant that the webmaps also
   /// use: assets/icons/car.png → assets/icons/status/car_moving.png. Falls

@@ -3,6 +3,24 @@ import 'package:fleet_monitor/models/model_helpers.dart';
 import 'package:fleet_monitor/models/vehicle_settings_model.dart';
 
 class VehicleRecord {
+  /// How old a fix may be before the app stops claiming to know what the
+  /// vehicle is doing. ONE threshold for every map, list and counter — see
+  /// [statusKey], which is the only status rule any surface should apply.
+  ///
+  /// Several widgets used to carry their own 30-minute window while the
+  /// tracking server calls a device offline after 3 (GPS_OFFLINE_AFTER_SECONDS),
+  /// leaving a 27-minute gap in which the map painted a confident colour from a
+  /// fix that was minutes old. Real GPS gaps mid-drive run 3-9 minutes on this
+  /// fleet, so the classic failure was: a bus halts at a school gate (correctly
+  /// orange, engine idling), pulls away, its signal drops — and the map kept
+  /// insisting "idle" for the whole gap while the bus was driving. Grey is the
+  /// honest answer there.
+  ///
+  /// Floor is set by the server's parked-vehicle write interval
+  /// (GPS_STATIONARY_SAVE_INTERVAL_SECONDS, 5 min): anything shorter would grey
+  /// out every legitimately parked vehicle.
+  static const int staleFixMs = 8 * 60 * 1000;
+
   final int id;
   final int userId;
   final int vendorId;
@@ -382,14 +400,58 @@ class VehicleRecord {
 
   bool get engineOn => acc > 0;
 
+  /// The last fix is older than [staleFixMs], so nothing derived from it is
+  /// worth painting as a live status.
+  bool get isLiveStale {
+    final ts = tsEpochMs;
+    return ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > staleFixMs;
+  }
+
   /// Real road speed means the vehicle is moving, whatever the ACC bit says.
   /// OBD and PT06 units flicker or stick that bit, and a bus doing 60 km/h
   /// rendering as a red "Stopped" marker is the worst thing the map can do.
-  bool get isMoving => speed > 5;
+  ///
+  /// These three are STALE-AWARE: all three are false once the fix ages past
+  /// [staleFixMs], because "moving" and "stopped" are both claims about right
+  /// now. That makes them safe defaults but means they are NOT an exhaustive
+  /// set — never bucket a vehicle with `if (isMoving) … else if (isIdle) …
+  /// else stopped`, because a stale vehicle silently lands in the last branch.
+  /// Use [statusKey], which is exhaustive and has the offline case.
+  bool get isMoving => !isLiveStale && speed > 5;
 
-  bool get isIdle => !isMoving && engineOn;
+  bool get isIdle => !isLiveStale && !isMoving && engineOn;
 
-  bool get isStopped => !isMoving && !engineOn;
+  bool get isStopped => !isLiveStale && !isMoving && !engineOn;
+
+  bool acceptsLiveFixFrom(VehicleRecord incoming) {
+    if (incoming.tsEpochMs <= 0 || tsEpochMs <= 0) {
+      return incoming.hasLiveLocation;
+    }
+    return incoming.tsEpochMs >= tsEpochMs;
+  }
+
+  VehicleRecord withLiveFieldsFrom(VehicleRecord source) {
+    return copyWith(
+      latitude: source.latitude,
+      longitude: source.longitude,
+      speed: source.speed,
+      course: source.course,
+      acc: source.acc,
+      battery: source.battery,
+      gsmSignal: source.gsmSignal,
+      satellites: source.satellites > 0 ? source.satellites : satellites,
+      createdAt: source.createdAt.isNotEmpty ? source.createdAt : createdAt,
+      tsEpochMs: source.tsEpochMs > 0 ? source.tsEpochMs : tsEpochMs,
+      hasLiveLocation: source.hasLiveLocation || hasLiveLocation,
+    );
+  }
+
+  VehicleRecord mergeLiveFixFrom(VehicleRecord incoming) {
+    if (!acceptsLiveFixFrom(incoming)) {
+      return this;
+    }
+    return withLiveFieldsFrom(incoming);
+  }
 
   // ── Device/plan expiry → red badge on the vehicle cards ──────────────────
   /// Parsed expiry date, or null when the device has no valid expiry set.
@@ -473,38 +535,10 @@ class VehicleRecord {
     return DateTime.now().difference(updatedAt).inSeconds < 90;
   }
 
-  String get statusLabel {
-    if (isStopped) {
-      return 'Stopped';
-    }
-    if (isMoving) {
-      return 'Moving';
-    }
-    return 'Idle';
-  }
-
   String get displayName => registrationNumber.isNotEmpty ? registrationNumber : name;
 
   String get primaryMapUrl =>
       trackingUrl.isNotEmpty ? trackingUrl : singleMapUrl;
-
-  /// Live status bucket (same rule as the map): fix older than 30 min =
-  /// offline, ACC off = stopped, > 5 km/h = moving, else idle.
-  /// How old a fix may be before the app stops claiming to know what the
-  /// vehicle is doing.
-  ///
-  /// This was 30 minutes while the tracking server calls a device offline after
-  /// 3 (GPS_OFFLINE_AFTER_SECONDS), leaving a 27-minute window in which the map
-  /// painted a confident colour from a fix that was minutes old. Real GPS gaps
-  /// mid-drive run 3-9 minutes on this fleet, so the classic failure was: a bus
-  /// halts at a school gate (correctly orange, engine idling), pulls away, its
-  /// signal drops — and the map kept insisting "idle" for the whole gap while
-  /// the bus was driving. Grey is the honest answer there.
-  ///
-  /// Floor is set by the server's parked-vehicle write interval
-  /// (GPS_STATIONARY_SAVE_INTERVAL_SECONDS, 5 min): anything shorter would
-  /// grey out every legitimately parked vehicle.
-  static const int _staleFixMs = 8 * 60 * 1000;
 
   /// "Just now" / "5m ago" / "2h ago", derived from [tsEpochMs].
   ///
@@ -524,14 +558,36 @@ class VehicleRecord {
     return '${diff.inDays}d ago';
   }
 
+  /// THE status rule. `offline` | `stopped` | `moving` | `idle`, in that
+  /// precedence, exactly one of which always holds.
+  ///
+  /// Every map, card, counter and filter must route through this. When widgets
+  /// each carried their own copy they drifted apart: three of them kept a
+  /// 30-minute offline window, so a vehicle silent for ten minutes fell past
+  /// their gate, found isStopped and isMoving both false, and landed on the
+  /// `idle` fallthrough — the map painted it orange, claiming an idling engine
+  /// on a device that had not spoken in ten minutes.
   String get statusKey {
-    final ts = tsEpochMs;
-    if (ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > _staleFixMs) {
+    if (isLiveStale) {
       return 'offline';
     }
     if (isStopped) return 'stopped';
     if (isMoving) return 'moving';
     return 'idle';
+  }
+
+  /// Human label for [statusKey] — Offline / Stopped / Moving / Idle.
+  String get statusLabel {
+    switch (statusKey) {
+      case 'offline':
+        return 'Offline';
+      case 'stopped':
+        return 'Stopped';
+      case 'moving':
+        return 'Moving';
+      default:
+        return 'Idle';
+    }
   }
 
   /// Status-coloured variant of [vehicleIconUrl]

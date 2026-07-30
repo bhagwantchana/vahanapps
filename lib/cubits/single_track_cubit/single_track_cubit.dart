@@ -86,47 +86,40 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
 
   void _onSseEvent(SseEvent event) {
     if (event.event != 'vehicle') return;
-    _lastLiveAt = DateTime.now();
-    _applyLiveUpdate(event.data);
+    // Stamp only when the push was actually APPLIED. _lastLiveAt is what makes
+    // silentRefreshIfStale skip a tick, so stamping on a rejected push told the
+    // screen the data was fresh when it had just been thrown away — the marker
+    // froze and the 5 s poll that would have recovered it kept standing down.
+    if (_applyLiveUpdate(event.data)) {
+      _lastLiveAt = DateTime.now();
+    }
   }
 
-  void _applyLiveUpdate(Map<String, dynamic> payload) {
-    if (isClosed) return;
+  /// True when the push was merged into state; false when it was rejected
+  /// (wrong vehicle, unparseable, or an out-of-order fix).
+  bool _applyLiveUpdate(Map<String, dynamic> payload) {
+    if (isClosed) return false;
     final model = state.singleTrackModel;
     final current = model?.data;
-    if (current == null) return;
+    if (current == null) return false;
 
     VehicleRecord incoming;
     try {
       incoming = VehicleRecord.fromJson(payload);
     } catch (_) {
-      return;
+      return false;
     }
     // Only apply the push for the vehicle currently on screen.
     final wantImei = _trackedImei ?? current.imei;
-    if (incoming.imei.isEmpty || incoming.imei != wantImei) return;
+    if (incoming.imei.isEmpty || incoming.imei != wantImei) return false;
 
-    final merged = current.copyWith(
-      latitude: incoming.latitude,
-      longitude: incoming.longitude,
-      speed: incoming.speed,
-      course: incoming.course,
-      acc: incoming.acc,
-      battery: incoming.battery,
-      gsmSignal: incoming.gsmSignal,
-      // SSE pushes omit satellites → keep the prior GPS-lock count instead of
-      // letting a default 0 wipe it.
-      satellites: incoming.satellites > 0 ? incoming.satellites : current.satellites,
-      createdAt: incoming.createdAt,
-      // Epoch fix time drives the offline (grey) marker bucket — keep the
-      // prior one if a push ever arrives without it.
-      tsEpochMs: incoming.tsEpochMs > 0 ? incoming.tsEpochMs : current.tsEpochMs,
-      hasLiveLocation: true,
-    );
+    final merged = current.mergeLiveFixFrom(incoming);
+    if (identical(merged, current)) return false; // out-of-order fix, dropped
 
     // Emit LoggedIn (NOT Loading) so the map updates in place and glides —
     // never a spinner/blank that would read as a refresh.
     emit(SingleTrackLoggedInState(singleTrackModel: model!.copyWith(data: merged)));
+    return true;
   }
 
   Future<bool> updateVehicleSettings({

@@ -86,24 +86,7 @@ class VehicleCubit extends Cubit<VehicleState> {
             // Preserve list-only fields the SSE payload may not include
             // (legacyMultiMapUrl etc.) by merging via copyWith — coords /
             // speed / acc come fresh from the wire.
-            return v.copyWith(
-              latitude: incoming.latitude,
-              longitude: incoming.longitude,
-              speed: incoming.speed,
-              course: incoming.course,
-              acc: incoming.acc,
-              battery: incoming.battery,
-              gsmSignal: incoming.gsmSignal,
-              // SSE location pushes omit satellites → incoming defaults to 0 and
-              // would wipe the real GPS-lock count. Keep the prior value when the
-              // wire didn't carry a fresh (>0) one.
-              satellites: incoming.satellites > 0 ? incoming.satellites : v.satellites,
-              createdAt: incoming.createdAt,
-              // Epoch fix time drives the offline (grey) marker bucket —
-              // keep the prior one if a push ever arrives without it.
-              tsEpochMs: incoming.tsEpochMs > 0 ? incoming.tsEpochMs : v.tsEpochMs,
-              hasLiveLocation: true,
-            );
+            return v.mergeLiveFixFrom(incoming);
           }()
         else
           v,

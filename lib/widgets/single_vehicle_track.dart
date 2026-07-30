@@ -31,6 +31,22 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+/// Status colour from the one status rule — grey/red/green/orange, matching
+/// the map markers. The badges used to pick their colour from isMoving/isIdle,
+/// which both go false on a stale fix and painted an offline vehicle red.
+Color _statusColorFor(VehicleRecord vehicle) {
+  switch (vehicle.statusKey) {
+    case 'offline':
+      return Colors.grey;
+    case 'stopped':
+      return Colors.red;
+    case 'moving':
+      return AppTheme.primaryGreen;
+    default:
+      return Colors.orange;
+  }
+}
+
 class VehicleDetailScreen extends StatefulWidget {
   const VehicleDetailScreen({super.key});
 
@@ -1312,7 +1328,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       bottom: 22,
                       child: _buildMapInfoChip(
                         icon: LucideIcons.clock3,
-                        label: _formatUpdatedAt(vehicle.createdAt),
+                        // Relative, from the epoch fix time — NOT createdAt.
+                        // That is the server's own wall clock as a string and
+                        // the box runs UTC, so this chip read 5h30 old the
+                        // moment a fix landed. The full-screen map was fixed;
+                        // this one, the first map the customer opens, was not.
+                        label: vehicle.lastUpdateLabel,
                       ),
                     ),
                     if (isLoading && _controller != null)
@@ -1458,14 +1479,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                         vertical: 3,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: vehicle.isMoving
-                                            ? AppTheme.primaryGreen
-                                                .withValues(alpha: 0.12)
-                                            : (vehicle.isIdle
-                                                ? Colors.orange
-                                                    .withValues(alpha: 0.12)
-                                                : Colors.red
-                                                    .withValues(alpha: 0.10)),
+                                        color: _statusColorFor(vehicle)
+                                            .withValues(alpha: 0.12),
                                         borderRadius:
                                             BorderRadius.circular(6),
                                       ),
@@ -1475,11 +1490,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                           fontSize: 9,
                                           fontWeight: FontWeight.w900,
                                           letterSpacing: 0.4,
-                                          color: vehicle.isMoving
-                                              ? AppTheme.primaryGreen
-                                              : (vehicle.isIdle
-                                                  ? Colors.orange.shade800
-                                                  : Colors.red.shade700),
+                                          color: _statusColorFor(vehicle),
                                         ),
                                       ),
                                     ),
@@ -2486,9 +2497,7 @@ class _GlassVehicleBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color statusColor = vehicle.isMoving
-        ? const Color(0xFF22C55E)
-        : (vehicle.isIdle ? Colors.orange : Colors.red);
+    final Color statusColor = _statusColorFor(vehicle);
     final Color titleColor = isDark ? Colors.white : const Color(0xFF141A22);
     final Color subtitleColor =
         isDark ? Colors.white60 : Colors.black.withValues(alpha: 0.55);
