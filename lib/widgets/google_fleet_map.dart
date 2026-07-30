@@ -103,6 +103,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   GoogleMapController? _controller;
   double _dpr = 2.0;
   double _zoom = 11;
+  /// Camera pitch, tracked from onCameraMove so the follow camera can preserve
+  /// whatever the user has set instead of re-imposing a fixed value each frame.
+  double _tilt = 0;
   bool _labelsShown = false;
 
   // User map controls: theme (default|dark|retro|satellite|terrain), traffic,
@@ -259,12 +262,13 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   void _fleetAnimTick() {
     if (!mounted || !_tickerEnabled || !_appActive) return; // idle when hidden
     if (!_fleetAnimActive) {
+      // Stop interpolating, but KEEP the buffers. This gate flips when zoom
+      // crosses the clustering threshold, and throwing the queues away there
+      // meant every zoom out-and-back rebuilt them from nothing - the marker
+      // snapped to its raw position with a visible lurch. Only the rendered
+      // positions are dropped, so markers fall back to raw coordinates while
+      // clustered and pick the motion straight back up on the way in.
       if (_renderedFleet.isNotEmpty) _renderedFleet.clear();
-      if (_fleetQueues.isNotEmpty) {
-        _fleetQueues.clear();
-        _fleetPlayMs.clear();
-        _fleetBearing.clear();
-      }
       return;
     }
     final list = _visible;
@@ -719,9 +723,17 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final glowScale = pulse ? const <double>[0.85, 1.2, 1.55][glowIdx] : 1.0;
     final key =
         '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}${pulse ? '|g$glowIdx' : ''}';
-    // Never fall back to the default red pin — only a COMPOSED car bitmap. If
-    // nothing is ready yet, skip this frame (the icon appears a beat later).
-    final icon = _iconCache[key] ?? _fallbackIcon;
+    // Never fall back to the default red pin — only a COMPOSED car bitmap.
+    //
+    // The running "breathing" pulse gives each vehicle THREE glow variants, and
+    // each is composed lazily. Any frame whose variant was not ready yet fell
+    // straight through to the grey placeholder (or skipped the marker
+    // entirely), which is the blinking: at a 40 ms tick the pulse advances
+    // faster than the compositor can keep up. Degrade to the SAME icon without
+    // the glow first - it is effectively always cached - so the vehicle never
+    // vanishes or flashes grey while a cosmetic variant is still rendering.
+    final baseKey = '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}';
+    final icon = _iconCache[key] ?? _iconCache[baseKey] ?? _fallbackIcon;
     if (icon == null) return;
     // Followed (single) uses the eased glide; fleet uses the fleet ease.
     final pos = (widget.followVehicleId == v.id && _followRendered != null)
@@ -909,6 +921,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         _zoom < _clusterMaxZoom &&
         _visible.length > 10;
     _zoom = pos.zoom;
+    _tilt = pos.tilt;
     final nowClustering = widget.followVehicleId == null &&
         _zoom < _clusterMaxZoom &&
         _visible.length > 10;
@@ -1114,9 +1127,17 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             }
           }
         }
+        // Carry the user's CURRENT zoom and tilt through, never a fixed pair.
+        // Hard-coding zoom 17 / tilt 55 here re-applied them 60 times a second,
+        // so a pinch-zoom was yanked back on the very next frame - the map
+        // fought the gesture and the vehicle lurched out of view.
         await controller.moveCamera(CameraUpdate.newCameraPosition(
           CameraPosition(
-              target: target, zoom: 17, tilt: 55, bearing: bearing),
+            target: target,
+            zoom: _zoom,
+            tilt: _tilt,
+            bearing: bearing,
+          ),
         ));
       } else {
         await controller.moveCamera(CameraUpdate.newLatLng(target));
@@ -1130,18 +1151,24 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   void _toggleNavMode() {
     setState(() => _navMode = !_navMode);
     final controller = _controller;
-    if (controller != null && !_navMode) {
-      // Leaving nav mode → level the camera back to flat, north-up.
-      final target = _followRendered;
-      if (target != null) {
-        _programmaticMove = true;
-        try {
-          controller.animateCamera(CameraUpdate.newCameraPosition(
-            CameraPosition(target: target, zoom: 15, tilt: 0, bearing: 0),
-          ));
-        } catch (_) {}
-      }
-    }
+    final target = _followRendered;
+    if (controller == null || target == null) return;
+    // Pitch and zoom are applied ONCE here, on the way in and on the way out.
+    // The per-frame follow camera deliberately carries whatever the user has
+    // since set (see _followCamera) so it never fights a pinch.
+    _programmaticMove = true;
+    try {
+      controller.animateCamera(CameraUpdate.newCameraPosition(
+        _navMode
+            ? CameraPosition(
+                target: target,
+                zoom: 17,
+                tilt: 55,
+                bearing: _renderBearing ?? _followBearing ?? 0,
+              )
+            : CameraPosition(target: target, zoom: 15, tilt: 0, bearing: 0),
+      ));
+    } catch (_) {}
   }
 
   Future<void> _openThemePicker() async {
