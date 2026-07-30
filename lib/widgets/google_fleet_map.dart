@@ -185,7 +185,23 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
   // Single-vehicle follow: pan with the vehicle, but pause for 8s after the
   // user manually moves the camera so we never fight their gesture.
-  bool _programmaticMove = false;
+  /// Programmatic camera moves are marked with a short DEADLINE, not a boolean.
+  ///
+  /// A flag broke on its own: _toggleNavMode set it and started a ~300 ms
+  /// animateCamera, but the 60 fps follow camera cleared it within one frame.
+  /// The animation's own onCameraMoveStarted then looked like a user gesture
+  /// and paused follow for 8 seconds - during which the camera froze while the
+  /// marker kept moving. In nav mode that is exactly the reported "vehicle
+  /// slides sideways and its nose points away from the polyline": the car is
+  /// drawn pointing up-screen while the map is stuck on a stale bearing.
+  int _programmaticUntilMs = 0;
+  bool get _programmaticMove =>
+      DateTime.now().millisecondsSinceEpoch < _programmaticUntilMs;
+  void _markProgrammatic(int ms) {
+    final until = DateTime.now().millisecondsSinceEpoch + ms;
+    if (until > _programmaticUntilMs) _programmaticUntilMs = until;
+  }
+
   bool _followPaused = false;
   Timer? _followResume;
 
@@ -745,7 +761,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // camera tilt never foreshortens/stretches it; the heading-up map already
     // conveys direction, so it points straight up.
     final followed = widget.followVehicleId == v.id;
-    final navBillboard = _navMode && followed;
+    // Billboard (points up-screen) is only honest while the camera is actually
+    // tracking the heading. If follow is paused the map bearing is frozen, so an
+    // up-pointing car would face somewhere the road does not go - draw it flat
+    // on its real bearing instead.
+    final navBillboard = _navMode && followed && !_followPaused;
     // Every car points along its ACTUAL movement bearing, eased. The device's
     // reported course jumps between fixes, and using it on the fleet map made
     // the icon flick round mid-slide instead of turning through the corner.
@@ -941,7 +961,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         .toList();
     if (pts.isEmpty) return;
     _fitDone = true;
-    _programmaticMove = true;
+    _markProgrammatic(900); // animateCamera below
     if (pts.length == 1) {
       try {
         await controller.animateCamera(
@@ -986,7 +1006,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       }
     }
     if (focus == null) return;
-    _programmaticMove = true;
+    _markProgrammatic(900); // animateCamera below
     try {
       await controller.animateCamera(
         CameraUpdate.newLatLng(LatLng(focus.latitude, focus.longitude)),
@@ -1109,7 +1129,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
     final target = _followRendered;
     if (target == null) return;
-    _programmaticMove = true;
+    _markProgrammatic(120); // instant moveCamera below
     try {
       // moveCamera (instant) not animateCamera: the pose is ALREADY eased per
       // frame, so animating on top would fight itself and stutter.
@@ -1143,9 +1163,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         await controller.moveCamera(CameraUpdate.newLatLng(target));
       }
     } catch (_) {}
-    // Clear promptly so a real user pan between frames is still detected
-    // (onCameraMoveStarted pauses follow for 8 s).
-    _programmaticMove = false;
   }
 
   void _toggleNavMode() {
@@ -1153,10 +1170,10 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final controller = _controller;
     final target = _followRendered;
     if (controller == null || target == null) return;
+    _markProgrammatic(900); // animateCamera below
     // Pitch and zoom are applied ONCE here, on the way in and on the way out.
     // The per-frame follow camera deliberately carries whatever the user has
     // since set (see _followCamera) so it never fights a pinch.
-    _programmaticMove = true;
     try {
       controller.animateCamera(CameraUpdate.newCameraPosition(
         _navMode
@@ -1239,7 +1256,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   }
 
   void _onCameraIdle() {
-    _programmaticMove = false;
     // Re-group clusters for the settled zoom (grid cells depend on zoom).
     if (widget.followVehicleId == null && _visible.length > 10) {
       _refreshMarkers();
