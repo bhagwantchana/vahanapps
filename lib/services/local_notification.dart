@@ -786,6 +786,11 @@ class CustomNotificationSoundService {
     if (alertType == 'plan_expiry' ||
         alertType == 'admin_message' ||
         alertType == 'announcement' ||
+        // appmodel.normalizeAlertType falls back to 'idle' for any type the
+        // enum does not carry (and the test push uses it). Neither is a vehicle
+        // event, so it must not reach the engine-keyword scan below and play an
+        // ignition cue.
+        alertType == 'idle' ||
         // Informational "vehicle reachable again" push — its body names the
         // vehicle, which would otherwise trip the engine-keyword scan below
         // and play an ignition cue for a connectivity event.

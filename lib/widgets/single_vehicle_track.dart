@@ -1213,6 +1213,17 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                         ? GoogleFleetMap(
                                             vehicles: <VehicleRecord>[vehicle],
                                             followVehicleId: vehicle.id,
+                                            // Tap-to-open is the MAP's own tap
+                                            // callback, not a sheet of glass
+                                            // over the whole card. The InkWell
+                                            // that used to sit here swallowed
+                                            // every touch, so the map's theme,
+                                            // traffic, share and head-up
+                                            // buttons were dead pixels — they
+                                            // just opened the full screen.
+                                            onMapTap: liveMapUrl.isNotEmpty
+                                                ? () => _openLiveMap(vehicle)
+                                                : null,
                                             trailPoints: trailPoints
                                                 .map((p) => gmaps.LatLng(
                                                     p.latitude, p.longitude))
@@ -1223,6 +1234,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                             focusVehicle: vehicle,
                                             trailPoints: trailPoints,
                                             followFocusedVehicle: true,
+                                            onMapTap: liveMapUrl.isNotEmpty
+                                                ? () => _openLiveMap(vehicle)
+                                                : null,
                                             moveAnimationDuration: const Duration(
                                                 milliseconds: 2500),
                                             mapProvider:
@@ -1301,17 +1315,22 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     },
                                   )),
                     ),
-                    Positioned.fill(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: liveMapUrl.isNotEmpty
-                              ? () => _openLiveMap(vehicle)
-                              : null,
+                    // The WebView map has no tap callback of its own, so it
+                    // keeps a full-bleed tap target. The native maps use their
+                    // own onMapTap instead — a sheet of glass over them ate
+                    // every touch, controls included.
+                    if (!useNativeMap)
+                      Positioned.fill(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: liveMapUrl.isNotEmpty
+                                ? () => _openLiveMap(vehicle)
+                                : null,
+                          ),
                         ),
                       ),
-                    ),
                     Positioned(
                       top: 22,
                       right: 22,
@@ -2396,10 +2415,50 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
   // _growLiveTrail on the detail screen).
   int _trailVehicleId = 0;
 
+  // Route history, so the full screen opens with the road the vehicle has
+  // already driven. This screen only ever accumulated points from the moment it
+  // opened, so the map the customer actually watches showed LESS of the route
+  // than the small preview they tapped to get here — a blank map until the
+  // vehicle moved.
+  final SingleTrackRepository _trackRepository = SingleTrackRepository();
+  List<LatLng> _historyTrail = <LatLng>[];
+  int _historyVehicleId = 0;
+
   @override
   void initState() {
     super.initState();
     _refresh.start();
+  }
+
+  Future<void> _loadHistory(VehicleRecord vehicle) async {
+    if (_historyVehicleId == vehicle.id) return;
+    _historyVehicleId = vehicle.id;
+    final settings = vehicle.settings;
+    final minutes = (settings?.mobileMapTrailMinutes ?? 0) > 0
+        ? settings!.mobileMapTrailMinutes
+        : 120;
+    final limit = (settings?.mobileMapTrailPoints ?? 0) > 0
+        ? settings!.mobileMapTrailPoints
+        : 25;
+    try {
+      final now = DateTime.now();
+      final points = await _trackRepository.fetchTripHistoryTrail(
+        imei: vehicle.imei,
+        from: now.subtract(Duration(minutes: minutes)),
+        to: now,
+      );
+      if (!mounted || _historyVehicleId != vehicle.id) return;
+      final trail = points
+          .map((item) => item.toLatLng())
+          .where((p) => p.latitude != 0 || p.longitude != 0)
+          .toList();
+      setState(() {
+        _historyTrail =
+            trail.length <= limit ? trail : trail.sublist(trail.length - limit);
+      });
+    } catch (_) {
+      // Silent: the live trail still grows, the map is never blocked on this.
+    }
   }
 
   @override
@@ -2443,6 +2502,10 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           _growTrail(vehicle);
+          unawaited(_loadHistory(vehicle));
+          // Same shape as the preview: the road already driven, then the line
+          // this screen has grown since it opened.
+          final trailPoints = <LatLng>[..._historyTrail, ..._liveTrail];
           return Stack(
             children: <Widget>[
               Positioned.fill(
@@ -2451,14 +2514,14 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
                     ? GoogleFleetMap(
                         vehicles: <VehicleRecord>[vehicle],
                         followVehicleId: vehicle.id,
-                        trailPoints: _liveTrail
+                        trailPoints: trailPoints
                             .map((p) => gmaps.LatLng(p.latitude, p.longitude))
                             .toList(),
                       )
                     : NativeVehicleMap(
                         vehicles: <VehicleRecord>[vehicle],
                         focusVehicle: vehicle,
-                        trailPoints: _liveTrail,
+                        trailPoints: trailPoints,
                         followFocusedVehicle: true,
                         moveAnimationDuration:
                             const Duration(milliseconds: 2500),

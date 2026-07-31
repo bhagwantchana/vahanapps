@@ -39,6 +39,7 @@ class NativeVehicleMap extends StatefulWidget {
     this.animateMarkers = true,
     this.moveAnimationDuration = const Duration(milliseconds: 900),
     this.onVehicleTap,
+    this.onMapTap,
     this.mapProvider = 'maplibre',
     this.highlightFocus = false,
   });
@@ -63,6 +64,10 @@ class NativeVehicleMap extends StatefulWidget {
   /// bottom sheet showing the vehicle's address (via LiveAddressText so it
   /// matches the list cell), speed, last-update time and a Track button.
   final void Function(VehicleRecord vehicle)? onVehicleTap;
+
+  /// Tapping empty map (not a marker). The single-vehicle preview uses it to
+  /// open the full-screen map.
+  final VoidCallback? onMapTap;
 
   /// Map style from superadmin Settings → "Default Map Engine". Both options
   /// now render through MapLibre's smooth vector renderer; the value only
@@ -1347,6 +1352,13 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
           ),
           onMapCreated: _onMapCreated,
           onStyleLoadedCallback: _onStyleLoaded,
+          // Tapping the map surface (not a marker, not a control) is how the
+          // inline preview opens full screen. It used to be a transparent
+          // InkWell laid over the whole card, which also ate the nav and
+          // recenter buttons below it.
+          onMapClick: widget.onMapTap == null
+              ? null
+              : (point, coordinates) => widget.onMapTap!.call(),
           trackCameraPosition: true,
           onCameraMove: _onCameraMove,
           onCameraIdle: _onCameraIdle,
