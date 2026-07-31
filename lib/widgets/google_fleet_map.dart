@@ -37,7 +37,16 @@ class GoogleFleetMap extends StatefulWidget {
     this.recenterTick = 0,
     this.followVehicleId,
     this.trailPoints = const <LatLng>[],
+    this.bottomInset = 0,
   });
+
+  /// Height of any overlay the HOST draws across the bottom of this map.
+  ///
+  /// The full-screen view lays a glass vehicle bar over the map, and it was
+  /// tall enough to swallow the Re-centre chip whole — the chip appeared on the
+  /// inline preview and seemed simply missing on full screen. Google's logo and
+  /// attribution live down there too and must not be covered either.
+  final double bottomInset;
 
   final List<VehicleRecord> vehicles;
 
@@ -1676,7 +1685,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           // bar and bottom controls/card, so nothing hides under the overlays.
           padding: EdgeInsets.only(
             top: widget.followVehicleId == null ? 56 : 12,
-            bottom: 24,
+            bottom: 24 + widget.bottomInset,
           ),
           onTap: (_) => widget.onMapTap?.call(),
           mapType: _resolvedMapType,
@@ -1733,7 +1742,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           Positioned(
             left: 0,
             right: 0,
-            bottom: 90,
+            bottom: 24 + widget.bottomInset,
             child: Center(
               child: Material(
                 color: AppTheme.primaryBlue,

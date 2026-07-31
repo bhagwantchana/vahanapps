@@ -2424,6 +2424,25 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
   List<LatLng> _historyTrail = <LatLng>[];
   int _historyVehicleId = 0;
 
+  // The glass bar is laid OVER the map and its height is not fixed — a long
+  // street address wraps to a second line. Measure it rather than guess, and
+  // hand the map the figure so the Re-centre chip (and Google's attribution)
+  // sit above it instead of underneath. The chip was there all along on full
+  // screen; the bar was simply covering it.
+  final GlobalKey _barKey = GlobalKey();
+  double _barHeight = 0;
+
+  void _measureBar() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final box = _barKey.currentContext?.findRenderObject() as RenderBox?;
+      final h = box?.size.height ?? 0;
+      if (h > 0 && (h - _barHeight).abs() > 1) {
+        setState(() => _barHeight = h);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2503,6 +2522,7 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
           }
           _growTrail(vehicle);
           unawaited(_loadHistory(vehicle));
+          _measureBar();
           // Same shape as the preview: the road already driven, then the line
           // this screen has grown since it opened.
           final trailPoints = <LatLng>[..._historyTrail, ..._liveTrail];
@@ -2514,6 +2534,7 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
                     ? GoogleFleetMap(
                         vehicles: <VehicleRecord>[vehicle],
                         followVehicleId: vehicle.id,
+                        bottomInset: _barHeight,
                         trailPoints: trailPoints
                             .map((p) => gmaps.LatLng(p.latitude, p.longitude))
                             .toList(),
@@ -2537,7 +2558,11 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                child: _GlassVehicleBar(vehicle: vehicle, showSpeed: true),
+                child: _GlassVehicleBar(
+                  key: _barKey,
+                  vehicle: vehicle,
+                  showSpeed: true,
+                ),
               ),
             ],
           );
@@ -2548,7 +2573,11 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
 }
 
 class _GlassVehicleBar extends StatelessWidget {
-  const _GlassVehicleBar({required this.vehicle, this.showSpeed = false});
+  const _GlassVehicleBar({
+    super.key,
+    required this.vehicle,
+    this.showSpeed = false,
+  });
 
   final VehicleRecord vehicle;
 
