@@ -1336,16 +1336,31 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
     // Queue dry: nothing left to interpolate, so keep rolling on the last known
     // heading and speed instead of standing still for the length of the gap.
-    if (_playMs! >= upper && _coastMps * 3.6 >= kMinCoastKmh) {
+    // The segment pace alone is not enough to justify coasting. A vehicle that
+    // pulls up and parks leaves a last segment still showing 40 km/h, and a
+    // parked device only reports every five minutes — so the queue goes dry and
+    // we would drive a stationary car 150 m down the road before dragging it
+    // back. The device's own current speed has to agree that it is moving.
+    final canCoast = _coastMps * 3.6 >= kMinCoastKmh &&
+        _followedReportedSpeed() >= kMinCoastKmh;
+    if (_playMs! >= upper && canCoast) {
       if (_coastAnchor == null) {
         _coastAnchor = _followRendered;
         _coastStartMs = nowWall;
       }
-      final coastedMs = nowWall - _coastStartMs;
-      if (_coastAnchor != null && coastedMs <= kMaxCoastMs) {
-        final p = projectAhead(_coastAnchor!.latitude, _coastAnchor!.longitude,
-            _coastBearing, _coastMps * coastedMs / 1000.0);
-        _followRendered = _withReconcile(p.lat, p.lng, nowWall);
+      final anchor = _coastAnchor;
+      if (anchor != null) {
+        final coastedMs = nowWall - _coastStartMs;
+        if (coastedMs <= kMaxCoastMs) {
+          final p = projectAhead(anchor.latitude, anchor.longitude,
+              _coastBearing, _coastMps * coastedMs / 1000.0);
+          _followRendered = _withReconcile(p.lat, p.lng, nowWall);
+        }
+        // Past the bound we HOLD the last coasted position. Falling through
+        // would recompute from a still-dry queue, which renders the last real
+        // fix — fourteen seconds of travel BEHIND where the vehicle is drawn —
+        // and the reconcile would then slide it backwards down the road. A
+        // stopped marker is bad; one that reverses is worse.
         _pushPose();
         return;
       }
@@ -1357,6 +1372,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       // onto the truth rather than teleporting onto it.
       final guessed = _followRendered;
       _coastAnchor = null;
+      _coastStartMs = 0;
       if (guessed != null) {
         _reconcileAtMs = nowWall;
         _reconcileLat = guessed.latitude;
@@ -1538,6 +1554,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             : CameraPosition(target: target, zoom: 15, tilt: 0, bearing: 0),
       ));
     } catch (_) {}
+  }
+
+  /// Speed the device last reported for the followed vehicle, km/h.
+  double _followedReportedSpeed() {
+    for (final x in _visible) {
+      if (x.id == widget.followVehicleId) return x.speed;
+    }
+    return 0;
   }
 
   /// Heading for the nav pose. A stopped vehicle has no movement bearing, so
