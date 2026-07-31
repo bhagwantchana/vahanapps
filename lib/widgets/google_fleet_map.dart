@@ -254,6 +254,27 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   LatLng? _pushedPos;
   double? _pushedBearing;
 
+  // ── Dead reckoning ────────────────────────────────────────────────────────
+  // Owner recording, 2026-07-26: gaps between fixes ran 5, 5, 7, 7, 10, 13 and
+  // 15 seconds. At 73 km/h the 13-second gap is 264 metres, and the marker held
+  // still for every one of them before jumping. The playback clock may not run
+  // past the newest fix, so once the queue empties there is nothing left to
+  // interpolate and it simply stops.
+  //
+  // Rather than widen the cushion (a 15 s one would leave the vehicle 300 m
+  // behind — the opposite complaint), we keep it rolling on its last heading
+  // and speed while the queue is dry, and slide it back onto the truth when the
+  // next fix lands.
+  int _coastStartMs = 0;
+  LatLng? _coastAnchor;
+  double _coastBearing = 0;
+  double _coastMps = 0;
+
+  /// Leftover correction from the last coast, decaying to zero.
+  double _reconcileLat = 0;
+  double _reconcileLng = 0;
+  int _reconcileAtMs = 0;
+
   LatLng? _followRendered;
   double? _followBearing; // heading computed from actual movement (accurate)
   /// Heading actually drawn. Chases [_followBearing] a few degrees per frame
@@ -1254,6 +1275,37 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // devices, so playback kept hitting the ceiling and the marker froze until
     // the next packet landed — stop, jump, stop, jump.
     final upper = q.last.ts - _cushionMs;
+
+    // Queue dry: nothing left to interpolate, so keep rolling on the last known
+    // heading and speed instead of standing still for the length of the gap.
+    if (_playMs! >= upper && _coastMps * 3.6 >= kMinCoastKmh) {
+      if (_coastAnchor == null) {
+        _coastAnchor = _followRendered;
+        _coastStartMs = nowWall;
+      }
+      final coastedMs = nowWall - _coastStartMs;
+      if (_coastAnchor != null && coastedMs <= kMaxCoastMs) {
+        final p = projectAhead(_coastAnchor!.latitude, _coastAnchor!.longitude,
+            _coastBearing, _coastMps * coastedMs / 1000.0);
+        _followRendered = _withReconcile(p.lat, p.lng, nowWall);
+        _pushPose();
+        return;
+      }
+    }
+
+    if (_coastAnchor != null) {
+      // A real fix arrived. Carry the gap between where we guessed the vehicle
+      // was and where it actually is as a decaying offset, so the marker slides
+      // onto the truth rather than teleporting onto it.
+      final guessed = _followRendered;
+      _coastAnchor = null;
+      if (guessed != null) {
+        _reconcileAtMs = nowWall;
+        _reconcileLat = guessed.latitude;
+        _reconcileLng = guessed.longitude;
+      }
+    }
+
     // Clock advance + catch-up — see advancePlaybackClock in map_motion.dart,
     // where the behaviour is unit-tested.
     _playMs = advancePlaybackClock(
@@ -1313,12 +1365,46 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           cur == null ? target : lerpAngle(cur, target, (dt / 240).clamp(0.0, 1.0));
     }
 
+    // Remember the pace of the segment we are on, so that when the queue runs
+    // dry we can carry the vehicle forward at the speed it was actually doing
+    // rather than the speed the device last claimed.
+    if (b.ts > a.ts) {
+      final segMps =
+          _distM(a.lat, a.lng, b.lat, b.lng) / ((b.ts - a.ts) / 1000.0);
+      if (segMps.isFinite && segMps >= 0 && segMps < 60) _coastMps = segMps;
+    }
+    _coastBearing = _renderBearing ?? _followBearing ?? _coastBearing;
+
+    final rendered = _followRendered;
+    if (rendered != null) {
+      _followRendered =
+          _withReconcile(rendered.latitude, rendered.longitude, nowWall);
+    }
+
     // Drop fixes we've fully played past (keep the current segment start).
     while (_fixQueue.length > 2 && _fixQueue[1].ts <= _playMs!) {
       _fixQueue.removeAt(0);
     }
 
     _pushPose();
+  }
+
+  /// Blend the leftover dead-reckoning correction into a position.
+  ///
+  /// At the instant a fix lands the factor is 1, so the marker is drawn exactly
+  /// where the coast had put it — no jump. It decays to 0 over kReconcileMs, by
+  /// which point the marker is on the real position.
+  LatLng _withReconcile(double lat, double lng, int nowMs) {
+    if (_reconcileAtMs == 0) return LatLng(lat, lng);
+    final f = reconcileFactor(nowMs - _reconcileAtMs);
+    if (f <= 0) {
+      _reconcileAtMs = 0;
+      return LatLng(lat, lng);
+    }
+    return LatLng(
+      lat + (_reconcileLat - lat) * f,
+      lng + (_reconcileLng - lng) * f,
+    );
   }
 
   /// Curved position along the segment — see [catmullRom] in map_motion.dart,
@@ -1458,13 +1544,37 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
   void _onCameraMoveStarted() {
     if (_programmaticMove || widget.followVehicleId == null) return;
-    // A real user gesture → pause follow, resume after they stop exploring.
-    _followPaused = true;
+    // A real user gesture → stop following so we never fight it. Auto-resume
+    // stays as a safety net, but the Re-centre chip is the real answer: for
+    // eight seconds the map used to look frozen with nothing on screen to say
+    // why, and then snap back on its own while the user was still reading it.
+    if (!_followPaused && mounted) setState(() => _followPaused = true);
     _followResume?.cancel();
     _followResume = Timer(const Duration(seconds: 8), () {
-      _followPaused = false;
-      if (mounted) unawaited(_followCamera());
+      if (!mounted) return;
+      setState(() => _followPaused = false);
+      unawaited(_followCamera());
     });
+  }
+
+  /// Return the camera to the vehicle and resume following it.
+  void _recenterOnVehicle() {
+    _followResume?.cancel();
+    setState(() => _followPaused = false);
+    final controller = _controller;
+    final target = _followRendered ?? _firstFollowedPosition();
+    if (controller == null || target == null) return;
+    _markProgrammatic(900);
+    try {
+      controller.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: target,
+          zoom: _zoom,
+          tilt: _tilt,
+          bearing: _navMode ? (_renderBearing ?? _followBearing ?? 0) : 0,
+        ),
+      ));
+    } catch (_) {}
   }
 
   void _onCameraIdle() {
@@ -1558,6 +1668,46 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             ],
           ),
         ),
+        // Follow is paused after a manual pan, and there was no way to say so
+        // and no way to undo it — the camera just sat there for eight seconds
+        // and then yanked itself back. Now the state is visible and the user
+        // decides when to return.
+        if (widget.followVehicleId != null && _followPaused)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 90,
+            child: Center(
+              child: Material(
+                color: AppTheme.primaryBlue,
+                borderRadius: BorderRadius.circular(20),
+                elevation: 3,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: _recenterOnVehicle,
+                  child: const Padding(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(Icons.my_location, size: 15, color: Colors.white),
+                        SizedBox(width: 6),
+                        Text(
+                          'Re-centre',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         // Empty state — fleet mode with no locatable vehicles.
         if (widget.followVehicleId == null && _visible.isEmpty)
           const IgnorePointer(child: _EmptyMapOverlay()),

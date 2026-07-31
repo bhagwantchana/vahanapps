@@ -189,6 +189,57 @@ int adaptiveCushionMs(List<int> intervalsMs) {
   return scaled;
 }
 
+/// Longest we will keep a vehicle moving on dead reckoning alone.
+///
+/// Measured from an owner recording: gaps between fixes on these devices run
+/// 5, 5, 7, 7, 10, 13 and 15 seconds. At 73 km/h a 13-second gap is 264 metres
+/// — and the marker sat still for all of it, then jumped. No render cushion
+/// fixes that: one big enough to absorb a 15 s gap puts the vehicle 300 m
+/// behind, which is the opposite complaint.
+///
+/// So when the queue runs dry we keep the vehicle rolling along its last known
+/// heading at its last known speed, the way a navigation app does, and
+/// reconcile when the next fix lands. Past this bound we stop and admit we do
+/// not know.
+const int kMaxCoastMs = 14000;
+
+/// Below this speed there is nothing to extrapolate — a stopped vehicle must
+/// never drift off down the road.
+const double kMinCoastKmh = 8;
+
+/// Position [meters] ahead of a point along [bearingDeg].
+MotionPoint projectAhead(
+    double lat, double lng, double bearingDeg, double meters) {
+  if (meters <= 0) return MotionPoint(lat, lng);
+  const r = 6371000.0;
+  final d = meters / r;
+  final b = bearingDeg * math.pi / 180;
+  final p1 = lat * math.pi / 180;
+  final l1 = lng * math.pi / 180;
+  final p2 = math.asin(
+      math.sin(p1) * math.cos(d) + math.cos(p1) * math.sin(d) * math.cos(b));
+  final l2 = l1 +
+      math.atan2(math.sin(b) * math.sin(d) * math.cos(p1),
+          math.cos(d) - math.sin(p1) * math.sin(p2));
+  return MotionPoint(p2 * 180 / math.pi, l2 * 180 / math.pi);
+}
+
+/// How much of a leftover correction still applies [elapsedMs] into the blend.
+///
+/// When a real fix lands after a coast, the drawn position is wherever dead
+/// reckoning guessed and the true position is wherever the vehicle actually
+/// went. Snapping between them is the jump we are trying to remove, so the
+/// difference is carried as an offset that decays to nothing — the marker
+/// slides onto the truth over [kReconcileMs] instead of teleporting onto it.
+const int kReconcileMs = 900;
+
+double reconcileFactor(int elapsedMs) {
+  if (elapsedMs <= 0) return 1;
+  if (elapsedMs >= kReconcileMs) return 0;
+  final t = 1 - (elapsedMs / kReconcileMs);
+  return t * t; // ease-out: most of the correction goes early
+}
+
 /// Advance the playback clock by one frame.
 ///
 /// The clock runs at 1x wall time, so any lag it acquires would otherwise be

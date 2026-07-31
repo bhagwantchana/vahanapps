@@ -288,6 +288,75 @@ void main() {
     });
   });
 
+  group('the vehicle keeps rolling when the fixes stop coming', () {
+    // From the owner's 2026-07-26 recording: gaps of 5, 5, 7, 7, 10, 13 and 15
+    // seconds. The card sat on 30.9368, 75.8467 / 13:39:27 / 73 km/h for 15
+    // straight seconds and then jumped. At 73 km/h that is 264 m of real travel
+    // with a stationary marker.
+    test('a 13 second gap at 73 km/h is a quarter kilometre', () {
+      const mps = 73 / 3.6;
+      final after = projectAhead(30.9368, 75.8467, 270, mps * 13);
+      final moved = distanceMeters(30.9368, 75.8467, after.lat, after.lng);
+      expect(moved, closeTo(264, 5));
+    });
+
+    test('projection runs along the given heading', () {
+      // Due east: longitude rises, latitude holds.
+      final east = projectAhead(30.0, 76.0, 90, 1000);
+      expect(east.lng, greaterThan(76.0));
+      expect(east.lat, closeTo(30.0, 1e-4));
+      // Due north: latitude rises, longitude holds.
+      final north = projectAhead(30.0, 76.0, 0, 1000);
+      expect(north.lat, greaterThan(30.0));
+      expect(north.lng, closeTo(76.0, 1e-6));
+    });
+
+    test('zero distance never moves the vehicle', () {
+      final p = projectAhead(30.0, 76.0, 123, 0);
+      expect(p.lat, 30.0);
+      expect(p.lng, 76.0);
+    });
+
+    test('coasting is bounded, so a dead device cannot drive off alone', () {
+      expect(kMaxCoastMs, lessThanOrEqualTo(15000));
+      // Long enough to cover the worst gap actually observed.
+      expect(kMaxCoastMs, greaterThanOrEqualTo(13000));
+    });
+
+    test('a parked vehicle is below the coast threshold', () {
+      // 0 km/h must never drift down the road while the queue is dry.
+      expect(0.0, lessThan(kMinCoastKmh));
+      expect(73.0, greaterThan(kMinCoastKmh));
+    });
+  });
+
+  group('the correction after a coast slides, it does not snap', () {
+    test('at the instant the fix lands nothing has moved yet', () {
+      // Factor 1 = draw exactly where the coast had it, so there is no jump.
+      expect(reconcileFactor(0), 1);
+    });
+
+    test('the correction is fully spent by the end of the blend', () {
+      expect(reconcileFactor(kReconcileMs), 0);
+      expect(reconcileFactor(kReconcileMs + 5000), 0);
+    });
+
+    test('it decays, never grows', () {
+      var prev = reconcileFactor(0);
+      for (var t = 50; t <= kReconcileMs; t += 50) {
+        final f = reconcileFactor(t);
+        expect(f, lessThanOrEqualTo(prev));
+        expect(f, inInclusiveRange(0, 1));
+        prev = f;
+      }
+    });
+
+    test('most of the correction is taken early', () {
+      // Ease-out: half way through the blend, well under half is left.
+      expect(reconcileFactor(kReconcileMs ~/ 2), lessThan(0.3));
+    });
+  });
+
   group('heading changes are measured the short way round', () {
     test('the 359 to 1 wrap is two degrees, not 358', () {
       expect(angleDeltaDegrees(359, 1), closeTo(2, 1e-9));
