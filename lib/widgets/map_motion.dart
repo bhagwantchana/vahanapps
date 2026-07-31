@@ -45,6 +45,13 @@ double bearingDegrees(double lat1, double lng1, double lat2, double lng2) {
   return ((math.atan2(y, x) * 180 / math.pi) + 360) % 360;
 }
 
+/// Shortest angular distance between two headings, 0-180. Handles the 359°→1°
+/// wrap, which a plain subtraction reads as a 358° swing.
+double angleDeltaDegrees(double from, double to) {
+  final diff = (((to - from) % 360) + 540) % 360 - 180;
+  return diff.abs();
+}
+
 /// Maximum metres the spline may stray from the straight line before we give up
 /// on it. A sharp direction change can make Catmull-Rom overshoot well off the
 /// road; a slightly cut corner beats a wild loop.
@@ -91,6 +98,96 @@ const int kMaxLagMs = 8000;
 
 /// Lag past the cushion where playback runs at 2x to close the gap smoothly.
 const int kCatchUpMs = 2000;
+
+/// Resample a route line through the SAME Catmull-Rom curve the marker rides.
+///
+/// The trail was drawn as raw straight segments between fixes ~8 s apart while
+/// the marker moved along a spline, so at every junction the car visibly left
+/// its own line and cut inside the corner. Feeding both through one curve is
+/// what puts the vehicle exactly on the road it has just driven.
+///
+/// [perSegment] points are emitted per input segment. Four is plenty: it is the
+/// corners that need the extra vertices, and a straight run resamples to points
+/// that lie on the straight line anyway.
+List<MotionPoint> smoothPath(List<MotionPoint> pts, {int perSegment = 4}) {
+  if (pts.length < 3 || perSegment < 2) {
+    return List<MotionPoint>.unmodifiable(pts);
+  }
+  final out = <MotionPoint>[];
+  for (var i = 0; i < pts.length - 1; i++) {
+    final p1 = pts[i];
+    final p2 = pts[i + 1];
+    final p0 = i > 0 ? pts[i - 1] : p1;
+    final p3 = (i + 2) < pts.length ? pts[i + 2] : p2;
+    for (var s = 0; s < perSegment; s++) {
+      final t = s / perSegment;
+      out.add(catmullRom(
+        MotionFix(p0.lat, p0.lng, 0),
+        MotionFix(p1.lat, p1.lng, 0),
+        MotionFix(p2.lat, p2.lng, 0),
+        MotionFix(p3.lat, p3.lng, 0),
+        t,
+      ));
+    }
+  }
+  out.add(pts.last);
+  return out;
+}
+
+/// How far back from the end of [pts] the vehicle currently sits.
+///
+/// The marker renders a cushion BEHIND the newest fix, but the trail is built
+/// from raw fixes right up to that newest one — so the blue line ran roughly a
+/// cushion's worth of travel past the car's nose (about 30 m at 60 km/h) and
+/// grew in visible 8-second jumps ahead of it. Cutting the line here and ending
+/// it at the rendered position puts the nose exactly on the tip.
+///
+/// Only the last [lookback] points are searched: the vehicle is always near the
+/// end, and scanning a 300-point trail every frame is wasted work.
+int nearestIndexFromEnd(List<MotionPoint> pts, double lat, double lng,
+    {int lookback = 60}) {
+  if (pts.isEmpty) return -1;
+  final start = pts.length - lookback < 0 ? 0 : pts.length - lookback;
+  var bestIdx = pts.length - 1;
+  var bestDist = double.infinity;
+  for (var i = start; i < pts.length; i++) {
+    final d = distanceMeters(pts[i].lat, pts[i].lng, lat, lng);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+/// Smallest cushion the playback clock can hold and still run continuously.
+const int kMinCushionMs = 1200;
+
+/// Largest cushion we will accept. Past this the marker is far enough behind
+/// that the lag itself becomes the complaint.
+const int kMaxCushionMs = 4000;
+
+/// Render cushion sized to how often THIS device actually reports.
+///
+/// A fixed 1800 ms cushion was the "vehicle doesn't move properly" report.
+/// Playback may never run past the newest fix, so whenever a fix arrived later
+/// than the cushion could absorb, the marker hit the ceiling and FROZE, then
+/// lurched when the packet landed — stop, jump, stop, jump. These devices
+/// report about every 8 s with heavy jitter, so 1800 ms was hit constantly.
+///
+/// Sizing the cushion at 60% of the median observed interval keeps the clock
+/// continuously fed without imposing a fixed lag on devices that report often:
+/// at today's ~8 s it clamps to 4 s, and if the reporting interval is ever cut
+/// to 4 s it follows down to 2.4 s on its own, with no code change.
+int adaptiveCushionMs(List<int> intervalsMs) {
+  if (intervalsMs.isEmpty) return kMinCushionMs;
+  final sorted = List<int>.from(intervalsMs)..sort();
+  final median = sorted[sorted.length ~/ 2];
+  final scaled = (median * 0.6).round();
+  if (scaled < kMinCushionMs) return kMinCushionMs;
+  if (scaled > kMaxCushionMs) return kMaxCushionMs;
+  return scaled;
+}
 
 /// Advance the playback clock by one frame.
 ///

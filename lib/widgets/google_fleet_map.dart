@@ -157,6 +157,24 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   Set<Marker> _markers = <Marker>{};
   bool _fitDone = false;
 
+  // ── Route line ────────────────────────────────────────────────────────────
+  // Two faults lived here. The line was drawn straight between fixes ~8 s apart
+  // while the marker rode a spline, so the car left its own line at every
+  // corner; and it ran right up to the newest RAW fix while the marker renders
+  // a cushion behind, so the blue line stuck out past the nose and grew in
+  // 8-second jumps ahead of the vehicle.
+  //
+  // It is also rebuilt from scratch on every setState, which at the old tick
+  // rate meant re-serializing 300+ points across the platform channel sixty
+  // times a second. Now it is cached: re-smoothed only when the source points
+  // change, re-clipped only once the car has moved far enough to see.
+  Set<Polyline> _polylines = <Polyline>{};
+  List<MotionPoint> _trailSmoothed = const <MotionPoint>[];
+  int _trailSourceLen = -1;
+  LatLng? _trailSourceLast;
+  LatLng? _trailDrawnAt;
+  static const double _trailRebuildMeters = 2.0;
+
   // Fleet "alive" animation (small fleets only, so it never janks a big one):
   // markers ease between fixes (#2) and running cars breathe a status glow (#1).
   static const int _fleetAnimMax = 25;
@@ -210,6 +228,32 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // the ACTUAL route at the vehicle's real speed with no jerk or corner-cutting
   // (the "hold data + animate" model the operator asked for). A 60 fps ticker
   // drives it.
+  /// Marker + camera pushes are rate-limited to this, independently of the
+  /// ticker.
+  ///
+  /// The glide ticker runs at the display refresh rate — 60 Hz, and 120 Hz on
+  /// the newer phones — and every tick called _refreshMarkers (a setState that
+  /// rebuilds the whole map subtree and re-sends the marker set) plus a
+  /// moveCamera. Both cross the platform channel. Two hundred serialized
+  /// round-trips a second is far past what google_maps_flutter is built for:
+  /// the Android side falls behind, and what the customer sees is a vehicle
+  /// that stutters and skips instead of gliding. THIS is the jank, not the
+  /// motion maths.
+  ///
+  /// The maths still runs every tick, so the path stays exact. Only the push is
+  /// throttled — 30 Hz is smoother than the device's 8-second reporting will
+  /// ever justify.
+  static const int _pushIntervalMs = 33;
+  int _lastPushMs = 0;
+
+  /// Movement below these is invisible on screen, so it is not worth a rebuild.
+  /// A parked vehicle used to re-push its unchanged marker at the full refresh
+  /// rate forever — burning battery and channel bandwidth to draw nothing.
+  static const double _pushMinMeters = 0.15;
+  static const double _pushMinDegrees = 0.25;
+  LatLng? _pushedPos;
+  double? _pushedBearing;
+
   LatLng? _followRendered;
   double? _followBearing; // heading computed from actual movement (accurate)
   /// Heading actually drawn. Chases [_followBearing] a few degrees per frame
@@ -219,7 +263,21 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   final List<_Fix> _fixQueue = <_Fix>[];
   int? _playMs; // virtual playback clock (epoch ms), stays cushion-behind live
   int? _lastWallMs;
-  static const int _cushionMs = 1800; // render this far behind the newest fix
+
+  /// Gaps between the last few fixes, newest last — feeds [adaptiveCushionMs].
+  final List<int> _fixIntervals = <int>[];
+
+  /// Cushion actually in force, and the size we are easing it toward.
+  ///
+  /// These are separate because the cushion sets the playback clock's ceiling
+  /// (`newest fix - cushion`). Widening it in one step lowers that ceiling under
+  /// a clock already past it, and the clamp then drags the marker BACKWARDS —
+  /// up to ~47 m at 60 km/h the first time the estimate settles. Easing at a
+  /// fraction of real time means the marker briefly runs slow instead, which
+  /// nobody can see.
+  int _cushionMs = kMinCushionMs;
+  int _cushionTargetMs = kMinCushionMs;
+  static const double _cushionEaseRate = 0.3;
   late final AnimationController _glide = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 1), // cadence only; value is unused
@@ -271,6 +329,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         return;
       }
     }
+    if (q.isNotEmpty) _noteFixInterval(v.tsEpochMs - q.last.ts);
     q.add(MotionFix(v.latitude, v.longitude, v.tsEpochMs));
     if (q.length > 60) q.removeAt(0);
   }
@@ -414,6 +473,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
     // Buffer every fresh fix for the single-vehicle playback.
     if (widget.followVehicleId != null) _enqueueFollowFix();
+    _rebuildTrail();
   }
 
   void _enqueueFollowFix() {
@@ -454,8 +514,31 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         return; // implausible short hop → GPS error
       }
     }
+    if (_fixQueue.isNotEmpty) _noteFixInterval(ts - _fixQueue.last.ts);
     _fixQueue.add(_Fix(v.latitude, v.longitude, ts));
     if (_fixQueue.length > 240) _fixQueue.removeAt(0);
+  }
+
+  /// Learn how often this fleet's devices actually report, and size the render
+  /// cushion to it. Backlog dumps after a dead zone are excluded — those are a
+  /// reconnect, not a reporting rate.
+  void _noteFixInterval(int gapMs) {
+    if (gapMs <= 0 || gapMs > 60000) return;
+    _fixIntervals.add(gapMs);
+    if (_fixIntervals.length > 20) _fixIntervals.removeAt(0);
+    _cushionTargetMs = adaptiveCushionMs(_fixIntervals);
+  }
+
+  /// Move the live cushion toward its target by at most a fraction of the frame
+  /// time, so the playback ceiling never drops out from under the clock.
+  void _easeCushion(int dtMs) {
+    if (_cushionMs == _cushionTargetMs || dtMs <= 0) return;
+    final step = (dtMs * _cushionEaseRate).ceil();
+    if (_cushionTargetMs > _cushionMs) {
+      _cushionMs = math.min(_cushionTargetMs, _cushionMs + step);
+    } else {
+      _cushionMs = math.max(_cushionTargetMs, _cushionMs - step);
+    }
   }
 
   static double _distM(double lat1, double lng1, double lat2, double lng2) {
@@ -929,27 +1012,28 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // ── Camera ────────────────────────────────────────────────────────────────
   Future<void> _onMapCreated(GoogleMapController controller) async {
     _controller = controller;
-    await _fitToFleet();
-    // Nav mode is the default when following one vehicle, but its pitch and
-    // zoom are only applied on TOGGLE now that the follow camera preserves
-    // whatever the user has set. Without this the default view opened flat and
-    // north-up while the button read as active.
-    if (widget.followVehicleId != null && _navMode) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+    // Single-vehicle: go STRAIGHT to the nav pose. This used to fit the fleet
+    // first (animating to zoom 15, flat and north-up), wait 400 ms, then
+    // animate again to zoom 17 with the 3D pitch — so opening a vehicle showed
+    // three separate camera moves before it settled. One move, one settle.
+    if (widget.followVehicleId != null) {
       final target = _followRendered ?? _firstFollowedPosition();
-      if (!mounted || target == null) return;
+      if (target == null) return;
+      _fitDone = true; // a later fit would yank the camera off the vehicle
       _markProgrammatic(900);
       try {
-        await controller.animateCamera(CameraUpdate.newCameraPosition(
+        await controller.moveCamera(CameraUpdate.newCameraPosition(
           CameraPosition(
             target: target,
-            zoom: 17,
-            tilt: 55,
-            bearing: _renderBearing ?? _followBearing ?? 0,
+            zoom: _navMode ? 17 : 15,
+            tilt: _navMode ? 55 : 0,
+            bearing: _navMode ? (_renderBearing ?? _followBearing ?? 0) : 0,
           ),
         ));
       } catch (_) {}
+      return;
     }
+    await _fitToFleet();
   }
 
   /// Position of the followed vehicle straight from the data, for the first
@@ -1046,14 +1130,111 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // latest fix, and move the camera to match. Because it always chases the
   // freshest target, the marker + map glide continuously with no start/stop
   // jerk — the Google-Maps navigation feel.
+  /// Re-smooth the trail when its source points change, and re-clip it to the
+  /// vehicle once the vehicle has moved far enough for the tip to shift
+  /// visibly. Cheap on most calls; the expensive resample runs once per fix.
+  void _rebuildTrail() {
+    final src = widget.trailPoints;
+    if (src.length < 2) {
+      if (_polylines.isNotEmpty) {
+        _polylines = <Polyline>{};
+        _trailSmoothed = const <MotionPoint>[];
+        _trailSourceLen = -1;
+        _trailSourceLast = null;
+        _trailDrawnAt = null;
+      }
+      return;
+    }
+
+    // The parent rebuilds this list every frame, so identity tells us nothing —
+    // length plus the newest point is what actually changes when a fix lands.
+    final sourceChanged =
+        src.length != _trailSourceLen || src.last != _trailSourceLast;
+    if (sourceChanged) {
+      _trailSourceLen = src.length;
+      _trailSourceLast = src.last;
+      _trailSmoothed = smoothPath(<MotionPoint>[
+        for (final p in src) MotionPoint(p.latitude, p.longitude),
+      ]);
+    }
+
+    final car = _followRendered;
+    if (!sourceChanged && car != null && _trailDrawnAt != null) {
+      final moved = distanceMeters(_trailDrawnAt!.latitude,
+          _trailDrawnAt!.longitude, car.latitude, car.longitude);
+      if (moved < _trailRebuildMeters) return;
+    }
+
+    List<LatLng> points;
+    if (car == null) {
+      points = <LatLng>[
+        for (final p in _trailSmoothed) LatLng(p.lat, p.lng),
+      ];
+    } else {
+      // Cut the line where the vehicle actually is and finish it at the nose,
+      // so the trail can never lead the car it belongs to.
+      final cut =
+          nearestIndexFromEnd(_trailSmoothed, car.latitude, car.longitude);
+      points = <LatLng>[
+        for (var i = 0; i <= cut; i++)
+          LatLng(_trailSmoothed[i].lat, _trailSmoothed[i].lng),
+        car,
+      ];
+      _trailDrawnAt = car;
+    }
+    if (points.length < 2) {
+      _polylines = <Polyline>{};
+      return;
+    }
+    _polylines = <Polyline>{
+      Polyline(
+        polylineId: const PolylineId('trail'),
+        points: points,
+        color: AppTheme.primaryBlue.withValues(alpha: 0.75),
+        width: 5,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+        jointType: JointType.round,
+      ),
+    };
+  }
+
+  /// Push the freshly-computed pose to the map, but only if it moved enough to
+  /// see and only at [_pushIntervalMs]. Everything above this line is pure
+  /// maths; everything below crosses the platform channel.
+  void _pushPose({bool force = false}) {
+    final pos = _followRendered;
+    if (pos == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (!force) {
+      if (nowMs - _lastPushMs < _pushIntervalMs) return;
+      final prev = _pushedPos;
+      final prevBearing = _pushedBearing;
+      final bearing = _renderBearing ?? _followBearing;
+      final moved = prev == null ||
+          distanceMeters(prev.latitude, prev.longitude, pos.latitude,
+                  pos.longitude) >
+              _pushMinMeters;
+      final turned = bearing != null &&
+          (prevBearing == null ||
+              angleDeltaDegrees(prevBearing, bearing) > _pushMinDegrees);
+      if (!moved && !turned) return;
+    }
+    _lastPushMs = nowMs;
+    _pushedPos = pos;
+    _pushedBearing = _renderBearing ?? _followBearing;
+    _rebuildTrail();
+    _refreshMarkers();
+    unawaited(_followCamera());
+  }
+
   void _onGlideTick() {
     if (widget.followVehicleId == null || !_tickerEnabled || !_appActive) return;
     final q = _fixQueue;
     if (q.isEmpty) return;
     if (q.length == 1) {
       _followRendered = LatLng(q.first.lat, q.first.lng);
-      _refreshMarkers();
-      unawaited(_followCamera());
+      _pushPose();
       return;
     }
 
@@ -1066,7 +1247,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     _playMs ??= q.last.ts - _cushionMs;
     final dt = nowWall - (_lastWallMs ?? nowWall);
     _lastWallMs = nowWall;
-    // Stay a fixed cushion behind the newest fix; never run past it.
+    _easeCushion(dt);
+    // Stay a cushion behind the newest fix; never run past it. The cushion is
+    // sized to how often this device actually reports (see adaptiveCushionMs):
+    // a fixed 1800 ms was smaller than the arrival jitter on these ~8 s
+    // devices, so playback kept hitting the ceiling and the marker froze until
+    // the next packet landed — stop, jump, stop, jump.
     final upper = q.last.ts - _cushionMs;
     // Clock advance + catch-up — see advancePlaybackClock in map_motion.dart,
     // where the behaviour is unit-tested.
@@ -1132,8 +1318,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _fixQueue.removeAt(0);
     }
 
-    _refreshMarkers();
-    unawaited(_followCamera());
+    _pushPose();
   }
 
   /// Curved position along the segment — see [catmullRom] in map_motion.dart,
@@ -1294,24 +1479,23 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final first = _visible.isNotEmpty
         ? LatLng(_visible.first.latitude, _visible.first.longitude)
         : _defaultCenter;
-    final polylines = <Polyline>{};
-    if (widget.trailPoints.length >= 2) {
-      polylines.add(
-        Polyline(
-          polylineId: const PolylineId('trail'),
-          points: widget.trailPoints,
-          color: AppTheme.primaryBlue.withValues(alpha: 0.75),
-          width: 5,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          jointType: JointType.round,
-        ),
-      );
-    }
+    // Built in _rebuildTrail, not here: a fresh Polyline over 300+ points on
+    // every rebuild re-crossed the platform channel for a line that had not
+    // changed.
+    final polylines = _polylines;
     return Stack(
       children: <Widget>[
         GoogleMap(
-          initialCameraPosition: CameraPosition(target: first, zoom: 11),
+          // Seed the FIRST frame at the pose we actually want. Opening at
+          // zoom 11 and correcting in onMapCreated meant the customer saw a
+          // wide regional view flash up before it dived to the vehicle.
+          initialCameraPosition: widget.followVehicleId != null
+              ? CameraPosition(
+                  target: _followRendered ?? _firstFollowedPosition() ?? first,
+                  zoom: _navMode ? 17 : 15,
+                  tilt: _navMode ? 55 : 0,
+                )
+              : CameraPosition(target: first, zoom: 11),
           // Default theme = null style = FULL-detail Google map; dark/retro
           // themes apply a style (only meaningful on the normal base map).
           style: _resolvedMapType == MapType.normal ? _resolvedStyle : null,

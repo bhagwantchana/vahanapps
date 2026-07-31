@@ -159,4 +159,147 @@ void main() {
           reason: 'clock never caught up — marker would stay behind forever');
     });
   });
+
+  group('the route line follows the same curve the marker rides', () {
+    // The right-angle turn again, as a plain list of positions.
+    const path = <MotionPoint>[
+      MotionPoint(30.7000, 76.7000),
+      MotionPoint(30.7000, 76.7020),
+      MotionPoint(30.7020, 76.7020),
+      MotionPoint(30.7040, 76.7020),
+    ];
+
+    test('resampling adds vertices through the corner', () {
+      final smooth = smoothPath(path, perSegment: 4);
+      expect(smooth.length, greaterThan(path.length));
+    });
+
+    test('it keeps the real start and end pinned', () {
+      final smooth = smoothPath(path);
+      expect(smooth.first.lat, closeTo(path.first.lat, 1e-9));
+      expect(smooth.first.lng, closeTo(path.first.lng, 1e-9));
+      expect(smooth.last.lat, closeTo(path.last.lat, 1e-9));
+      expect(smooth.last.lng, closeTo(path.last.lng, 1e-9));
+    });
+
+    test('the smoothed line leaves the chord at the corner', () {
+      // The whole point: a straight line cuts the corner, and the marker (which
+      // rides the spline) then visibly leaves its own trail through junctions.
+      final smooth = smoothPath(path, perSegment: 8);
+      var maxOffset = 0.0;
+      for (final p in smooth) {
+        // Distance from the corner vertex; the arc rounds inside it.
+        final d = distanceMeters(p.lat, p.lng, 30.7000, 76.7020);
+        if (d > maxOffset) maxOffset = d;
+      }
+      expect(maxOffset, greaterThan(0));
+    });
+
+    test('a straight run stays straight', () {
+      const straight = <MotionPoint>[
+        MotionPoint(30.7000, 76.7000),
+        MotionPoint(30.7000, 76.7010),
+        MotionPoint(30.7000, 76.7020),
+        MotionPoint(30.7000, 76.7030),
+      ];
+      for (final p in smoothPath(straight)) {
+        expect(p.lat, closeTo(30.7000, 1e-6));
+      }
+    });
+
+    test('too few points to curve are returned untouched', () {
+      const two = <MotionPoint>[
+        MotionPoint(30.7, 76.7),
+        MotionPoint(30.8, 76.8),
+      ];
+      expect(smoothPath(two).length, 2);
+      expect(smoothPath(const <MotionPoint>[]).length, 0);
+    });
+  });
+
+  group('the trail is cut at the vehicle, never past it', () {
+    // The marker renders a cushion behind the newest fix, so the raw trail ran
+    // ~30 m past its nose at 60 km/h and grew in jumps ahead of the car.
+    const line = <MotionPoint>[
+      MotionPoint(30.7000, 76.7000),
+      MotionPoint(30.7000, 76.7010),
+      MotionPoint(30.7000, 76.7020),
+      MotionPoint(30.7000, 76.7030),
+      MotionPoint(30.7000, 76.7040),
+    ];
+
+    test('a vehicle mid-line cuts the points ahead of it', () {
+      final cut = nearestIndexFromEnd(line, 30.7000, 76.7020);
+      expect(cut, 2);
+      expect(cut, lessThan(line.length - 1),
+          reason: 'the line would still lead the vehicle');
+    });
+
+    test('a vehicle at the live edge keeps the whole line', () {
+      expect(nearestIndexFromEnd(line, 30.7000, 76.7040), line.length - 1);
+    });
+
+    test('an empty line reports nothing to cut', () {
+      expect(nearestIndexFromEnd(const <MotionPoint>[], 30.7, 76.7), -1);
+    });
+
+    test('only the tail is searched, so an early revisit cannot rewind it', () {
+      // A route that loops back near its own start: without the lookback bound
+      // the cut would jump to the beginning and erase the whole trail.
+      const loop = <MotionPoint>[
+        MotionPoint(30.7000, 76.7000),
+        MotionPoint(30.7100, 76.7100),
+        MotionPoint(30.7200, 76.7200),
+        MotionPoint(30.7300, 76.7300),
+      ];
+      final cut = nearestIndexFromEnd(loop, 30.7000, 76.7000, lookback: 2);
+      expect(cut, greaterThanOrEqualTo(loop.length - 2));
+    });
+  });
+
+  group('the render cushion is sized to how often the device reports', () {
+    // A fixed 1800 ms cushion was the "vehicle doesn't move properly" report:
+    // playback may never run past the newest fix, so any fix later than the
+    // cushion could absorb froze the marker until the packet landed.
+    test('todays ~8 s devices get the full cushion', () {
+      final cushion =
+          adaptiveCushionMs(<int>[8000, 7600, 8400, 8100, 7900]);
+      expect(cushion, kMaxCushionMs);
+    });
+
+    test('a 4 s reporting interval needs less lag, with no code change', () {
+      // Median of [3800, 4000, 4000, 4100, 4200] is 4000 → 60% → 2400 ms.
+      final cushion = adaptiveCushionMs(<int>[4000, 4200, 3800, 4100, 4000]);
+      expect(cushion, 2400);
+      expect(cushion, lessThan(kMaxCushionMs));
+    });
+
+    test('a fast device is still held to the floor', () {
+      expect(adaptiveCushionMs(<int>[500, 600, 550]), kMinCushionMs);
+    });
+
+    test('no samples yet falls back to the floor', () {
+      expect(adaptiveCushionMs(<int>[]), kMinCushionMs);
+    });
+
+    test('one late packet does not blow the cushion out', () {
+      // Median, not mean: a single 40 s gap must not drag everyone's lag up.
+      expect(adaptiveCushionMs(<int>[4000, 4000, 40000, 4000, 4000]), 2400);
+    });
+  });
+
+  group('heading changes are measured the short way round', () {
+    test('the 359 to 1 wrap is two degrees, not 358', () {
+      expect(angleDeltaDegrees(359, 1), closeTo(2, 1e-9));
+      expect(angleDeltaDegrees(1, 359), closeTo(2, 1e-9));
+    });
+
+    test('a real turn reads its true size', () {
+      expect(angleDeltaDegrees(90, 180), closeTo(90, 1e-9));
+    });
+
+    test('no turn is zero', () {
+      expect(angleDeltaDegrees(42, 42), closeTo(0, 1e-9));
+    });
+  });
 }
