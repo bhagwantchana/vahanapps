@@ -389,6 +389,62 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
+  /// Voice monitor — place a normal phone call to the device's own SIM.
+  ///
+  /// The audio on these trackers does NOT come down the tracking link: the G17S
+  /// protocol carries no voice message of any kind. The microphone sits on the
+  /// GSM voice channel, so listening in is an ordinary call to the SIM's number
+  /// and the tracking server is not involved at all.
+  ///
+  /// Confirms first, because the call is billed to whoever taps it and — on a
+  /// school vehicle — because listening to the people inside is not something
+  /// to trigger from a stray tap.
+  Future<void> _callVehicle(
+    VehicleRecord vehicle,
+    VehicleSettingsModel settings,
+  ) async {
+    final number = settings.simMsisdn.trim();
+    if (number.isEmpty) return;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Call this vehicle?'),
+        content: Text(
+          'Dials the tracker in ${vehicle.displayName} on $number.\n\n'
+          'The device answers with its microphone open, so you will hear '
+          'inside the vehicle. Call charges apply.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Call'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+
+    final uri = Uri(scheme: 'tel', path: number);
+    try {
+      final ok = await launchUrl(uri);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No dialler available on this phone')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not start the call')),
+      );
+    }
+  }
+
   /// "Nearby" — petrol pumps / EV / tolls / speed cameras / traffic lights
   /// around the VEHICLE's last known position (not the phone's), so a fleet
   /// owner can direct a distant driver to the closest pump.
@@ -1723,6 +1779,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               color: AppTheme.primaryBlue,
                               onTap: () => _findMyCar(vehicle),
                             ),
+                            // Voice monitor: dial the device's OWN SIM. Only
+                            // shown when a real dialable number is on file —
+                            // the server sends '' unless tbl_sim.msisdn is
+                            // populated, so this is absent for every vehicle
+                            // until the SIM provider's numbers are loaded. A
+                            // button that rings nothing is worse than none.
+                            if (settings.simMsisdn.isNotEmpty)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.phoneCall,
+                                label: 'Call Vehicle',
+                                color: AppTheme.primaryBlue,
+                                onTap: () => _callVehicle(vehicle, settings),
+                              ),
                             _buildFixedActionButton(
                               icon: LucideIcons.fuel,
                               label: 'Nearby',

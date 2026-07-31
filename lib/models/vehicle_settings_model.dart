@@ -53,6 +53,16 @@ class VehicleSettingsModel {
   /// never ships in the app). Empty = server not armed → legacy open connect.
   final String sseSig;
 
+  /// Dialable number of the device's OWN SIM, for voice monitoring.
+  ///
+  /// Empty unless the SIM provider's MSISDN has been loaded (tbl_sim.msisdn).
+  /// It is deliberately not derived from tbl_sim.sim_number — that column holds
+  /// the SIM serial/ICCID, and not one of the 45 live rows is a phone number.
+  /// The server validates the shape before sending it, so a non-empty value
+  /// here can be dialled; empty means hide the action rather than offer a
+  /// button that rings nothing.
+  final String simMsisdn;
+
   const VehicleSettingsModel({
     this.vehicleId = 0,
     this.deviceId = 0,
@@ -95,6 +105,7 @@ class VehicleSettingsModel {
     this.mobileMapTrailMinutes = 120,
     this.mobileMapTrailPoints = 25,
     this.sseSig = '',
+    this.simMsisdn = '',
   });
 
   factory VehicleSettingsModel.fromJson(Map<String, dynamic> json) {
@@ -144,6 +155,7 @@ class VehicleSettingsModel {
       mobileMapTrailMinutes: toInt(json['mobile_map_trail_minutes'], fallback: 120),
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
       sseSig: toStringValue(json['sse_sig']),
+      simMsisdn: toStringValue(json['sim_msisdn']),
     );
   }
 
@@ -218,6 +230,16 @@ class VehicleSettingsModel {
       mobileMapMode: mobileMapMode ?? this.mobileMapMode,
       mobileMapTrailMinutes: mobileMapTrailMinutes ?? this.mobileMapTrailMinutes,
       mobileMapTrailPoints: mobileMapTrailPoints ?? this.mobileMapTrailPoints,
+      // Server-supplied fields copyWith cannot change but MUST carry through.
+      // They were being dropped, so every settings toggle silently reset them
+      // to the class defaults:
+      //   sseSig  -> '' , and a later SSE connect answers 403 now that
+      //              GPS_SSE_SECRET is armed, killing the live stream.
+      //   mapProvider -> the default, which used to be maplibre: toggling
+      //              notifications could move a customer onto the older map.
+      mobileMapProvider: mobileMapProvider,
+      sseSig: sseSig,
+      simMsisdn: simMsisdn,
     );
   }
 
