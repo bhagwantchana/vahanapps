@@ -220,6 +220,25 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (until > _programmaticUntilMs) _programmaticUntilMs = until;
   }
 
+  /// While a deliberate animateCamera owns the camera, the per-frame follow
+  /// must not touch it.
+  ///
+  /// This is what made head-up look broken. _toggleNavMode animates to tilt 55;
+  /// the animation reports its intermediate tilts through onCameraMove, so
+  /// _tilt became 3, then 7, then 11 - and the follow camera, running at 30 Hz
+  /// with `tilt: _tilt`, issued a moveCamera at 11 that CANCELLED the animation
+  /// and pinned the map there. Within a frame or two of pressing the button the
+  /// camera was flat and north-up again while the button sat lit. The button
+  /// was never the problem; the follow loop was overwriting it.
+  int _cameraLockUntilMs = 0;
+  bool get _cameraLocked =>
+      DateTime.now().millisecondsSinceEpoch < _cameraLockUntilMs;
+  void _lockCamera(int ms) {
+    final until = DateTime.now().millisecondsSinceEpoch + ms;
+    if (until > _cameraLockUntilMs) _cameraLockUntilMs = until;
+    _markProgrammatic(ms);
+  }
+
   bool _followPaused = false;
   Timer? _followResume;
 
@@ -1041,14 +1060,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       final target = _followRendered ?? _firstFollowedPosition();
       if (target == null) return;
       _fitDone = true; // a later fit would yank the camera off the vehicle
-      _markProgrammatic(900);
+      _lockCamera(600);
       try {
         await controller.moveCamera(CameraUpdate.newCameraPosition(
           CameraPosition(
             target: target,
             zoom: _navMode ? 17 : 15,
             tilt: _navMode ? 55 : 0,
-            bearing: _navMode ? (_renderBearing ?? _followBearing ?? 0) : 0,
+            bearing: _navMode ? _navBearing() : 0,
           ),
         ));
       } catch (_) {}
@@ -1093,7 +1112,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         .toList();
     if (pts.isEmpty) return;
     _fitDone = true;
-    _markProgrammatic(900); // animateCamera below
+    _lockCamera(900); // animateCamera below
     if (pts.length == 1) {
       try {
         await controller.animateCamera(
@@ -1138,7 +1157,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       }
     }
     if (focus == null) return;
-    _markProgrammatic(900); // animateCamera below
+    _lockCamera(900); // animateCamera below
     try {
       await controller.animateCamera(
         CameraUpdate.newLatLng(LatLng(focus.latitude, focus.longitude)),
@@ -1425,6 +1444,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (controller == null || widget.followVehicleId == null || _followPaused) {
       return;
     }
+    // An animation (head-up toggle, re-centre, first open) owns the camera —
+    // stay off it until that settles, or we cancel it mid-flight.
+    if (_cameraLocked) return;
     final target = _followRendered;
     if (target == null) return;
     _markProgrammatic(120); // instant moveCamera below
@@ -1436,15 +1458,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         // using the accurate movement bearing when we have it.
         // Same eased heading the marker uses, so the map doesn't swing round
         // faster than the car appears to turn.
-        double bearing = _renderBearing ?? _followBearing ?? 0;
-        if ((_renderBearing ?? _followBearing) == null) {
-          for (final x in _visible) {
-            if (x.id == widget.followVehicleId) {
-              bearing = x.course % 360;
-              break;
-            }
-          }
-        }
+        final bearing = _navBearing();
         // Carry the user's CURRENT zoom and tilt through, never a fixed pair.
         // Hard-coding zoom 17 / tilt 55 here re-applied them 60 times a second,
         // so a pinch-zoom was yanked back on the very next frame - the map
@@ -1466,12 +1480,13 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   void _toggleNavMode() {
     setState(() => _navMode = !_navMode);
     final controller = _controller;
-    final target = _followRendered;
+    final target = _followRendered ?? _firstFollowedPosition();
     if (controller == null || target == null) return;
-    _markProgrammatic(900); // animateCamera below
-    // Pitch and zoom are applied ONCE here, on the way in and on the way out.
-    // The per-frame follow camera deliberately carries whatever the user has
-    // since set (see _followCamera) so it never fights a pinch.
+    // Hold the follow camera off for the length of the animation. Without this
+    // the animation's own intermediate tilts came back through onCameraMove and
+    // the 30 Hz follow move re-applied them, cancelling the animation a frame
+    // after it started — button lit, map still flat and north-up.
+    _lockCamera(1100);
     try {
       controller.animateCamera(CameraUpdate.newCameraPosition(
         _navMode
@@ -1479,11 +1494,23 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
                 target: target,
                 zoom: 17,
                 tilt: 55,
-                bearing: _renderBearing ?? _followBearing ?? 0,
+                bearing: _navBearing(),
               )
             : CameraPosition(target: target, zoom: 15, tilt: 0, bearing: 0),
       ));
     } catch (_) {}
+  }
+
+  /// Heading for the nav pose. A stopped vehicle has no movement bearing, so
+  /// fall back to the course the device last reported — pointing the map the
+  /// way the vehicle is actually parked beats defaulting to north.
+  double _navBearing() {
+    final moved = _renderBearing ?? _followBearing;
+    if (moved != null) return moved;
+    for (final x in _visible) {
+      if (x.id == widget.followVehicleId) return x.course % 360;
+    }
+    return 0;
   }
 
   Future<void> _openThemePicker() async {
@@ -1564,7 +1591,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final controller = _controller;
     final target = _followRendered ?? _firstFollowedPosition();
     if (controller == null || target == null) return;
-    _markProgrammatic(900);
+    _lockCamera(900);
     try {
       controller.animateCamera(CameraUpdate.newCameraPosition(
         CameraPosition(
