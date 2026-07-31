@@ -106,6 +106,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// Camera pitch, tracked from onCameraMove so the follow camera can preserve
   /// whatever the user has set instead of re-imposing a fixed value each frame.
   double _tilt = 0;
+
+  /// Which way the map itself is facing. Together with [_tilt] this is the ONE
+  /// source of truth for how the followed vehicle must be drawn — see
+  /// _addVehicleMarkers.
+  double _mapBearing = 0;
   bool _labelsShown = false;
 
   // User map controls: theme (default|dark|retro|satellite|terrain), traffic,
@@ -272,6 +277,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   static const double _pushMinDegrees = 0.25;
   LatLng? _pushedPos;
   double? _pushedBearing;
+
+  /// Map bearing at the last push. The followed car's on-screen rotation is
+  /// heading minus this, so the map turning under a STOPPED vehicle changes how
+  /// the icon must be drawn even though the vehicle itself has not moved — the
+  /// exact case a head-up toggle on a parked vehicle exercises.
+  double _pushedMapBearing = 0;
 
   // ── Dead reckoning ────────────────────────────────────────────────────────
   // Owner recording, 2026-07-26: gaps between fixes ran 5, 5, 7, 7, 10, 13 and
@@ -876,15 +887,24 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         : (_fleetAnimActive && _renderedFleet.containsKey(v.id))
             ? _renderedFleet[v.id]!
             : LatLng(v.latitude, v.longitude);
-    // In navigation mode the followed car is a BILLBOARD (flat:false) so the
-    // camera tilt never foreshortens/stretches it; the heading-up map already
-    // conveys direction, so it points straight up.
     final followed = widget.followVehicleId == v.id;
-    // Billboard (points up-screen) is only honest while the camera is actually
-    // tracking the heading. If follow is paused the map bearing is frozen, so an
-    // up-pointing car would face somewhere the road does not go - draw it flat
-    // on its real bearing instead.
-    final navBillboard = _navMode && followed && !_followPaused;
+
+    // How the followed car is drawn is decided by the CAMERA, not by the nav
+    // flags. Billboard-or-flat used to depend on _navMode && followed &&
+    // !_followPaused, and rotation assumed the map was already turned to the
+    // heading. Those are four things that must agree, and during a head-up
+    // toggle they briefly do not: the flags said "flat" while the camera was
+    // still pitched at 55, so the icon was laid on the tilted ground plane and
+    // came out foreshortened into a squashed smear. That is the "shape goes
+    // wrong after toggling head-up off and on".
+    //
+    // Tilt and bearing cannot disagree with themselves. A pitched camera means
+    // billboard, always. And screen-space rotation is heading MINUS the map's
+    // own bearing, which is correct whatever the map is doing — turned to the
+    // heading (rotation lands on 0, car points up-screen), north-up, paused,
+    // or mid-animation between any two of them.
+    final tilted = _tilt > 15;
+    final navBillboard = followed && tilted;
     // Every car points along its ACTUAL movement bearing, eased. The device's
     // reported course jumps between fixes, and using it on the fleet map made
     // the icon flick round mid-slide instead of turning through the corner.
@@ -893,9 +913,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final easedBearing = followed
         ? (_renderBearing ?? _followBearing)
         : _fleetBearing[v.id];
-    final rotation = navBillboard
-        ? 0.0
-        : (easedBearing ?? (v.course % 360));
+    final heading = easedBearing ?? (v.course % 360);
+    final rotation =
+        navBillboard ? ((heading - _mapBearing) % 360 + 360) % 360 : heading;
     markers.add(
       Marker(
         markerId: MarkerId(v.id.toString()),
@@ -1093,6 +1113,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         _visible.length > 10;
     _zoom = pos.zoom;
     _tilt = pos.tilt;
+    _mapBearing = pos.bearing;
     final nowClustering = widget.followVehicleId == null &&
         _zoom < _clusterMaxZoom &&
         _visible.length > 10;
@@ -1101,6 +1122,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _labelsShown = show;
       _refreshMarkers();
     }
+    // The map turning or pitching changes how the followed car must be drawn
+    // even when the car itself is stationary. Without this a parked vehicle
+    // kept its old rotation through the whole head-up animation and only
+    // corrected on the next fix — which for a parked vehicle is minutes away.
+    // _pushPose carries the 33 ms throttle, so an animation cannot flood it.
+    if (widget.followVehicleId != null) _pushPose();
   }
 
   Future<void> _fitToFleet() async {
@@ -1258,11 +1285,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       final turned = bearing != null &&
           (prevBearing == null ||
               angleDeltaDegrees(prevBearing, bearing) > _pushMinDegrees);
-      if (!moved && !turned) return;
+      final mapTurned =
+          angleDeltaDegrees(_pushedMapBearing, _mapBearing) > _pushMinDegrees;
+      if (!moved && !turned && !mapTurned) return;
     }
     _lastPushMs = nowMs;
     _pushedPos = pos;
     _pushedBearing = _renderBearing ?? _followBearing;
+    _pushedMapBearing = _mapBearing;
     _rebuildTrail();
     _refreshMarkers();
     unawaited(_followCamera());
@@ -1598,7 +1628,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           target: target,
           zoom: _zoom,
           tilt: _tilt,
-          bearing: _navMode ? (_renderBearing ?? _followBearing ?? 0) : 0,
+          bearing: _navMode ? _navBearing() : 0,
         ),
       ));
     } catch (_) {}
