@@ -12,7 +12,14 @@ class VehicleLoadingState extends VehicleState {
 }
 
 class VehicleLoggedInState extends VehicleState {
-  VehicleLoggedInState({super.vechileListModel});
+  VehicleLoggedInState({super.vechileListModel, this.cachedAge});
+
+  /// Set when this list came from the offline cache because the network was
+  /// unreachable — the age of that cached copy. Null on a live fetch. Screens
+  /// use it to say the data is stale instead of passing it off as live.
+  final Duration? cachedAge;
+
+  bool get isFromCache => cachedAge != null;
 }
 
 class VehicleLoggedOutState extends VehicleState {}

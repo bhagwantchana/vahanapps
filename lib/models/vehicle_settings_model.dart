@@ -38,6 +38,13 @@ class VehicleSettingsModel {
   final String googleTrackingUrl;
   final String historyUrl;
   final String mobileMapMode;
+
+  /// Map engine: `google` or `maplibre`. Defaults to GOOGLE, matching
+  /// Api::getDefaultMapProvider — only that path carries the motion work
+  /// (curved interpolation, eased movement heading, paced playback). The
+  /// maplibre path still lerps straight to the newest fix on the raw device
+  /// course, so defaulting to it meant one missing JSON key silently put a
+  /// customer back on the corner-cutting map.
   final String mobileMapProvider;
   final int mobileMapTrailMinutes;
   final int mobileMapTrailPoints;
@@ -84,7 +91,7 @@ class VehicleSettingsModel {
     this.googleTrackingUrl = '',
     this.historyUrl = '',
     this.mobileMapMode = 'native',
-    this.mobileMapProvider = 'maplibre',
+    this.mobileMapProvider = 'google',
     this.mobileMapTrailMinutes = 120,
     this.mobileMapTrailPoints = 25,
     this.sseSig = '',
@@ -133,7 +140,7 @@ class VehicleSettingsModel {
       googleTrackingUrl: toStringValue(linkMap['google_tracking_url']),
       historyUrl: toStringValue(linkMap['history_url']),
       mobileMapMode: toStringValue(json['mobile_map_mode'], fallback: 'native'),
-      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'maplibre'),
+      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'google'),
       mobileMapTrailMinutes: toInt(json['mobile_map_trail_minutes'], fallback: 120),
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
       sseSig: toStringValue(json['sse_sig']),

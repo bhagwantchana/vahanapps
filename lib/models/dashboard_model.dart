@@ -49,7 +49,7 @@ class DashboardData {
     this.mapsUrl = '',
     this.legacyMapsUrl = '',
     this.mobileMapMode = 'native',
-    this.mobileMapProvider = 'maplibre',
+    this.mobileMapProvider = 'google',
     this.mobileMapTrailMinutes = 120,
     this.mobileMapTrailPoints = 25,
     this.profile,
@@ -83,7 +83,7 @@ class DashboardData {
       mapsUrl: toStringValue(json['maps_url']),
       legacyMapsUrl: toStringValue(json['legacy_maps_url']),
       mobileMapMode: toStringValue(json['mobile_map_mode'], fallback: 'native'),
-      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'maplibre'),
+      mobileMapProvider: toStringValue(json['mobile_map_provider'], fallback: 'google'),
       mobileMapTrailMinutes: toInt(json['mobile_map_trail_minutes'], fallback: 120),
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
       profile: json['profile'] is Map<String, dynamic>

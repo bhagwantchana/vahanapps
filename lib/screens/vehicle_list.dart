@@ -126,6 +126,8 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
 
           return Column(
             children: <Widget>[
+              if (state is VehicleLoggedInState && state.isFromCache)
+                _buildOfflineBanner(state.cachedAge!),
               _buildTopSearchRow(),
               _buildStatusFilterRow(stats),
               Expanded(
@@ -152,6 +154,40 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Shown when the fleet came off disk because the network was unreachable.
+  /// Positions from a cached copy must never be passed off as live — the whole
+  /// point of showing them is that "your signal dropped" beats "tracking is
+  /// broken", and that only holds if we say which one it is.
+  Widget _buildOfflineBanner(Duration age) {
+    final mins = age.inMinutes;
+    final when = mins < 1
+        ? 'moments ago'
+        : mins < 60
+            ? '$mins min ago'
+            : '${age.inHours} h ago';
+    return Container(
+      width: double.infinity,
+      color: Colors.orange.withValues(alpha: 0.14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: <Widget>[
+          Icon(LucideIcons.wifiOff, size: 15, color: Colors.orange.shade800),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'No connection — showing last known positions from $when',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange.shade900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

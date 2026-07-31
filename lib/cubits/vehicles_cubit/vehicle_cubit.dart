@@ -4,6 +4,7 @@ import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_state.dart';
 import 'package:fleet_monitor/models/vechile_list_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/repositorys/vehicle_repository.dart';
+import 'package:fleet_monitor/services/offline_cache.dart';
 import 'package:fleet_monitor/services/sse_client.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -28,6 +29,15 @@ class VehicleCubit extends Cubit<VehicleState> {
       if (isClosed) return;
       emit(VehicleLoggedInState(vechileListModel: result));
       _ensureLiveStream(result);
+    } on CachedFleetException catch (cached) {
+      // Network is down but we have a last-good fleet. Show it, flagged as
+      // stale — an empty error page reads as "tracking is broken" when the
+      // truth is that the phone lost signal for a moment.
+      if (isClosed) return;
+      emit(VehicleLoggedInState(
+        vechileListModel: cached.model,
+        cachedAge: cached.age ?? Duration.zero,
+      ));
     } catch (error) {
       if (isClosed) return;
       emit(
@@ -122,6 +132,9 @@ class VehicleCubit extends Cubit<VehicleState> {
   /// root-scoped and not recreated between logins).
   Future<void> reset() async {
     await stopLiveStream();
+    // The offline copy has to go too, or the next user's first paint could be
+    // served the previous user's fleet from disk.
+    await OfflineCache.clear();
     emit(VehicleInitialState());
   }
 
