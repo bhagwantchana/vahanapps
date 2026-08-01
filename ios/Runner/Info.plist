@@ -53,6 +53,16 @@
 	     those keys are intentionally omitted. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Vahan Connect needs photo library access to set your profile photo.</string>
+	<!-- Camera — REQUIRED even though the app only ever opens the gallery
+	     (ImageSource.gallery in profile_widget.dart; ImageSource.camera is
+	     never called). App Store Connect rejects the upload with 90683 without
+	     it, because the check scans the linked BINARY, not our source: the
+	     image_picker plugin links the camera APIs whether or not we reach them.
+	     Reading the Dart code and concluding "no camera, no string needed" is
+	     exactly how build 1.3.1 (8) failed to upload. Worded for the one case a
+	     user could ever hit it. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Vahan Connect can use the camera to take a profile photo.</string>
 	<!-- Location — the Google Maps SDK (google_maps_flutter) links CoreLocation,
 	     so Apple's static check (ITMS-90683) REQUIRES a purpose string even
 	     though the map runs with myLocationEnabled=false and never prompts for
