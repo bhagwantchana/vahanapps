@@ -48,12 +48,21 @@ workflows:
         # the numeric "Apple ID" of the app from App Store Connect (App Information)
         APP_STORE_APPLE_ID: 6768335248
         BUNDLE_ID: "com.globynix.fleetMonitor"
-      # PINNED to the exact local version that builds cleanly. Do NOT use
-      # "stable": Codemagic's stable moved to a newer Flutter where IconData
-      # became a `final class`, which breaks lucide_icons 0.257.0
-      # ("IconData can't be extended ... it's a final class"). 3.41.9 still has
-      # a non-final IconData, so the app compiles exactly like it does locally.
-      flutter: 3.41.9
+      # PINNED to the exact version the Android release is built and tested on,
+      # so iOS cannot fail on a toolchain nothing was verified against. Every
+      # analyze, test and APK build runs on 3.44.4; leaving this at 3.41.9 meant
+      # shipping an unproven compiler to TestFlight and finding out fifteen
+      # minutes into a Mac build.
+      #
+      # This was 3.41.9 because upstream lucide_icons 0.257.0 subclassed
+      # IconData, which stopped compiling once IconData became a `final class`.
+      # That no longer applies: packages/lucide_icons is a vendored copy that
+      # constructs IconData directly (see its note in pubspec.yaml), which is
+      # what lets 3.44.4 build here.
+      #
+      # Do NOT use "stable" — it moves under you. Bump this deliberately, and
+      # only to a version the Android build has already been proven on.
+      flutter: 3.44.4
       xcode: latest
       cocoapods: default
     scripts:
