@@ -211,6 +211,71 @@ void main() {
     });
   });
 
+  group('the call action appears only where it can actually work', () {
+    // Two independent conditions, and BOTH must hold. Most trackers have no
+    // microphone at all, so a call button on one dials a data SIM and rings
+    // nothing; and tbl_sim.sim_number is an ICCID, so a number that got through
+    // without validation would ring a stranger.
+    VehicleRecord veh({required int flag, required String number}) =>
+        VehicleRecord(id: 1, isCallDevice: flag, simMsisdn: number);
+
+    test('flagged device with a real number can be called', () {
+      expect(veh(flag: 1, number: '+919876543210').canCallVehicle, isTrue);
+    });
+
+    test('flagged device with no number cannot', () {
+      // Hardware has a mic, but we do not know where to ring it.
+      expect(veh(flag: 1, number: '').canCallVehicle, isFalse);
+    });
+
+    test('unflagged device with a number cannot', () {
+      // The number exists but there is no microphone to answer it.
+      expect(veh(flag: 0, number: '+919876543210').canCallVehicle, isFalse);
+    });
+
+    test('neither cannot', () {
+      expect(veh(flag: 0, number: '').canCallVehicle, isFalse);
+    });
+
+    test('a blank-looking number is not a number', () {
+      expect(veh(flag: 1, number: '   ').canCallVehicle, isFalse);
+    });
+
+    test('default vehicle offers nothing', () {
+      // Every existing device parses with both fields absent, so no vehicle
+      // gains the action from this change alone.
+      expect(const VehicleRecord(id: 1).canCallVehicle, isFalse);
+    });
+
+    test('the flag survives a live SSE merge', () {
+      // Location pushes carry no device config. Losing the flag mid-drive
+      // would make the button vanish while the customer was looking at it.
+      final current = VehicleRecord(
+        id: 1,
+        imei: '868999999999901',
+        isCallDevice: 1,
+        simMsisdn: '+919876543210',
+        tsEpochMs: DateTime.now()
+            .subtract(const Duration(seconds: 8))
+            .millisecondsSinceEpoch,
+        hasLiveLocation: true,
+      );
+      final push = VehicleRecord(
+        id: 1,
+        imei: '868999999999901',
+        speed: 42,
+        latitude: 31.3,
+        longitude: 75.5,
+        tsEpochMs: DateTime.now().millisecondsSinceEpoch,
+        hasLiveLocation: true,
+      );
+      final merged = current.mergeLiveFixFrom(push);
+      expect(merged.speed, 42, reason: 'the fix should still apply');
+      expect(merged.canCallVehicle, isTrue,
+          reason: 'the button would blink out on every position update');
+    });
+  });
+
   group('a live push must not overwrite a newer fix with an older one', () {
     VehicleRecord at(DateTime when, {double speed = 0}) => VehicleRecord(
           id: 1,

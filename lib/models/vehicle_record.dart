@@ -104,6 +104,13 @@ class VehicleRecord {
   /// red "X days left" / "Expired" badge on the vehicle cards.
   final String expiryDate;
   final bool hasLiveLocation;
+
+  /// Voice monitor, carried on every list row so the map's vehicle card can
+  /// offer the action without a second request. [simMsisdn] is '' unless the
+  /// tracker is flagged audio-capable AND a real number is on file, so
+  /// [canCallVehicle] is the only check a caller needs.
+  final int isCallDevice;
+  final String simMsisdn;
   final ActiveDriverModel? activeDriver;
   final VehicleSettingsModel? settings;
 
@@ -178,6 +185,8 @@ class VehicleRecord {
     this.tsEpochMs = 0,
     this.expiryDate = '',
     this.hasLiveLocation = false,
+    this.isCallDevice = 0,
+    this.simMsisdn = '',
     this.activeDriver,
     this.settings,
   });
@@ -256,6 +265,8 @@ class VehicleRecord {
       createdAt: toStringValue(json['created_at']),
       tsEpochMs: toInt(json['ts']),
       expiryDate: toStringValue(json['expiry_date']),
+      isCallDevice: toInt(json['is_call_device']),
+      simMsisdn: toStringValue(json['sim_msisdn']),
       hasLiveLocation: json['has_live_location'] != null
           ? toBoolFlag(json['has_live_location'])
           : (toDouble(json['latitude']) != 0 || toDouble(json['longitude']) != 0),
@@ -392,11 +403,17 @@ class VehicleRecord {
       createdAt: createdAt ?? this.createdAt,
       tsEpochMs: tsEpochMs ?? this.tsEpochMs,
       expiryDate: expiryDate,
+      isCallDevice: isCallDevice,
+      simMsisdn: simMsisdn,
       hasLiveLocation: hasLiveLocation ?? this.hasLiveLocation,
       activeDriver: activeDriver ?? this.activeDriver,
       settings: settings ?? this.settings,
     );
   }
+
+  /// Both conditions for offering voice monitoring: the tracker has a
+  /// microphone, and we hold a number the server has already validated.
+  bool get canCallVehicle => isCallDevice == 1 && simMsisdn.trim().isNotEmpty;
 
   bool get engineOn => acc > 0;
 

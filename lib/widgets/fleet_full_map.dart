@@ -8,6 +8,7 @@ import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// School / fleet "front look": a FULL-SCREEN native **Google Maps** fleet view.
 /// A catchy status bar on top (Total / Running / Idle / Stopped / Offline /
@@ -501,6 +502,41 @@ class _VehicleDetailsCard extends StatelessWidget {
 
   String get _lastUpdate => vehicle.lastUpdateLabel;
 
+  /// Dial the tracker's own SIM. Confirms first — the call is billed to
+  /// whoever taps it, and on a school vehicle it opens a microphone among the
+  /// people inside, which should never happen off a stray tap.
+  Future<void> _callVehicle(BuildContext context) async {
+    final number = vehicle.simMsisdn.trim();
+    if (number.isEmpty) return;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Call this vehicle?'),
+        content: Text(
+          'Dials the tracker in ${vehicle.displayName} on $number.\n\n'
+          'The device answers with its microphone open, so you will hear '
+          'inside the vehicle. Call charges apply.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Call'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true) return;
+    try {
+      await launchUrl(Uri(scheme: 'tel', path: number));
+    } catch (_) {
+      // Nothing useful to say here beyond the dialler failing to open.
+    }
+  }
+
   void _shareLive() {
     final url = vehicle.primaryMapUrl.isNotEmpty
         ? vehicle.primaryMapUrl
@@ -716,6 +752,30 @@ class _VehicleDetailsCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Voice monitor, same gate as the detail screen: the tracker
+                  // must be flagged audio-capable AND have a real number.
+                  // Hidden on every other device, which is nearly all of them.
+                  if (vehicle.canCallVehicle) ...<Widget>[
+                    const SizedBox(width: 10),
+                    SizedBox(
+                      height: 46,
+                      width: 52,
+                      child: OutlinedButton(
+                        onPressed: () => _callVehicle(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primaryBlue,
+                          side: BorderSide(
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.5),
+                          ),
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Icon(LucideIcons.phoneCall, size: 18),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 10),
                   SizedBox(
                     height: 46,

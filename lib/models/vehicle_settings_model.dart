@@ -63,6 +63,17 @@ class VehicleSettingsModel {
   /// button that rings nothing.
   final String simMsisdn;
 
+  /// 1 = this tracker has a microphone, so the Call Vehicle action is allowed.
+  ///
+  /// Most units have no mic at all — a call button on one of those dials a data
+  /// SIM and rings nothing. Set per device from superadmin; 0 by default, so no
+  /// existing device gains the action. Both this AND a real [simMsisdn] must be
+  /// present before the app shows anything.
+  final int isCallDevice;
+
+  /// Everything needed to offer voice monitoring on this vehicle.
+  bool get canCallVehicle => isCallDevice == 1 && simMsisdn.trim().isNotEmpty;
+
   const VehicleSettingsModel({
     this.vehicleId = 0,
     this.deviceId = 0,
@@ -106,6 +117,7 @@ class VehicleSettingsModel {
     this.mobileMapTrailPoints = 25,
     this.sseSig = '',
     this.simMsisdn = '',
+    this.isCallDevice = 0,
   });
 
   factory VehicleSettingsModel.fromJson(Map<String, dynamic> json) {
@@ -156,6 +168,7 @@ class VehicleSettingsModel {
       mobileMapTrailPoints: toInt(json['mobile_map_trail_points'], fallback: 25),
       sseSig: toStringValue(json['sse_sig']),
       simMsisdn: toStringValue(json['sim_msisdn']),
+      isCallDevice: toInt(json['is_call_device']),
     );
   }
 
@@ -240,6 +253,7 @@ class VehicleSettingsModel {
       mobileMapProvider: mobileMapProvider,
       sseSig: sseSig,
       simMsisdn: simMsisdn,
+      isCallDevice: isCallDevice,
     );
   }
 

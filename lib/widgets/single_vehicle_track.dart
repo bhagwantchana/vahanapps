@@ -1779,13 +1779,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               color: AppTheme.primaryBlue,
                               onTap: () => _findMyCar(vehicle),
                             ),
-                            // Voice monitor: dial the device's OWN SIM. Only
-                            // shown when a real dialable number is on file —
-                            // the server sends '' unless tbl_sim.msisdn is
-                            // populated, so this is absent for every vehicle
-                            // until the SIM provider's numbers are loaded. A
-                            // button that rings nothing is worse than none.
-                            if (settings.simMsisdn.isNotEmpty)
+                            // Voice monitor: dial the device's OWN SIM. Shown
+                            // only when the tracker is flagged audio-capable
+                            // (tbl_device.is_call_device, set per device from
+                            // superadmin) AND a real number is on file. Most
+                            // units have no microphone, and a call button on
+                            // one of those dials a data SIM and rings nothing.
+                            if (settings.canCallVehicle)
                               _buildFixedActionButton(
                                 icon: LucideIcons.phoneCall,
                                 label: 'Call Vehicle',
