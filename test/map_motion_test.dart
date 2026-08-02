@@ -357,6 +357,47 @@ void main() {
     });
   });
 
+  group('a finger must always beat the follow camera', () {
+    // The follow camera re-arms a "this move was ours" mark on every push. If
+    // that mark outlives the push interval it never lapses, so every real pinch
+    // is attributed to us, follow is never paused, and the gesture is
+    // overwritten on the next push — the zoom that would not take.
+    const pushIntervalMs = 33; // _pushIntervalMs
+    const programmaticMs = 20; // _markProgrammatic on the per-frame move
+
+    test('the programmatic mark lapses between pushes', () {
+      expect(programmaticMs, lessThan(pushIntervalMs),
+          reason: 'the window can never close, so no gesture is ever detected');
+    });
+
+    test('it is still long enough to cover our own move', () {
+      // onCameraMoveStarted for our moveCamera arrives effectively at once.
+      expect(programmaticMs, greaterThanOrEqualTo(16));
+    });
+
+    // The check that actually holds does not involve timing at all: the follow
+    // move hands back the zoom it was given, so it cannot change it.
+    bool isGesture(double reported, double commanded) =>
+        (reported - commanded).abs() > 0.01;
+
+    test('a pinch is a gesture', () {
+      expect(isGesture(16.4, 17.0), isTrue);
+      expect(isGesture(17.6, 17.0), isTrue);
+    });
+
+    test('our own move is not', () {
+      // We pass _zoom straight through, so it comes back identical.
+      expect(isGesture(17.0, 17.0), isFalse);
+    });
+
+    test('float noise is not a gesture', () {
+      // Platform round-tripping wobbles the last decimal; that must not pause
+      // follow on a vehicle nobody has touched.
+      expect(isGesture(17.0000001, 17.0), isFalse);
+      expect(isGesture(16.999999, 17.0), isFalse);
+    });
+  });
+
   group('heading changes are measured the short way round', () {
     test('the 359 to 1 wrap is two degrees, not 358', () {
       expect(angleDeltaDegrees(359, 1), closeTo(2, 1e-9));

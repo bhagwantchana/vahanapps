@@ -120,6 +120,16 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// source of truth for how the followed vehicle must be drawn — see
   /// _addVehicleMarkers.
   double _mapBearing = 0;
+
+  /// Zoom and tilt the FOLLOW camera last commanded.
+  ///
+  /// The follow move passes the current zoom and tilt straight back, so it can
+  /// never change them. If onCameraMove then reports a different zoom, a finger
+  /// did it — no timing involved. Deciding this by a programmatic-move deadline
+  /// did not work: the deadline was longer than the interval it was re-armed
+  /// on, so it never lapsed and every pinch looked like our own move.
+  double _commandedZoom = 11;
+  double _commandedTilt = 0;
   bool _labelsShown = false;
 
   // User map controls: theme (default|dark|retro|satellite|terrain), traffic,
@@ -1120,6 +1130,25 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final wasClustering = widget.followVehicleId == null &&
         _zoom < _clusterMaxZoom &&
         _visible.length > 10;
+    // A pinch or a two-finger tilt changed the pose. Our own follow move never
+    // can — it hands back the zoom and tilt it was given — so a difference here
+    // is a finger, and follow must get out of the way. This is the check that
+    // actually holds: the programmatic-move deadline never lapsed, so gestures
+    // were being attributed to us and overwritten on the next push.
+    if (_cameraLocked) {
+      // One of our own animations is flying the camera to a new pose. Track it
+      // so that the instant the lock lifts these already agree with reality —
+      // otherwise the first frame afterwards reads as a gesture and pauses
+      // follow every time the user toggles head-up or re-centres.
+      _commandedZoom = pos.zoom;
+      _commandedTilt = pos.tilt;
+    } else if (widget.followVehicleId != null && !_followPaused) {
+      final zoomed = (pos.zoom - _commandedZoom).abs() > 0.01;
+      final tilted = (pos.tilt - _commandedTilt).abs() > 0.5;
+      if (zoomed || tilted) {
+        _pauseFollowForGesture();
+      }
+    }
     _zoom = pos.zoom;
     _tilt = pos.tilt;
     _mapBearing = pos.bearing;
@@ -1504,7 +1533,17 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (_cameraLocked) return;
     final target = _followRendered;
     if (target == null) return;
-    _markProgrammatic(120); // instant moveCamera below
+    // 20 ms, NOT 120. This runs every _pushIntervalMs (33 ms), so a 120 ms mark
+    // was re-extended before it could ever expire — the "programmatic" window
+    // stayed permanently open while following a moving vehicle, and
+    // _onCameraMoveStarted therefore read EVERY real pinch as our own move and
+    // never paused follow. The gesture was then overwritten 33 ms later. That
+    // is the zoom that would not take.
+    _markProgrammatic(20);
+    // Remember the pose we are about to command, so _onCameraMove can tell our
+    // own move from the user's by what actually changed rather than by timing.
+    _commandedZoom = _zoom;
+    _commandedTilt = _tilt;
     try {
       // moveCamera (instant) not animateCamera: the pose is ALREADY eased per
       // frame, so animating on top would fight itself and stutter.
@@ -1634,10 +1673,20 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
 
   void _onCameraMoveStarted() {
     if (_programmaticMove || widget.followVehicleId == null) return;
-    // A real user gesture → stop following so we never fight it. Auto-resume
-    // stays as a safety net, but the Re-centre chip is the real answer: for
-    // eight seconds the map used to look frozen with nothing on screen to say
-    // why, and then snap back on its own while the user was still reading it.
+    _pauseFollowForGesture();
+  }
+
+  /// Stand down so we never fight a finger.
+  ///
+  /// Reached two ways: a pan, via onCameraMoveStarted, and a pinch or tilt, via
+  /// the pose comparison in _onCameraMove — which is the reliable one, since a
+  /// gesture that changes the zoom cannot be mistaken for our own move.
+  ///
+  /// Auto-resume stays as a safety net, but the Re-centre chip is the real
+  /// answer: for eight seconds the map used to look frozen with nothing on
+  /// screen to say why, and then snap back on its own while the user was still
+  /// reading it.
+  void _pauseFollowForGesture() {
     if (!_followPaused && mounted) setState(() => _followPaused = true);
     _followResume?.cancel();
     _followResume = Timer(const Duration(seconds: 8), () {
