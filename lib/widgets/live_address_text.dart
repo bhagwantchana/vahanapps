@@ -21,6 +21,7 @@ class LiveAddressText extends StatefulWidget {
     this.style,
     this.maxLines = 2,
     this.placeholderText,
+    this.initialAddress,
   });
 
   final double latitude;
@@ -28,6 +29,16 @@ class LiveAddressText extends StatefulWidget {
   final TextStyle? style;
   final int maxLines;
   final String? placeholderText;
+
+  /// Address the SERVER already had for this coordinate, delivered with the
+  /// vehicle row (`cached_address`). When present the street is on screen in
+  /// the FIRST frame and no geocoder is called at all.
+  ///
+  /// This is what stops raw lat/lng appearing on a cold start: [_cache] only
+  /// lives in RAM, so before this every app launch began with no addresses
+  /// whatsoever and each vehicle showed its coordinates until its own lookup
+  /// returned — over a slow reverse-geocode, several seconds per vehicle.
+  final String? initialAddress;
 
   @override
   State<LiveAddressText> createState() => _LiveAddressTextState();
@@ -58,7 +69,20 @@ class _LiveAddressTextState extends State<LiveAddressText> {
   @override
   void initState() {
     super.initState();
+    _seedFromServer();
     _resolveAddress();
+  }
+
+  /// Adopt the server's address before the first paint, and share it through
+  /// [_cache] so every other cell on the same coordinate skips the geocoder
+  /// too. Done synchronously in [initState] — an async hop here would still
+  /// let one frame of raw coordinates through, which is the whole bug.
+  void _seedFromServer() {
+    final seed = widget.initialAddress?.trim() ?? '';
+    if (seed.isEmpty) return;
+    if (widget.latitude == 0 && widget.longitude == 0) return;
+    _cache.putIfAbsent(_cacheKey(widget.latitude, widget.longitude), () => seed);
+    _resolved = seed;
   }
 
   @override
@@ -79,6 +103,11 @@ class _LiveAddressTextState extends State<LiveAddressText> {
     // right answer 110 m ago and reads far better than the coordinates
     // flashing up for a second every time the vehicle moves. It is replaced
     // the moment the new lookup lands.
+    //
+    // If the refresh brought a server address for the NEW bucket, that is
+    // already the answer — take it now rather than showing the old street
+    // while a geocode runs.
+    _seedFromServer();
     _resolveAddress();
   }
 

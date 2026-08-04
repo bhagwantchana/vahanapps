@@ -673,6 +673,7 @@ class _VehicleDetailsCard extends StatelessWidget {
                     child: LiveAddressText(
                       latitude: vehicle.latitude,
                       longitude: vehicle.longitude,
+                      initialAddress: vehicle.cachedAddress,
                       maxLines: 2,
                       style: TextStyle(
                         fontSize: 12.5,

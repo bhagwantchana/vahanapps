@@ -111,6 +111,15 @@ class VehicleRecord {
   /// [canCallVehicle] is the only check a caller needs.
   final int isCallDevice;
   final String simMsisdn;
+
+  /// Street address the SERVER already had for this coordinate, sent with the
+  /// row itself. '' when the server has nothing cached yet.
+  ///
+  /// Before this existed the phone resolved every vehicle's address on its own,
+  /// into a cache that only lived in RAM — so every cold start showed raw
+  /// "30.8832, 75.8351" until each lookup returned. Seeding [LiveAddressText]
+  /// with this means the address is on screen in the first frame.
+  final String cachedAddress;
   final ActiveDriverModel? activeDriver;
   final VehicleSettingsModel? settings;
 
@@ -187,6 +196,7 @@ class VehicleRecord {
     this.hasLiveLocation = false,
     this.isCallDevice = 0,
     this.simMsisdn = '',
+    this.cachedAddress = '',
     this.activeDriver,
     this.settings,
   });
@@ -267,6 +277,7 @@ class VehicleRecord {
       expiryDate: toStringValue(json['expiry_date']),
       isCallDevice: toInt(json['is_call_device']),
       simMsisdn: toStringValue(json['sim_msisdn']),
+      cachedAddress: toStringValue(json['cached_address']),
       hasLiveLocation: json['has_live_location'] != null
           ? toBoolFlag(json['has_live_location'])
           : (toDouble(json['latitude']) != 0 || toDouble(json['longitude']) != 0),
@@ -405,6 +416,10 @@ class VehicleRecord {
       expiryDate: expiryDate,
       isCallDevice: isCallDevice,
       simMsisdn: simMsisdn,
+      // A live position update carries no address. Keep the one we have —
+      // it is the right street until the vehicle leaves the ~110 m bucket,
+      // and dropping it here would flash raw coordinates on every fix.
+      cachedAddress: cachedAddress,
       hasLiveLocation: hasLiveLocation ?? this.hasLiveLocation,
       activeDriver: activeDriver ?? this.activeDriver,
       settings: settings ?? this.settings,

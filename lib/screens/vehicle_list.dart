@@ -471,6 +471,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                           child: LiveAddressText(
                             latitude: vehicle.latitude,
                             longitude: vehicle.longitude,
+                            initialAddress: vehicle.cachedAddress,
                             style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
                             maxLines: 1,
                           ),
@@ -767,6 +768,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
             LiveAddressText(
               latitude: vehicle.latitude,
               longitude: vehicle.longitude,
+                            initialAddress: vehicle.cachedAddress,
               style: TextStyle(
                 color: Colors.grey.shade800,
                 fontWeight: FontWeight.w600,

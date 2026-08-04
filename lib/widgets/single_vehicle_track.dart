@@ -1160,6 +1160,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             LiveAddressText(
               latitude: vehicle.latitude,
               longitude: vehicle.longitude,
+              initialAddress: vehicle.cachedAddress,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
@@ -1517,6 +1518,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 LiveAddressText(
                                   latitude: vehicle.latitude,
                                   longitude: vehicle.longitude,
+              initialAddress: vehicle.cachedAddress,
                                   style: TextStyle(
                                     color:
                                         Theme.of(context).colorScheme.onSurface,
@@ -2793,6 +2795,7 @@ class _GlassVehicleBar extends StatelessWidget {
                         child: LiveAddressText(
                           latitude: vehicle.latitude,
                           longitude: vehicle.longitude,
+              initialAddress: vehicle.cachedAddress,
                           maxLines: 1,
                           style: TextStyle(
                             fontSize: 12.5,
