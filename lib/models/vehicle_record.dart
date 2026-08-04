@@ -341,6 +341,7 @@ class VehicleRecord {
     String? createdAt,
     int? tsEpochMs,
     bool? hasLiveLocation,
+    String? cachedAddress,
   }) {
     return VehicleRecord(
       id: id,
@@ -416,10 +417,7 @@ class VehicleRecord {
       expiryDate: expiryDate,
       isCallDevice: isCallDevice,
       simMsisdn: simMsisdn,
-      // A live position update carries no address. Keep the one we have —
-      // it is the right street until the vehicle leaves the ~110 m bucket,
-      // and dropping it here would flash raw coordinates on every fix.
-      cachedAddress: cachedAddress,
+      cachedAddress: cachedAddress ?? this.cachedAddress,
       hasLiveLocation: hasLiveLocation ?? this.hasLiveLocation,
       activeDriver: activeDriver ?? this.activeDriver,
       settings: settings ?? this.settings,
@@ -475,7 +473,26 @@ class VehicleRecord {
       createdAt: source.createdAt.isNotEmpty ? source.createdAt : createdAt,
       tsEpochMs: source.tsEpochMs > 0 ? source.tsEpochMs : tsEpochMs,
       hasLiveLocation: source.hasLiveLocation || hasLiveLocation,
+      // A live fix carries no address of its own. Keep the server's while the
+      // vehicle is still inside the same ~110 m bucket — that is genuinely the
+      // same street, and dropping it would flash raw coordinates on every fix.
+      //
+      // Once it leaves the bucket the address is simply wrong, and it must NOT
+      // travel with the record: LiveAddressText seeds a cache shared by every
+      // widget on that coordinate, so carrying it over would file the old
+      // street under the new position and hand it to other vehicles too.
+      // Cleared here, so the widget falls through to a real lookup.
+      cachedAddress: _sameAddressBucket(source) ? cachedAddress : '',
     );
+  }
+
+  /// True when [source]'s position rounds into the same ~110 m bucket as this
+  /// one — the same granularity the server keys tbl_address_cache by and the
+  /// widget keys its in-memory cache by, so all three agree on what "the same
+  /// place" means.
+  bool _sameAddressBucket(VehicleRecord source) {
+    return source.latitude.toStringAsFixed(3) == latitude.toStringAsFixed(3) &&
+        source.longitude.toStringAsFixed(3) == longitude.toStringAsFixed(3);
   }
 
   VehicleRecord mergeLiveFixFrom(VehicleRecord incoming) {
