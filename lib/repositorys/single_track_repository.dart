@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/api.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
+import 'package:fleet_monitor/models/route_stop_model.dart';
 import 'package:fleet_monitor/models/single_track_model.dart';
 import 'package:fleet_monitor/models/vehicle_track_point.dart';
 import 'package:fleet_monitor/models/vehicle_settings_model.dart';
@@ -127,6 +128,90 @@ class SingleTrackRepository {
         ((data['data'] as Map?)?['settings'] as Map?) ?? const <String, dynamic>{},
       );
       return VehicleSettingsModel.fromJson(payload);
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
+    }
+  }
+
+  // ── "Mera Stop" / ETA-to-stop ─────────────────────────────────────────────
+
+  Future<List<RouteStop>> fetchRouteStops(String imei) async {
+    try {
+      final response = await _networkApi.sendRequest.post(
+        AppUrl.routeStops,
+        data: FormData.fromMap(<String, dynamic>{'imei': imei}),
+        options: NetworkApi.buildOptions(authToken: await _getToken()),
+      );
+      final apiResponse = ApiResponse.fromResponse(response);
+      if (apiResponse.flag == 0) {
+        throw Exception(apiResponse.message);
+      }
+      final data = response.data as Map<String, dynamic>;
+      final stops = <RouteStop>[];
+      if (data['data'] is List) {
+        for (final item in data['data'] as List) {
+          if (item is Map<String, dynamic>) {
+            stops.add(RouteStop.fromJson(item));
+          }
+        }
+      }
+      return stops;
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
+    }
+  }
+
+  Future<StopEta> fetchStopEta(String imei, int stopId) async {
+    try {
+      final response = await _networkApi.sendRequest.post(
+        AppUrl.stopEta,
+        data: FormData.fromMap(<String, dynamic>{
+          'imei': imei,
+          'stop_id': stopId,
+        }),
+        options: NetworkApi.buildOptions(authToken: await _getToken()),
+      );
+      final apiResponse = ApiResponse.fromResponse(response);
+      if (apiResponse.flag == 0) {
+        throw Exception(apiResponse.message);
+      }
+      final data = response.data as Map<String, dynamic>;
+      return StopEta.fromJson(
+        Map<String, dynamic>.from((data['data'] as Map?) ?? const {}),
+      );
+    } catch (error) {
+      throw Exception(NetworkApi.parseError(error));
+    }
+  }
+
+  /// Subscribe/unsubscribe THIS PHONE to "bus is near" pushes for a stop.
+  /// Keyed by the phone's FCM token because parents share one login — the
+  /// token is the only per-parent identity that exists.
+  Future<void> setStopAlert({
+    required String imei,
+    required int stopId,
+    required bool enable,
+  }) async {
+    final fcmToken = await LocalStorage.readValue(PreferencesKey.fcmToken) ?? '';
+    if (fcmToken.isEmpty) {
+      throw Exception('Notification token not ready yet');
+    }
+    try {
+      final response = await _networkApi.sendRequest.post(
+        AppUrl.setStopAlert,
+        data: FormData.fromMap(<String, dynamic>{
+          'imei': imei,
+          'stop_id': stopId,
+          'fcm_token': fcmToken,
+          'enable': enable ? 1 : 0,
+          'platform': 'android',
+        }),
+        options: NetworkApi.buildOptions(authToken: await _getToken()),
+      );
+      final apiResponse = ApiResponse.fromResponse(response);
+      if (apiResponse.flag == 0) {
+        throw Exception(apiResponse.message);
+      }
     } catch (error) {
       throw Exception(NetworkApi.parseError(error));
     }

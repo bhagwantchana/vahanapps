@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_cubit.dart';
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_state.dart';
 import 'package:fleet_monitor/cubits/vehicles_cubit/vehicle_cubit.dart';
 import 'package:fleet_monitor/models/driver_record_model.dart';
+import 'package:fleet_monitor/models/route_stop_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/models/vehicle_settings_model.dart';
 import 'package:fleet_monitor/repositorys/driver_repository.dart';
@@ -229,6 +231,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   int _liveTrailVehicleId = 0;
   static const int _liveTrailMax = 300;
 
+  // ── "My Stop" / ETA ──────────────────────────────────────────────────────
+  // Parents on a route share ONE app login, so the chosen stop is a fact
+  // about THIS PHONE: it lives in SharedPreferences keyed by vehicle id, and
+  // the "bus is near" subscription is keyed server-side by this phone's FCM
+  // token. Nothing per-parent ever touches the shared account.
+  List<RouteStop> _routeStops = <RouteStop>[];
+  int _myStopInitFor = 0; // vehicle.id the stop state was loaded for
+  String _myStopImei = '';
+  int? _myStopId;
+  bool _myStopAlert = false;
+  StopEta? _stopEta;
+  Timer? _etaTimer;
+
   @override
   void initState() {
     super.initState();
@@ -237,8 +252,100 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
 
   @override
   void dispose() {
+    _etaTimer?.cancel();
     _nativeRefresh.dispose();
     super.dispose();
+  }
+
+  /// Load stops + this phone's saved choice, once per vehicle. Fire-and-forget
+  /// from build; failures leave the card hidden — the tracking screen must
+  /// keep working against a server that predates route stops entirely.
+  Future<void> _ensureMyStopLoaded(VehicleRecord vehicle) async {
+    if (_myStopInitFor == vehicle.id || vehicle.imei.isEmpty) return;
+    _myStopInitFor = vehicle.id;
+    _myStopImei = vehicle.imei;
+    try {
+      final stops = await _trackRepository.fetchRouteStops(vehicle.imei);
+      final savedId =
+          await LocalStorage.readValue('my_stop_${vehicle.id}');
+      final savedAlert =
+          await LocalStorage.readValue('my_stop_alert_${vehicle.id}');
+      if (!mounted) return;
+      setState(() {
+        _routeStops = stops;
+        _myStopId = int.tryParse(savedId ?? '');
+        if (_myStopId != null && !stops.any((s) => s.id == _myStopId)) {
+          _myStopId = null; // the school deleted that stop
+        }
+        _myStopAlert = savedAlert == '1' && _myStopId != null;
+      });
+      _restartEtaPolling();
+    } catch (_) {
+      // Older server / offline: no stops, no card, no breakage.
+    }
+  }
+
+  void _restartEtaPolling() {
+    _etaTimer?.cancel();
+    _etaTimer = null;
+    if (_myStopId == null || _myStopImei.isEmpty) {
+      if (mounted) setState(() => _stopEta = null);
+      return;
+    }
+    _refreshStopEta();
+    // 45 s: the answer is a median over past days — it moves slowly, and the
+    // server does real work per call. No point hammering it every fix.
+    _etaTimer = Timer.periodic(
+      const Duration(seconds: 45),
+      (_) => _refreshStopEta(),
+    );
+  }
+
+  Future<void> _refreshStopEta() async {
+    final stopId = _myStopId;
+    if (stopId == null || _myStopImei.isEmpty || !mounted) return;
+    try {
+      final eta = await _trackRepository.fetchStopEta(_myStopImei, stopId);
+      if (!mounted || _myStopId != stopId) return;
+      setState(() => _stopEta = eta);
+    } catch (_) {
+      // Keep the previous reading; a dashed chip beats a spinner storm.
+    }
+  }
+
+  Future<void> _saveMyStop(VehicleRecord vehicle, int? stopId, bool alert) async {
+    final previousStop = _myStopId;
+    final previousAlert = _myStopAlert;
+
+    setState(() {
+      _myStopId = stopId;
+      _myStopAlert = stopId != null && alert;
+      _stopEta = null;
+    });
+    await LocalStorage.setValue(
+        'my_stop_${vehicle.id}', stopId?.toString() ?? '');
+    await LocalStorage.setValue(
+        'my_stop_alert_${vehicle.id}', (stopId != null && alert) ? '1' : '0');
+    _restartEtaPolling();
+
+    // Server-side subscription follows the choice, best-effort: the ETA chip
+    // works without it, and a failed toggle must not lose the stop choice.
+    try {
+      if (previousStop != null && previousAlert &&
+          (stopId != previousStop || !alert)) {
+        await _trackRepository.setStopAlert(
+            imei: vehicle.imei, stopId: previousStop, enable: false);
+      }
+      if (stopId != null && alert) {
+        await _trackRepository.setStopAlert(
+            imei: vehicle.imei, stopId: stopId, enable: true);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stop alert: ${error.toString()}')),
+      );
+    }
   }
 
   /// Append the latest fix to the on-screen trail (min 5 m step, capped).
@@ -1237,6 +1344,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             _loadWebLink(trackingUrl);
           }
 
+          // Load this vehicle's stops + this phone's saved choice once —
+          // guarded inside, so re-builds are free.
+          _ensureMyStopLoaded(vehicle);
+
           return Column(
             children: <Widget>[
               Expanded(
@@ -1578,6 +1689,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           ),
                           const SizedBox(height: 16),
                         ],
+                        // "My Stop" + ETA — renders nothing until the school
+                        // has defined stops for this route.
+                        _buildMyStopCard(vehicle),
                         Row(
                           children: <Widget>[
                             CircleAvatar(
@@ -1857,6 +1971,214 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// "My Stop" — hidden entirely until the school has defined stops for this
+  /// vehicle, so rolling the feature out changes nothing for routes without
+  /// them. ETA wording comes from the bus's own past days; when history can't
+  /// answer yet the card says so instead of inventing a number.
+  Widget _buildMyStopCard(VehicleRecord vehicle) {
+    if (_routeStops.isEmpty) return const SizedBox.shrink();
+
+    final RouteStop? chosen = _myStopId == null
+        ? null
+        : _routeStops.where((s) => s.id == _myStopId).firstOrNull;
+
+    String etaLine;
+    if (chosen == null) {
+      etaLine = 'Choose your stop to see when the bus is near';
+    } else if (_stopEta?.hasEta == true) {
+      final min = _stopEta!.etaMinutes!;
+      etaLine = min <= 1 ? 'Bus is arriving now' : 'Bus is about $min min away';
+    } else if (_stopEta != null && _stopEta!.reason == 'no_position') {
+      etaLine = 'Waiting for the bus to come online';
+    } else if (_stopEta != null) {
+      etaLine = 'ETA will appear after a few school days';
+    } else {
+      etaLine = '—';
+    }
+
+    return Column(
+      children: <Widget>[
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+              width: 1,
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: InkWell(
+            onTap: () => _showMyStopPicker(vehicle),
+            borderRadius: BorderRadius.circular(12),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    LucideIcons.mapPin,
+                    color: AppTheme.primaryGreen,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        chosen == null
+                            ? 'My Stop'
+                            : 'My Stop: ${chosen.displayName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        etaLine,
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _stopEta?.hasEta == true
+                              ? AppTheme.primaryGreen
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (chosen != null)
+                  Icon(
+                    _myStopAlert
+                        ? LucideIcons.bellRing
+                        : LucideIcons.bellOff,
+                    size: 18,
+                    color: _myStopAlert
+                        ? AppTheme.primaryGreen
+                        : Colors.grey.shade400,
+                  ),
+                const SizedBox(width: 6),
+                Icon(
+                  LucideIcons.chevronRight,
+                  size: 18,
+                  color: Colors.grey.shade400,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  void _showMyStopPicker(VehicleRecord vehicle) {
+    final sorted = List<RouteStop>.from(_routeStops)
+      ..sort((a, b) => a.seq != b.seq
+          ? a.seq.compareTo(b.seq)
+          : a.id.compareTo(b.id));
+    int? pickedId = _myStopId;
+    bool alertOn = _myStopAlert;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20, 20, 20, 20 + MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'Choose your stop',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Saved on this phone only — every parent picks their own.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: <Widget>[
+                    RadioListTile<int?>(
+                      dense: true,
+                      value: null,
+                      groupValue: pickedId,
+                      title: const Text('No stop (hide ETA)'),
+                      onChanged: (v) => setSheetState(() {
+                        pickedId = null;
+                        alertOn = false;
+                      }),
+                    ),
+                    ...sorted.map(
+                      (s) => RadioListTile<int?>(
+                        dense: true,
+                        value: s.id,
+                        groupValue: pickedId,
+                        title: Text(s.displayName),
+                        onChanged: (v) => setSheetState(() => pickedId = v),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: alertOn && pickedId != null,
+                onChanged: pickedId == null
+                    ? null
+                    : (v) => setSheetState(() => alertOn = v),
+                title: const Text(
+                  'Notify me when the bus is near',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                ),
+                subtitle: const Text(
+                  'Only this phone gets the alert',
+                  style: TextStyle(fontSize: 11),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    _saveMyStop(vehicle, pickedId, alertOn);
+                  },
+                  child: const Text('Save'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

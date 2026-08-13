@@ -69,4 +69,11 @@ class AppUrl {
       '${baseUrl}unassignVehicleFromSubUser';
   static const String subUserAssignments = '${baseUrl}subUserAssignments';
   static const String subUserShareLink = '${baseUrl}subUserShareLink';
+
+  /// "Mera Stop" / ETA-to-stop. Parents on a route share ONE login, so the
+  /// chosen stop lives on the PHONE (SharedPreferences) and the alert
+  /// subscription is keyed by this phone's FCM token, never the account.
+  static const String routeStops = '${baseUrl}routeStops';
+  static const String stopEta = '${baseUrl}stopEta';
+  static const String setStopAlert = '${baseUrl}setStopAlert';
 }
