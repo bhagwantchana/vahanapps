@@ -11,6 +11,7 @@ import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/screens/web_page_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
+import 'package:fleet_monitor/services/voice_announcer.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
 import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/drawer.dart';
@@ -40,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _biometricEnabled = false;
   bool _biometricSupported = false;
   bool _biometricBusy = false;
+  bool _voiceAlerts = true;
 
   @override
   void initState() {
@@ -49,6 +51,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       cubit.fetchProfile();
     }
     _loadBiometricState();
+    _loadVoiceAlertsState();
+  }
+
+  Future<void> _loadVoiceAlertsState() async {
+    final enabled = await VoiceAnnouncer.instance.isEnabled();
+    if (!mounted) return;
+    setState(() => _voiceAlerts = enabled);
   }
 
   Future<void> _loadBiometricState() async {
@@ -332,6 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildThemeTile(),
                   _buildDashboardTile(),
                   _buildAlertsTile(),
+                  _buildVoiceAlertsTile(),
                   GapWidget(size: 16),
                   Text(
                     '${AppStrings.of(context).t('app_version')} 1.0.0',
@@ -442,6 +452,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: _showDashboardPicker,
         );
       },
+    );
+  }
+
+  /// Spoken alerts toggle. Default ON; the announcement itself is built and
+  /// spoken by VoiceAnnouncer when a push arrives — this only flips the pref.
+  Widget _buildVoiceAlertsTile() {
+    return _settingsItem(
+      Icons.record_voice_over_rounded,
+      'Voice alerts',
+      _voiceAlerts
+          ? 'Speaks alerts out loud, with the vehicle number'
+          : 'Silent — notifications only',
+      trailing: Switch.adaptive(
+        value: _voiceAlerts,
+        onChanged: (v) async {
+          setState(() => _voiceAlerts = v);
+          await VoiceAnnouncer.instance.setEnabled(v);
+        },
+      ),
     );
   }
 

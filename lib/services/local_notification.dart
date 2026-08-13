@@ -19,6 +19,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:fleet_monitor/services/voice_announcer.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -30,6 +31,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.notification == null) {
     await CustomNotificationSoundService().showNotification(message);
   }
+  // Speak the alert (Android: the background handler's execution window is
+  // long enough for one sentence; announce() itself checks the user's toggle
+  // and never throws). On iOS this is a no-op in background by platform rule.
+  await VoiceAnnouncer.instance.announce(message.data);
 }
 
 class CustomNotificationSoundService {
@@ -255,6 +260,8 @@ class CustomNotificationSoundService {
       // (onBackgroundMessage is now registered earlier, in initialize().)
       FirebaseMessaging.onMessage.listen((message) {
         showNotification(message);
+        // Spoken alert — fire-and-forget; the banner/sound never wait on TTS.
+        VoiceAnnouncer.instance.announce(message.data);
         // NOTE (2026-07-08): removed the push-triggered cubit refresh here.
         // It called HomeCubit.fetchHomeData() on every vehicle alert, which
         // rebuilt the HOME MAP — so a burst of alerts made the map visibly

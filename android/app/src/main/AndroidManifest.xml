@@ -93,6 +93,13 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Voice alerts: under Android 11+ package visibility the app cannot
+             BIND to the system text-to-speech engine unless this intent is
+             declared — flutter_tts then fails silently and "spoken alerts"
+             just never speak on API 30+. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

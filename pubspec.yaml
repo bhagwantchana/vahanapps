@@ -40,6 +40,10 @@ dependencies:
   shared_preferences: ^2.5.4
   flutter_bloc: ^9.1.1
   url_launcher: ^6.3.2
+  # Spoken alerts ("Vehicle P B 0 8 ... has started") — on-device TTS, no
+  # server audio, no quota. Speaks on Android in foreground AND from the FCM
+  # background handler; iOS only speaks while the app is open (platform rule).
+  flutter_tts: ^4.2.0
   dio: ^5.9.0
   pretty_dio_logger: ^1.4.0
   provider: ^6.1.5+1
