@@ -1763,6 +1763,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           onTap: (_) => widget.onMapTap?.call(),
           mapType: _resolvedMapType,
           trafficEnabled: _traffic,
+          // No 3D building blocks. buildingsEnabled defaults to TRUE, and the
+          // moment head-up mode tilts the camera (55 deg) Google extrudes every
+          // structure into beige slabs that bury the roads and the vehicle —
+          // the owner reported the map "filling up with buildings". Navigation
+          // apps keep the tilted view flat for exactly this reason.
+          buildingsEnabled: false,
           myLocationEnabled: false,
           myLocationButtonEnabled: false,
           zoomControlsEnabled: false,
