@@ -455,6 +455,14 @@ class VehicleRecord {
 
   bool acceptsLiveFixFrom(VehicleRecord incoming) {
     if (incoming.tsEpochMs <= 0 || tsEpochMs <= 0) {
+      // No epoch on one side (old server / distrusted device clock). Before
+      // accepting blindly, try the server wall-clock string: 'YYYY-MM-DD
+      // HH:mm:ss' compares correctly as text, and an out-of-order buffered
+      // fix accepted here is a marker visibly stepping BACKWARDS on both
+      // maps — the exact "vehicle piche chala janda" the owner reported.
+      if (incoming.createdAt.isNotEmpty && createdAt.isNotEmpty) {
+        return incoming.createdAt.compareTo(createdAt) >= 0;
+      }
       return incoming.hasLiveLocation;
     }
     return incoming.tsEpochMs >= tsEpochMs;

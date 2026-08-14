@@ -89,6 +89,38 @@ void main() {
     });
   });
 
+  group('a live fix can never move the marker backwards in time', () {
+    test('missing epochs fall back to the wall-clock string, not blind accept', () {
+      // The "vehicle piche chala janda" case: a buffered fix delivered late,
+      // with no trustworthy epoch (old server / distrusted device clock).
+      // 'YYYY-MM-DD HH:mm:ss' compares correctly as text.
+      final current = VehicleRecord(
+        id: 1, latitude: 30.884, longitude: 75.828,
+        createdAt: '2026-08-04 08:58:55', hasLiveLocation: true,
+      );
+      final buffered = VehicleRecord(
+        id: 1, latitude: 30.883, longitude: 75.833,
+        createdAt: '2026-08-04 08:58:45', hasLiveLocation: true,
+      );
+      expect(current.acceptsLiveFixFrom(buffered), isFalse,
+          reason: 'an older wall-clock fix must not win');
+
+      final newer = VehicleRecord(
+        id: 1, latitude: 30.885, longitude: 75.826,
+        createdAt: '2026-08-04 08:59:05', hasLiveLocation: true,
+      );
+      expect(current.acceptsLiveFixFrom(newer), isTrue);
+    });
+
+    test('with no timestamps at all, a live fix is still accepted', () {
+      // A brand-new record with nothing to compare must not freeze the map.
+      final blank = VehicleRecord(id: 1);
+      final incoming = VehicleRecord(
+          id: 1, latitude: 30.9, longitude: 75.8, hasLiveLocation: true);
+      expect(blank.acceptsLiveFixFrom(incoming), isTrue);
+    });
+  });
+
   group('bucket comparison matches the server and the widget', () {
     test('agrees with 3-decimal rounding, which is what _coordKey uses', () {
       // Same 3-decimal bucket (30.883, 75.781) despite differing 4th decimals.
