@@ -1,11 +1,35 @@
 import 'package:fleet_monitor/services/voice_announcer.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// The sentences a parent/driver HEARS. The TTS engine itself can't run in a
 /// test, but every sentence is built by a pure function, so what gets spoken
 /// is pinned here — including the part that motivated the feature: the
 /// vehicle NUMBER, spelled so any TTS engine reads it correctly.
 void main() {
+  group('voice is OPT-IN — owner decision', () {
+    // A fresh install / update must behave exactly like the old app: silent.
+    // Speaking only starts for the user who flipped the Profile toggle.
+    TestWidgetsFlutterBinding.ensureInitialized();
+
+    test('fresh install is silent', () async {
+      SharedPreferences.setMockInitialValues(const <String, Object>{});
+      expect(await VoiceAnnouncer.instance.isEnabled(), isFalse);
+    });
+
+    test('only an explicit "1" enables it', () async {
+      SharedPreferences.setMockInitialValues(
+          const <String, Object>{'voice_alerts_enabled': '1'});
+      expect(await VoiceAnnouncer.instance.isEnabled(), isTrue);
+    });
+
+    test('junk values stay silent', () async {
+      SharedPreferences.setMockInitialValues(
+          const <String, Object>{'voice_alerts_enabled': 'yes'});
+      expect(await VoiceAnnouncer.instance.isEnabled(), isFalse);
+    });
+  });
+
   group('registration is spelled, not mangled', () {
     test('a real fleet plate', () {
       // "PB08DS1117" read as one word is garbage; spelled it is unambiguous.

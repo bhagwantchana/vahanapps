@@ -41,7 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _biometricEnabled = false;
   bool _biometricSupported = false;
   bool _biometricBusy = false;
-  bool _voiceAlerts = true;
+  bool _voiceAlerts = false; // opt-in — mirrors VoiceAnnouncer's default
 
   @override
   void initState() {
@@ -455,15 +455,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Spoken alerts toggle. Default ON; the announcement itself is built and
-  /// spoken by VoiceAnnouncer when a push arrives — this only flips the pref.
+  /// Spoken alerts toggle. OPT-IN (default off — the app behaves exactly as
+  /// before until someone turns this on); the announcement itself is built
+  /// and spoken by VoiceAnnouncer when a push arrives — this only flips the
+  /// pref.
   Widget _buildVoiceAlertsTile() {
     return _settingsItem(
       Icons.record_voice_over_rounded,
       'Voice alerts',
       _voiceAlerts
           ? 'Speaks alerts out loud, with the vehicle number'
-          : 'Silent — notifications only',
+          : 'Off — turn on to hear alerts spoken aloud',
       trailing: Switch.adaptive(
         value: _voiceAlerts,
         onChanged: (v) async {

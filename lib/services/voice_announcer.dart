@@ -14,7 +14,11 @@ import 'package:fleet_monitor/constant/preferences.dart';
 /// The sentence building is a PURE top-level function so tests can pin every
 /// alert type and the registration spelling without touching a TTS engine.
 
-/// Preference key: '1' = speak alerts (default), '0' = silent.
+/// Preference key: '1' = speak alerts, anything else = silent.
+///
+/// OPT-IN by owner decision: the default is OFF, so nothing changes for
+/// anyone until they flip "Voice alerts" on in Profile. A phone suddenly
+/// talking after an app update would surprise far more users than it delights.
 const String kVoiceAlertsPrefKey = 'voice_alerts_enabled';
 
 /// A registration number the way a HUMAN says it, not the way a TTS engine
@@ -111,7 +115,7 @@ class VoiceAnnouncer {
 
   Future<bool> isEnabled() async {
     final v = await LocalStorage.readValue(kVoiceAlertsPrefKey);
-    return v != '0'; // default ON
+    return v == '1'; // opt-in: absent/anything-else = silent
   }
 
   Future<void> setEnabled(bool on) async {
