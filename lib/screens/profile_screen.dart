@@ -9,6 +9,7 @@ import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
 import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
+import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:fleet_monitor/screens/web_page_screen.dart';
 import 'package:fleet_monitor/services/biometric_auth_service.dart';
 import 'package:fleet_monitor/services/voice_announcer.dart';
@@ -471,6 +472,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onChanged: (v) async {
           setState(() => _voiceAlerts = v);
           await VoiceAnnouncer.instance.setEnabled(v);
+          // Tell the server too: voice-on phones receive their pushes on the
+          // SILENT channel, so the spoken sentence is the only audio instead
+          // of playing on top of the channel sound.
+          await CustomNotificationSoundService.syncVoicePref(v);
         },
       ),
     );

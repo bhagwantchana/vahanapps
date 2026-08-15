@@ -12,6 +12,7 @@ class AppUrl {
   static const String myProfile = '${baseUrl}myProfile';
   static const String updateProfile = '${baseUrl}profileUpdate';
   static const String saveFcmToken = '${baseUrl}saveFcmToken';
+  static const String setVoicePref = '${baseUrl}setVoicePref';
   static const String tripHistory = '${baseUrl}tripHistory';
   static const String drivers = '${baseUrl}drivers';
   static const String assignDriver = '${baseUrl}assignDriver';

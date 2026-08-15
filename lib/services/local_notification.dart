@@ -316,6 +316,34 @@ class CustomNotificationSoundService {
     } catch (_) {
       // Silent failure: token will be retried on next refresh/login.
     }
+    // A fresh login/token row starts with voice_mode 0 on the server — if
+    // THIS phone had voice alerts on, re-arm the server-side flag so its
+    // pushes keep arriving on the silent channel after re-login or an FCM
+    // token rotation.
+    final voiceOn = await LocalStorage.readValue(kVoiceAlertsPrefKey) == '1';
+    if (voiceOn) {
+      await syncVoicePref(true);
+    }
+  }
+
+  /// Tell the server whether THIS phone wants voice-only alerts. voice_mode=1
+  /// makes the tracking server deliver this phone's pushes on the silent
+  /// channel — the app's spoken sentence becomes the only audio. Best-effort:
+  /// a failed call means the phone keeps getting sound until the next sync,
+  /// never a lost notification.
+  static Future<void> syncVoicePref(bool enabled) async {
+    try {
+      final authToken = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+      if (authToken.isEmpty) return;
+      await NetworkApi().sendRequest.post(
+        AppUrl.setVoicePref,
+        data: FormData.fromMap(<String, dynamic>{'enable': enabled ? 1 : 0}),
+        options: NetworkApi.buildOptions(authToken: authToken),
+      );
+    } catch (_) {
+      // Best-effort — retried on next login/token refresh via
+      // _syncTokenWithBackend.
+    }
   }
 
   /// Android plays a channel's sound on the stream named by the channel's
@@ -360,6 +388,20 @@ class CustomNotificationSoundService {
         ),
       );
     }
+
+    // Voice-only phones: the server routes their pushes here — banner shows,
+    // channel stays SILENT, the spoken sentence is the only audio (otherwise
+    // the channel sound and the voice played together). Same id as fcm.js
+    // VOICE_SILENT_CHANNEL_ID — contract, like every other channel.
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'fleet_monitor_voice_silent_v1',
+        'Voice alerts (silent)',
+        description: 'Alerts announced by voice — banner only, no sound',
+        importance: Importance.high,
+        playSound: false,
+      ),
+    );
   }
 
   String get _platformName {
