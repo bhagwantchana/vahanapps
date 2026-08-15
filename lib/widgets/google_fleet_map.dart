@@ -221,7 +221,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   final Map<int, int> _fleetPlayMs = <int, int>{};
   final Map<int, double> _fleetBearing = <int, double>{};
   int? _fleetLastWallMs;
-  int _pulseTick = 0;
   Timer? _fleetTimer;
 
   bool get _fleetAnimActive =>
@@ -229,9 +228,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _visible.isNotEmpty &&
       _visible.length <= _fleetAnimMax &&
       !(_zoom < _clusterMaxZoom && _visible.length > 10); // not while clustering
-
-  // 4-step breathing sequence (up-down) → glow index 0..2.
-  int get _glowFrame => const <int>[0, 1, 2, 1][(_pulseTick ~/ 3) % 4];
 
   // Single-vehicle follow: pan with the vehicle, but pause for 8s after the
   // user manually moves the camera so we never fight their gesture.
@@ -503,12 +499,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     _fleetQueues.removeWhere((id, _) => !list.any((v) => v.id == id));
     _fleetPlayMs.removeWhere((id, _) => !list.any((v) => v.id == id));
     _fleetBearing.removeWhere((id, _) => !list.any((v) => v.id == id));
-    final prevFrame = (_pulseTick ~/ 3) % 4;
-    _pulseTick = (_pulseTick + 1) % 1000000;
-    final curFrame = (_pulseTick ~/ 3) % 4;
-    final hasMoving = list.any((v) => _status(v) == 'moving');
-    // Rebuild on real movement, or when the pulse frame flips (~240 ms).
-    if (changed || (hasMoving && prevFrame != curFrame)) {
+    // Rebuild on real movement ONLY. The old "breathing pulse" also rebuilt
+    // every ~240 ms with a DIFFERENT bitmap per frame for moving vehicles —
+    // and swapping a Google marker's icon redraws it, which on real phones
+    // read as the icon rapidly blinking. The status glow baked into the
+    // bitmap carries the "alive" look without any frame cycling.
+    if (changed) {
       _refreshMarkers();
     }
   }
@@ -703,10 +699,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// ground shadow beneath — the clean "on-the-road" look with just a status
   /// glow (no ring). Aspect ratio preserved so trucks/cars never squash.
   Future<Uint8List> _composePng(Uint8List raw, Color shadowColor,
-      {bool selected = false, double glowScale = 1.0}) async {
+      {bool selected = false}) async {
     // Selected car = just a touch BIGGER (clean size emphasis) — same modest
-    // shadow, so it never turns into a glowing blob. glowScale > 1 = the running
-    // "pulse" frame (a subtle breathing halo).
+    // shadow, so it never turns into a glowing blob.
     final iconPx = ((selected ? 60 : 52) * _dpr).round();
     final canvasPx = ((selected ? 80 : 74) * _dpr).round();
 
@@ -720,12 +715,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final center = Offset(size / 2, size / 2);
 
     final shadowPaint = Paint()
-      ..color = shadowColor.withValues(
-          alpha: (0.4 * (glowScale > 1 ? 1.1 : 1.0)).clamp(0.0, 1.0))
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * _dpr * glowScale);
+      ..color = shadowColor.withValues(alpha: 0.4)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 4.5 * _dpr);
     canvas.drawCircle(
       Offset(center.dx, center.dy + (2 * _dpr)),
-      (iconPx / 2) * 0.7 * glowScale,
+      (iconPx / 2) * 0.7,
       shadowPaint,
     );
 
@@ -754,8 +748,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   }
 
   Future<void> _loadIcon(String key, String iconUrl, String status,
-      bool selected,
-      {double glowScale = 1.0}) async {
+      bool selected) async {
     final shadow = _statusColor(status);
     Uint8List? raw;
     final candidates = <String>[
@@ -781,8 +774,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     final downloadFailed = raw == null;
     raw ??= await buildPlaceholderVehiclePng(color: shadow);
     try {
-      final png = await _composePng(raw, shadow,
-          selected: selected, glowScale: glowScale);
+      final png = await _composePng(raw, shadow, selected: selected);
       if (!mounted) return;
       _iconCache[key] = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
       if (downloadFailed) {
@@ -923,23 +915,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // Emphasise the selected car AND the single-vehicle followed car (bigger).
     final selected =
         widget.focusVehicleId == v.id || widget.followVehicleId == v.id;
-    // Running-car breathing pulse (small fleets only): cycle 3 glow frames.
-    final pulse = status == 'moving' && _fleetAnimActive && !selected;
-    final glowIdx = pulse ? _glowFrame : -1;
-    final glowScale = pulse ? const <double>[0.85, 1.2, 1.55][glowIdx] : 1.0;
-    final key =
-        '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}${pulse ? '|g$glowIdx' : ''}';
-    // Never fall back to the default red pin — only a COMPOSED car bitmap.
-    //
-    // The running "breathing" pulse gives each vehicle THREE glow variants, and
-    // each is composed lazily. Any frame whose variant was not ready yet fell
-    // straight through to the grey placeholder (or skipped the marker
-    // entirely), which is the blinking: at a 40 ms tick the pulse advances
-    // faster than the compositor can keep up. Degrade to the SAME icon without
-    // the glow first - it is effectively always cached - so the vehicle never
-    // vanishes or flashes grey while a cosmetic variant is still rendering.
-    final baseKey = '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}';
-    final icon = _bestIcon(v.vehicleIconUrl, key, baseKey);
+    // ONE steady bitmap per icon+status+selection. The old breathing pulse
+    // cycled three glow bitmaps per moving vehicle and every swap redrew the
+    // marker — on real phones that was the icon visibly blinking. Never fall
+    // back to the default red pin — only a COMPOSED car bitmap.
+    final key = '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}';
+    final icon = _bestIcon(v.vehicleIconUrl, key, key);
     if (icon == null) return;
     // Followed (single) uses the eased glide; fleet uses the fleet ease.
     final pos = (widget.followVehicleId == v.id && _followRendered != null)
@@ -995,8 +976,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if ((!_iconCache.containsKey(key) || placeholderDue) &&
         !_iconLoading.contains(key)) {
       _iconLoading.add(key);
-      unawaited(_loadIcon(key, v.vehicleIconUrl, status, selected,
-          glowScale: glowScale));
+      unawaited(_loadIcon(key, v.vehicleIconUrl, status, selected));
     }
 
     // Reg-number glass label — a SECOND, non-rotating marker just below the
