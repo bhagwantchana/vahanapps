@@ -88,6 +88,27 @@ String buildSpokenSentence(Map<String, dynamic> data) {
       return 'Alert. Possible tampering with $vehicle.';
     case 'low_battery':
       return '$vehicle battery is low.';
+    // Safety types a listener should not have to read a banner for: a guarded
+    // car that moved, a tow, a device going dark. Same tbl_alerts enum names
+    // the server sends (normalizeAlertType).
+    case 'parking_guard':
+      return 'Alert! $vehicle is moving while parking guard is on.';
+    case 'towing':
+      return 'Alert! $vehicle may be getting towed.';
+    case 'speed_camera':
+      return '$vehicle, speed camera ahead.';
+    case 'harsh_brake':
+      return '$vehicle braked harshly.';
+    case 'harsh_accel':
+      return '$vehicle accelerated harshly.';
+    case 'harsh_corner':
+      return '$vehicle took a corner too fast.';
+    case 'offline':
+      return '$vehicle has gone offline.';
+    case 'device_back_online':
+      return '$vehicle is back online.';
+    case 'idle':
+      return '$vehicle is idling with the engine on.';
     default:
       return ''; // wallet / account / unknown types stay silent
   }
@@ -109,6 +130,13 @@ class VoiceAnnouncer {
     try { await tts.setLanguage('en-IN'); } catch (_) {}
     try { await tts.setSpeechRate(0.45); } catch (_) {}
     try { await tts.setVolume(1.0); } catch (_) {}
+    // Two alerts close together must BOTH be heard: queue the second instead
+    // of cutting the first off mid-plate (Android; iOS ignores the call).
+    try { await tts.setQueueMode(1); } catch (_) {}
+    // speak() resolves when the sentence FINISHES, not when it starts — this
+    // is what keeps the FCM background handler's isolate alive long enough
+    // for the whole sentence instead of being torn down mid-word.
+    try { await tts.awaitSpeakCompletion(true); } catch (_) {}
     _tts = tts;
     _ready = true;
   }

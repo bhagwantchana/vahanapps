@@ -88,6 +88,26 @@ void main() {
       }
     });
 
+    test('every safety type in the alerts enum has a voice', () {
+      // A listener should never have to read the banner for these. The list
+      // mirrors tbl_alerts' vehicle-safety values; wallet/account noise is
+      // pinned silent above.
+      for (final t in [
+        'parking_guard', 'towing', 'speed_camera',
+        'harsh_brake', 'harsh_accel', 'harsh_corner',
+        'offline', 'device_back_online', 'idle',
+      ]) {
+        final s = buildSpokenSentence(data(t));
+        expect(s, isNotEmpty, reason: '$t must be spoken');
+        expect(s, contains('BUS'), reason: '$t must name the vehicle');
+      }
+    });
+
+    test('parking guard and towing are urgent', () {
+      expect(buildSpokenSentence(data('parking_guard')), startsWith('Alert!'));
+      expect(buildSpokenSentence(data('towing')), startsWith('Alert!'));
+    });
+
     test('a payload with no vehicle info still reads sensibly', () {
       expect(
         buildSpokenSentence(<String, dynamic>{'alert_type': 'ignition_on'}),
