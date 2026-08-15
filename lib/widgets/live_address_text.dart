@@ -22,6 +22,7 @@ class LiveAddressText extends StatefulWidget {
     this.maxLines = 2,
     this.placeholderText,
     this.initialAddress,
+    this.onAddressChanged,
   });
 
   final double latitude;
@@ -29,6 +30,13 @@ class LiveAddressText extends StatefulWidget {
   final TextStyle? style;
   final int maxLines;
   final String? placeholderText;
+
+  /// Fires (post-frame) whenever the RESOLVED street changes, with the full
+  /// string. Lets a parent decide layout from the real text — e.g. the
+  /// vehicle card shows its "full address" info button only when this text
+  /// is actually too long for the card. Never fires for the lat/lng
+  /// fallback: coordinates are short, nothing to expand.
+  final ValueChanged<String>? onAddressChanged;
 
   /// Address the SERVER already had for this coordinate, delivered with the
   /// vehicle row (`cached_address`). When present the street is on screen in
@@ -46,6 +54,20 @@ class LiveAddressText extends StatefulWidget {
 
 class _LiveAddressTextState extends State<LiveAddressText> {
   static final Map<String, String> _cache = <String, String>{};
+
+  String _lastNotified = '';
+
+  /// Post-frame so a synchronous seed in initState/didUpdateWidget can't
+  /// call the parent's setState mid-build.
+  void _notifyAddress() {
+    final cb = widget.onAddressChanged;
+    final value = _resolved ?? '';
+    if (cb == null || value.isEmpty || value == _lastNotified) return;
+    _lastNotified = value;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) cb(value);
+    });
+  }
 
   // In-flight lookups shared across widget instances. A Map of futures (not
   // a Set of keys) so that when multiple list cells of the same vehicle
@@ -70,6 +92,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
   void initState() {
     super.initState();
     _seedFromServer();
+    _notifyAddress();
     _resolveAddress();
   }
 
@@ -108,6 +131,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
     // already the answer — take it now rather than showing the old street
     // while a geocode runs.
     _seedFromServer();
+    _notifyAddress();
     _resolveAddress();
   }
 
@@ -120,6 +144,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
     final cached = _cache[key];
     if (cached != null) {
       if (mounted) setState(() => _resolved = cached);
+      _notifyAddress();
       return;
     }
 
@@ -136,6 +161,7 @@ class _LiveAddressTextState extends State<LiveAddressText> {
         mounted &&
         key == _cacheKey(widget.latitude, widget.longitude)) {
       setState(() => _resolved = resolved);
+      _notifyAddress();
     }
   }
 

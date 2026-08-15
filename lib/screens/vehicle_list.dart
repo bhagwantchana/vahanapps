@@ -30,6 +30,26 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _autoRefreshTimer;
   String _searchText = '';
+
+  /// The street each card is currently SHOWING (LiveAddressText reports it),
+  /// so the card can measure whether the full-address (i) button is needed.
+  final Map<int, String> _cardAddresses = <int, String>{};
+
+  /// Name-row icon matched to the vehicle's own type — a Platina wearing a
+  /// car glyph read as a mistake (owner review).
+  IconData _typeIcon(String typeName) {
+    final t = typeName.toLowerCase();
+    if (t.contains('bike') || t.contains('motor') || t.contains('scoot') ||
+        t.contains('activa') || t.contains('cycle')) {
+      return LucideIcons.bike;
+    }
+    if (t.contains('bus')) return LucideIcons.bus;
+    if (t.contains('truck') || t.contains('lorry') || t.contains('tractor') ||
+        t.contains('trolley') || t.contains('trailer')) {
+      return LucideIcons.truck;
+    }
+    return LucideIcons.car;
+  }
   // Auto-refresh the vehicle list every 30 s while in foreground, and on
   // every app resume. Cancels itself when the app is paused so we don't
   // burn data / battery while the user isn't looking.
@@ -467,29 +487,29 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.car, size: 14, color: Colors.grey),
-                        const SizedBox(width: 6),
+                        Icon(_typeIcon(vehicle.typeName), size: 16, color: Colors.grey),
+                        const SizedBox(width: 7),
                         Expanded(
                           child: Text(
                             (vehicle.name.isNotEmpty && vehicle.name != vehicle.registrationNumber) ? vehicle.name : '—',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w800),
+                            style: TextStyle(fontSize: 13.5, color: Colors.grey.shade800, fontWeight: FontWeight.w800),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
-                        Icon(LucideIcons.tag, size: 13, color: Colors.grey),
-                        const SizedBox(width: 6),
+                        Icon(LucideIcons.tag, size: 14, color: Colors.grey),
+                        const SizedBox(width: 7),
                         Expanded(
                           child: Text(
                             vehicle.typeName.isNotEmpty ? vehicle.typeName : '—',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -522,33 +542,61 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1),
-                          child: Icon(LucideIcons.mapPin, size: 14, color: Colors.grey),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: LiveAddressText(
-                            latitude: vehicle.latitude,
-                            longitude: vehicle.longitude,
-                            initialAddress: vehicle.cachedAddress,
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600, height: 1.3),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        // The full-address (i) button earns its place ONLY
+                        // when the address genuinely doesn't fit in two
+                        // lines here (owner ask: a fully visible address
+                        // needs no expander). Measured with the exact
+                        // style/scale the Text will use.
+                        final addressStyle = TextStyle(fontSize: 11.5, color: Colors.grey.shade600, fontWeight: FontWeight.w600, height: 1.3);
+                        final address = _cardAddresses[vehicle.id] ?? vehicle.cachedAddress;
+                        var truncated = false;
+                        if (address.trim().isNotEmpty) {
+                          final painter = TextPainter(
+                            text: TextSpan(text: address, style: addressStyle),
                             maxLines: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => _showFullAddressModal(vehicle),
-                          child: Icon(
-                            LucideIcons.info,
-                            size: 16,
-                            color: AppTheme.primaryBlue,
-                          ),
-                        ),
-                      ],
+                            textDirection: TextDirection.ltr,
+                            textScaler: MediaQuery.textScalerOf(context),
+                          )..layout(maxWidth: constraints.maxWidth - 14 - 6);
+                          truncated = painter.didExceedMaxLines;
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
+                              child: Icon(LucideIcons.mapPin, size: 14, color: Colors.grey),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: LiveAddressText(
+                                latitude: vehicle.latitude,
+                                longitude: vehicle.longitude,
+                                initialAddress: vehicle.cachedAddress,
+                                style: addressStyle,
+                                maxLines: 2,
+                                onAddressChanged: (value) {
+                                  if (_cardAddresses[vehicle.id] == value) return;
+                                  setState(() => _cardAddresses[vehicle.id] = value);
+                                },
+                              ),
+                            ),
+                            if (truncated) ...[
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _showFullAddressModal(vehicle),
+                                child: Icon(
+                                  LucideIcons.info,
+                                  size: 16,
+                                  color: AppTheme.primaryBlue,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 4),
                     Row(
