@@ -458,6 +458,8 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
               ),
               Container(width: 1, height: 35, color: const Color(0xFFF1F4F8)),
               const SizedBox(width: 12),
+              // Name + type live up here now; the address moved to the wide
+              // bottom row where a full address actually fits (owner ask).
               Expanded(
                 flex: 4,
                 child: Column(
@@ -465,24 +467,14 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.mapPin, size: 14, color: Colors.grey),
+                        Icon(LucideIcons.car, size: 14, color: Colors.grey),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: LiveAddressText(
-                            latitude: vehicle.latitude,
-                            longitude: vehicle.longitude,
-                            initialAddress: vehicle.cachedAddress,
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                          child: Text(
+                            (vehicle.name.isNotEmpty && vehicle.name != vehicle.registrationNumber) ? vehicle.name : '—',
                             maxLines: 1,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        GestureDetector(
-                          onTap: () => _showFullAddressModal(vehicle),
-                          child: Icon(
-                            LucideIcons.info,
-                            size: 16,
-                            color: AppTheme.primaryBlue,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w800),
                           ),
                         ),
                       ],
@@ -490,9 +482,16 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(LucideIcons.clock, size: 14, color: Colors.grey),
+                        Icon(LucideIcons.tag, size: 13, color: Colors.grey),
                         const SizedBox(width: 6),
-                        Text('${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle.createdAt, strings)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                        Expanded(
+                          child: Text(
+                            vehicle.typeName.isNotEmpty ? vehicle.typeName : '—',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -513,52 +512,61 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
           const SizedBox(height: 16),
           const Divider(height: 1, color: Color(0xFFF1F4F8)),
           const SizedBox(height: 12),
+          // FULL address down here — the card's whole width minus the Track
+          // button, wrapping to two lines, with "Updated …" beneath it.
+          // Owner ask: the one-line top slot kept truncating real addresses.
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: _cardMeta(
-                  'VEHICLE NAME',
-                  (vehicle.name.isNotEmpty && vehicle.name != vehicle.registrationNumber) ? vehicle.name : '—',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
+                          child: Icon(LucideIcons.mapPin, size: 14, color: Colors.grey),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: LiveAddressText(
+                            latitude: vehicle.latitude,
+                            longitude: vehicle.longitude,
+                            initialAddress: vehicle.cachedAddress,
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600, height: 1.3),
+                            maxLines: 2,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => _showFullAddressModal(vehicle),
+                          child: Icon(
+                            LucideIcons.info,
+                            size: 16,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(LucideIcons.clock, size: 12, color: Colors.grey),
+                        const SizedBox(width: 6),
+                        Text('${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle.createdAt, strings)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(child: _cardMeta('TYPE', vehicle.typeName.isNotEmpty ? vehicle.typeName : '—')),
               const SizedBox(width: 12),
               _buildBtn(LucideIcons.navigation, strings.t('track'), const Color(0xFFE3F2FD), Colors.blue, () => _navigateToDetail(vehicle)),
             ],
           ),
         ],
       ),
-    );
-  }
-
-  /// One labelled meta field (label on top, value below) for the card's
-  /// bottom row. Kept identical for VEHICLE NAME / TYPE so they sit in
-  /// equal-width columns with even spacing — no more odd gaps.
-  Widget _cardMeta(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 8,
-            color: Colors.grey.shade500,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.3,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
     );
   }
 
