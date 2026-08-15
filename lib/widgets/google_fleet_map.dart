@@ -166,6 +166,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   final Set<String> _iconLoading = <String>{};
   BitmapDescriptor? _fallbackIcon;
 
+  // Keys whose cached bitmap is only the chevron PLACEHOLDER because the real
+  // icon download failed (weak signal). Tracked so (a) the marker can borrow
+  // any REAL variant of the same vehicle icon instead of flashing the chevron
+  // every time the status flips, and (b) the download is retried — otherwise
+  // one bad fetch left a vehicle as an arrow forever.
+  final Set<String> _iconPlaceholderKeys = <String>{};
+  final Map<String, DateTime> _iconRetryAt = <String, DateTime>{};
+
   /// registration text → composed glass label bitmap.
   final Map<String, BitmapDescriptor> _labelCache =
       <String, BitmapDescriptor>{};
@@ -770,17 +778,50 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
     // Icon still downloading (or missing on the server) — show a status-coloured
     // chevron rather than the folded-map asset the old fallback used.
+    final downloadFailed = raw == null;
     raw ??= await buildPlaceholderVehiclePng(color: shadow);
     try {
       final png = await _composePng(raw, shadow,
           selected: selected, glowScale: glowScale);
       if (!mounted) return;
       _iconCache[key] = BitmapDescriptor.bytes(png, imagePixelRatio: _dpr);
+      if (downloadFailed) {
+        // Remember this is only the chevron and try the real file again in a
+        // while — networks come back; the marker shouldn't stay an arrow.
+        _iconPlaceholderKeys.add(key);
+        _iconRetryAt[key] = DateTime.now().add(const Duration(seconds: 30));
+      } else {
+        _iconPlaceholderKeys.remove(key);
+        _iconRetryAt.remove(key);
+      }
       _iconLoading.remove(key);
       _refreshMarkers();
     } catch (_) {
       _iconLoading.remove(key);
     }
+  }
+
+  /// The best bitmap available for this vehicle RIGHT NOW: the exact
+  /// status/glow variant if it's real, else the base variant, else ANY
+  /// already-downloaded variant of the SAME vehicle icon (a green bike beats
+  /// a chevron while the red one downloads), else the shared fallback. This
+  /// is what stops the marker flip-flopping between the bike and an arrow
+  /// every time the status changes on a weak connection.
+  BitmapDescriptor? _bestIcon(String iconUrl, String key, String baseKey) {
+    final exact = _iconCache[key];
+    if (exact != null && !_iconPlaceholderKeys.contains(key)) return exact;
+    final base = _iconCache[baseKey];
+    if (base != null && !_iconPlaceholderKeys.contains(baseKey)) return base;
+    if (iconUrl.isNotEmpty) {
+      final prefix = '$iconUrl|';
+      for (final entry in _iconCache.entries) {
+        if (entry.key.startsWith(prefix) &&
+            !_iconPlaceholderKeys.contains(entry.key)) {
+          return entry.value;
+        }
+      }
+    }
+    return exact ?? base ?? _fallbackIcon;
   }
 
   // ── Registration "glass" label bitmaps ────────────────────────────────────
@@ -898,7 +939,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     // the glow first - it is effectively always cached - so the vehicle never
     // vanishes or flashes grey while a cosmetic variant is still rendering.
     final baseKey = '${v.vehicleIconUrl}|$status${selected ? '|sel' : ''}';
-    final icon = _iconCache[key] ?? _iconCache[baseKey] ?? _fallbackIcon;
+    final icon = _bestIcon(v.vehicleIconUrl, key, baseKey);
     if (icon == null) return;
     // Followed (single) uses the eased glide; fleet uses the fleet ease.
     final pos = (widget.followVehicleId == v.id && _followRendered != null)
@@ -947,7 +988,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         onTap: () => widget.onVehicleTap?.call(v),
       ),
     );
-    if (!_iconCache.containsKey(key) && !_iconLoading.contains(key)) {
+    // Load when missing — or RE-load when what we cached was only the
+    // placeholder and its retry window has passed.
+    final placeholderDue = _iconPlaceholderKeys.contains(key) &&
+        !(_iconRetryAt[key]?.isAfter(DateTime.now()) ?? false);
+    if ((!_iconCache.containsKey(key) || placeholderDue) &&
+        !_iconLoading.contains(key)) {
       _iconLoading.add(key);
       unawaited(_loadIcon(key, v.vehicleIconUrl, status, selected,
           glowScale: glowScale));

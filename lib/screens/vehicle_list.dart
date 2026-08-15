@@ -477,7 +477,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 ),
               ),
               Container(width: 1, height: 35, color: const Color(0xFFF1F4F8)),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               // Name + type live up here now; the address moved to the wide
               // bottom row where a full address actually fits (owner ask).
               Expanded(

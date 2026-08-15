@@ -359,15 +359,32 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     if (_liveTrail.isNotEmpty) {
       final last = _liveTrail.last;
       final meters = const Distance().as(LengthUnit.Meter, last, next);
-      // Teleport (device reconnected far away / GPS glitch): start a FRESH
-      // trail so we never draw a long straight line across the map.
-      if (meters > 2000) {
+      // A chord this long between CONSECUTIVE live fixes is not driving
+      // (500 m in ~10 s is 180 km/h) — it is a reconnect after a gap. Start a
+      // fresh trail instead of slashing a straight line across the city;
+      // the old 2 km threshold let exactly those chords through, which is
+      // the "polyline going off the map" the owner photographed.
+      if (meters > 500) {
         _liveTrail
           ..clear()
           ..add(next);
         return;
       }
       if (meters < 5) return;
+      // Jitter spur: the trail went OUT to the last point and came straight
+      // back — a multipath flick at a signal-poor chowk, not a turn the bike
+      // made. Replace the spur with the new point so the line stays on the
+      // road. Real corners survive: their detour ratio stays small.
+      if (_liveTrail.length >= 2) {
+        final anchor = _liveTrail[_liveTrail.length - 2];
+        const d = Distance();
+        final aToLast = d.as(LengthUnit.Meter, anchor, last);
+        final lastToNext = meters;
+        final aToNext = d.as(LengthUnit.Meter, anchor, next);
+        if (aToNext < 60 && (aToLast + lastToNext) > (aToNext * 1.8 + 20)) {
+          _liveTrail.removeLast();
+        }
+      }
     }
     _liveTrail.add(next);
     if (_liveTrail.length > _liveTrailMax) {
