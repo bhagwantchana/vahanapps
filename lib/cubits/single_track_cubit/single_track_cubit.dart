@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fleet_monitor/cubits/single_track_cubit/single_track_state.dart';
+import 'package:fleet_monitor/models/single_track_model.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/models/vehicle_settings_model.dart';
 import 'package:fleet_monitor/repositorys/single_track_repository.dart';
@@ -24,6 +25,23 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
   // push channel is healthy — poll only fills gaps, never duplicates.
   DateTime? _lastLiveAt;
 
+  /// A poll response replaces the whole model (settings, driver, sseSig all
+  /// refresh) — but its FIX can be older than the one already on screen:
+  /// the response was snapshotted before the last SSE push landed, or the
+  /// device's clock is distrusted and the server row itself stepped back on
+  /// an interleaved backfill. Adopting it as-is is the "vehicle piche aa ke
+  /// fer janda" the owner keeps seeing while tracking. Keep every fresh
+  /// field EXCEPT the live fix — the newest position always wins.
+  SingleTrackModel _keepNewestFix(SingleTrackModel fresh) {
+    final current = state.singleTrackModel?.data;
+    final incoming = fresh.data;
+    if (current == null || incoming == null || current.imei != incoming.imei) {
+      return fresh;
+    }
+    if (current.acceptsLiveFixFrom(incoming)) return fresh;
+    return fresh.copyWith(data: incoming.withLiveFieldsFrom(current));
+  }
+
   Future<void> fetchVehicleTrack(String imei) async {
     _trackedImei = imei;
     emit(SingleTrackLoadingState(singleTrackModel: state.singleTrackModel));
@@ -33,7 +51,7 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
       // This IS live data — stamp it so the screen's fallback poll doesn't
       // immediately refetch on its first tick right after this load.
       _lastLiveAt = DateTime.now();
-      emit(SingleTrackLoggedInState(singleTrackModel: result));
+      emit(SingleTrackLoggedInState(singleTrackModel: _keepNewestFix(result)));
       _ensureLiveStream(result.data);
     } catch (error) {
       if (isClosed) return;
@@ -59,7 +77,7 @@ class SingleTrackCubit extends Cubit<SingleTrackState> {
       final result = await _repository.fetchVehicleTrack(imei);
       if (isClosed || _trackedImei != imei) return;
       _lastLiveAt = DateTime.now();
-      emit(SingleTrackLoggedInState(singleTrackModel: result));
+      emit(SingleTrackLoggedInState(singleTrackModel: _keepNewestFix(result)));
       _ensureLiveStream(result.data);
     } catch (_) {
       // Silent by design — the next tick or SSE reconnect will recover.

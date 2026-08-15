@@ -22,12 +22,41 @@ class VehicleCubit extends Cubit<VehicleState> {
   SseClient? _sseClient;
   StreamSubscription<SseEvent>? _sseSubscription;
 
+  /// Same protection the single-vehicle screen has: a list poll refreshes
+  /// everything, but a record whose fix is OLDER than the one already on
+  /// screen must not drag its marker backwards — the response raced a
+  /// fresher SSE push, or a clock-distrusted device's server row stepped
+  /// back on an interleaved backfill. Fresh payload wins for every field
+  /// EXCEPT the live fix; the newest position always stays.
+  VehicleListModel _keepNewestFixes(VehicleListModel fresh) {
+    final current = state.vechileListModel?.data;
+    if (current == null || current.isEmpty || fresh.data.isEmpty) {
+      return fresh;
+    }
+    final byId = <int, VehicleRecord>{for (final v in current) v.id: v};
+    var changed = false;
+    final merged = fresh.data.map((incoming) {
+      final old = byId[incoming.id];
+      if (old == null || old.acceptsLiveFixFrom(incoming)) return incoming;
+      changed = true;
+      return incoming.withLiveFieldsFrom(old);
+    }).toList();
+    if (!changed) return fresh;
+    return VehicleListModel(
+      flag: fresh.flag,
+      count: fresh.count,
+      message: fresh.message,
+      data: merged,
+      sseSig: fresh.sseSig,
+    );
+  }
+
   Future<void> fetchVehicles() async {
     emit(VehicleLoadingState(vechileListModel: state.vechileListModel));
     try {
       final result = await _vehicleRepository.fetchVehicles();
       if (isClosed) return;
-      emit(VehicleLoggedInState(vechileListModel: result));
+      emit(VehicleLoggedInState(vechileListModel: _keepNewestFixes(result)));
       _ensureLiveStream(result);
     } on CachedFleetException catch (cached) {
       // Network is down but we have a last-good fleet. Show it, flagged as
