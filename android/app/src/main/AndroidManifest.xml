@@ -15,6 +15,16 @@
          does NOT require broad media permissions. -->
     <uses-permission android:name="android.permission.CAMERA"/>
 
+    <!-- Declaring CAMERA makes Play treat android.hardware.camera as REQUIRED
+         unless we say otherwise — which silently dropped 424 device models
+         from the store listing (Car -96%, Chromebook -86%, Tablet -4%): every
+         device without a camera. The app only ever opens the GALLERY picker
+         (profile_widget.dart uses ImageSource.gallery; ImageSource.camera is
+         never called), so the hardware is genuinely optional and these devices
+         belong back in the listing. `.any` covers front-camera-only hardware. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+
     <!-- Play Console policy: apps with infrequent / one-time photo access
          must NOT request READ_MEDIA_IMAGES / READ_MEDIA_VIDEO; they have to
          use the system photo picker instead. The image_picker / file_picker
