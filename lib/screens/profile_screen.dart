@@ -8,6 +8,8 @@ import 'package:fleet_monitor/cubits/profile_cubit/profile_cubit.dart';
 import 'package:fleet_monitor/cubits/profile_cubit/profile_state.dart';
 import 'package:fleet_monitor/cubits/settings_cubit/settings_cubit.dart';
 import 'package:fleet_monitor/l10n/app_strings.dart';
+import 'package:fleet_monitor/repositorys/device_health_repository.dart';
+import 'package:fleet_monitor/screens/device_health_screen.dart';
 import 'package:fleet_monitor/screens/login_screen.dart';
 import 'package:fleet_monitor/services/local_notification.dart';
 import 'package:fleet_monitor/screens/web_page_screen.dart';
@@ -43,6 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _biometricSupported = false;
   bool _biometricBusy = false;
   bool _voiceAlerts = false; // opt-in — mirrors VoiceAnnouncer's default
+  int? _deviceHealthNeeds; // null until the first fetch lands
 
   @override
   void initState() {
@@ -53,6 +56,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     _loadBiometricState();
     _loadVoiceAlertsState();
+    _loadDeviceHealthBadge();
   }
 
   Future<void> _loadVoiceAlertsState() async {
@@ -307,6 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     enabled: _biometricSupported && !_biometricBusy,
                     onChanged: _toggleBiometricLogin,
                   ),
+                  _buildDeviceHealthTile(),
                   _settingsItem(
                     Icons.help_outline_rounded,
                     AppStrings.of(context).t('help_support'),
@@ -481,6 +486,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
       ),
     );
+  }
+
+  /// Device Health, with a live count of what needs fixing in the subtitle —
+  /// a menu row reading "Device Health" invites nobody in, but "2 devices
+  /// need attention" is the whole reason the screen exists. Loaded once and
+  /// cached in state; a failure just leaves the neutral subtitle.
+  Widget _buildDeviceHealthTile() {
+    return _settingsItem(
+      Icons.sensors_rounded,
+      'Device Health',
+      _deviceHealthNeeds == null
+          ? 'Check your trackers'
+          : (_deviceHealthNeeds == 0
+              ? 'All trackers healthy'
+              : '$_deviceHealthNeeds device(s) need attention'),
+      trailing: (_deviceHealthNeeds ?? 0) > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFD32F2F),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '$_deviceHealthNeeds',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            )
+          : null,
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => const DeviceHealthScreen(),
+          ),
+        );
+        // Coming back from the screen, the owner may have fixed something.
+        _loadDeviceHealthBadge();
+      },
+    );
+  }
+
+  Future<void> _loadDeviceHealthBadge() async {
+    try {
+      final report = await DeviceHealthRepository().fetchHealth();
+      if (!mounted) return;
+      setState(() => _deviceHealthNeeds = report.needsAttention);
+    } catch (_) {
+      // Badge is a nicety — the screen itself reports its own errors.
+    }
   }
 
   Widget _buildAlertsTile() {
