@@ -16,6 +16,7 @@ import 'package:fleet_monitor/screens/document_vault_screen.dart';
 import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
 import 'package:fleet_monitor/screens/driving_score_screen.dart';
 import 'package:fleet_monitor/screens/nearby_pois_screen.dart';
+import 'package:fleet_monitor/screens/position_certificate_screen.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
 import 'package:fleet_monitor/services/lifecycle_refresh.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
@@ -509,6 +510,23 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       context,
       MaterialPageRoute<void>(
         builder: (_) => TripReplayScreen(initialVehicle: vehicle),
+      ),
+    );
+  }
+
+  Future<void> _openPositionCertificate(VehicleRecord vehicle) async {
+    final label = <String>[
+      vehicle.vRegistrationNo,
+      vehicle.vName,
+    ].where((String s) => s.trim().isNotEmpty).join(' ').trim();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => PositionCertificateScreen(
+          vehicleId: vehicle.id,
+          vehicleLabel: label.isEmpty ? 'Vehicle' : label,
+        ),
       ),
     );
   }
@@ -1905,6 +1923,17 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 label: 'History',
                                 color: AppTheme.primaryBlue,
                                 onTap: () => _openHistory(vehicle),
+                              ),
+                            // Sits beside History on purpose: both answer
+                            // "what happened earlier", but this one answers it
+                            // for a single moment, in a form you can hand to
+                            // an insurer or the police.
+                            if (settings.allowHistory == 1)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.fileSearch,
+                                label: 'Where was it?',
+                                color: AppTheme.primaryBlue,
+                                onTap: () => _openPositionCertificate(vehicle),
                               ),
                             _buildFixedActionButton(
                               icon: LucideIcons.navigation,
