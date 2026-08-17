@@ -316,28 +316,38 @@ class CustomNotificationSoundService {
     } catch (_) {
       // Silent failure: token will be retried on next refresh/login.
     }
-    // A fresh login/token row starts with voice_mode 0 on the server — if
-    // THIS phone had voice alerts on, re-arm the server-side flag so its
-    // pushes keep arriving on the silent channel after re-login or an FCM
-    // token rotation.
-    final voiceOn = await LocalStorage.readValue(kVoiceAlertsPrefKey) == '1';
-    if (voiceOn) {
-      await syncVoicePref(true);
-    }
+    // Re-sync the voice flag on EVERY startup/token change — in both
+    // directions. A fresh login row starts at voice_mode 0 (would bring the
+    // double audio back), and a stale 1 on an old row keeps a phone silent
+    // that expects sound. Sending the current truth each time heals both.
+    await syncVoicePref();
   }
 
   /// Tell the server whether THIS phone wants voice-only alerts. voice_mode=1
   /// makes the tracking server deliver this phone's pushes on the silent
-  /// channel — the app's spoken sentence becomes the only audio. Best-effort:
-  /// a failed call means the phone keeps getting sound until the next sync,
+  /// channel — the app's spoken sentence becomes the only audio.
+  ///
+  /// The preference is read HERE, at send time, not passed in: rapid toggling
+  /// fires overlapping requests, and a captured argument re-sends whatever the
+  /// state was when that tap happened. Reading fresh means the last request to
+  /// land carries the newest state. The FCM token rides along because the
+  /// server must flag the ROW HOLDING THE TOKEN — the auth-token row and the
+  /// device-token row drift apart across re-logins, and a flag on a row with
+  /// no matching android_device_token silences nobody (exactly the bug this
+  /// fixed). Best-effort: a failed call means sound until the next sync,
   /// never a lost notification.
-  static Future<void> syncVoicePref(bool enabled) async {
+  static Future<void> syncVoicePref() async {
     try {
       final authToken = await LocalStorage.readValue(PreferencesKey.token) ?? '';
       if (authToken.isEmpty) return;
+      final on = await LocalStorage.readValue(kVoiceAlertsPrefKey) == '1';
+      final fcm = await LocalStorage.readValue(PreferencesKey.fcmToken) ?? '';
       await NetworkApi().sendRequest.post(
         AppUrl.setVoicePref,
-        data: FormData.fromMap(<String, dynamic>{'enable': enabled ? 1 : 0}),
+        data: FormData.fromMap(<String, dynamic>{
+          'enable': on ? 1 : 0,
+          'fcm_token': fcm,
+        }),
         options: NetworkApi.buildOptions(authToken: authToken),
       );
     } catch (_) {
@@ -510,6 +520,16 @@ class CustomNotificationSoundService {
       body: body,
     );
 
+    // Voice-only alerts: when the spoken alert is ON, the banner this app
+    // shows must be SILENT — otherwise the channel sound and the TTS play on
+    // top of each other. Checked HERE (not just server-side) because this is
+    // the app's own display path: it must never double the audio even if the
+    // server's per-token voice flag is stale or landed on the wrong row.
+    // Background-delivered notifications are the server's job; this covers
+    // every notification the app itself presents.
+    final voiceOnly =
+        await LocalStorage.readValue(kVoiceAlertsPrefKey) == '1';
+
     // Build a per-vehicle group key so multiple alerts for the same vehicle
     // collapse into a single Android notification stack instead of spamming
     // the shade. Falls back to a flat 'vahanconnect_alerts' group when the
@@ -524,24 +544,38 @@ class CustomNotificationSoundService {
             : 'vahanconnect.alerts');
 
     if (Platform.isAndroid) {
-      final androidDetails = AndroidNotificationDetails(
-        soundConfig.channelId,
-        soundConfig.channelName,
-        channelDescription: 'Vehicle tracking notifications',
-        importance: Importance.high,
-        priority: Priority.high,
-        playSound: true,
-        sound: RawResourceAndroidNotificationSound(soundConfig.soundName),
-        // Match the channel's usage (see _soundUsage) so a foreground-shown
-        // notification isn't truncated either.
-        audioAttributesUsage: _soundUsage,
-        icon: '@mipmap/ic_launcher',
-        groupKey: groupKey,
-        // setAsGroupSummary=false on the child notifications; Android will
-        // auto-collapse 4+ alerts with the same groupKey into a stack with
-        // a system-generated summary.
-        setAsGroupSummary: false,
-      );
+      final androidDetails = voiceOnly
+          // Silent channel: banner + stack, no sound — TTS is the only audio.
+          ? AndroidNotificationDetails(
+              'fleet_monitor_voice_silent_v1',
+              'Voice alerts (silent)',
+              channelDescription:
+                  'Alerts announced by voice — banner only, no sound',
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: false,
+              icon: '@mipmap/ic_launcher',
+              groupKey: groupKey,
+              setAsGroupSummary: false,
+            )
+          : AndroidNotificationDetails(
+              soundConfig.channelId,
+              soundConfig.channelName,
+              channelDescription: 'Vehicle tracking notifications',
+              importance: Importance.high,
+              priority: Priority.high,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound(soundConfig.soundName),
+              // Match the channel's usage (see _soundUsage) so a
+              // foreground-shown notification isn't truncated either.
+              audioAttributesUsage: _soundUsage,
+              icon: '@mipmap/ic_launcher',
+              groupKey: groupKey,
+              // setAsGroupSummary=false on the child notifications; Android
+              // will auto-collapse 4+ alerts with the same groupKey into a
+              // stack with a system-generated summary.
+              setAsGroupSummary: false,
+            );
 
       final notificationId = message.messageId?.hashCode ??
           (DateTime.now().millisecondsSinceEpoch ~/ 1000);
@@ -559,11 +593,14 @@ class CustomNotificationSoundService {
     final notificationId = message.messageId?.hashCode ??
         (DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
+    // Voice-only: banner shows, no sound — the spoken sentence is the audio.
+    // (Foreground only: background iOS pushes keep their sound because TTS
+    // cannot run there.)
     final iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
-      presentSound: true,
-      sound: soundConfig.iosSoundFile,
+      presentSound: !voiceOnly,
+      sound: voiceOnly ? null : soundConfig.iosSoundFile,
       // iOS groups notifications that share a thread-identifier under the
       // same expandable stack on the lock screen and Notification Centre.
       threadIdentifier: groupKey,

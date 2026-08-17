@@ -474,8 +474,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           await VoiceAnnouncer.instance.setEnabled(v);
           // Tell the server too: voice-on phones receive their pushes on the
           // SILENT channel, so the spoken sentence is the only audio instead
-          // of playing on top of the channel sound.
-          await CustomNotificationSoundService.syncVoicePref(v);
+          // of playing on top of the channel sound. (syncVoicePref reads the
+          // just-saved pref itself — no argument — so rapid toggling always
+          // ends with the newest state on the server.)
+          await CustomNotificationSoundService.syncVoicePref();
         },
       ),
     );
