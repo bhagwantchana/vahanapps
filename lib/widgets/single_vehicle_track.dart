@@ -515,17 +515,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 
   Future<void> _openPositionCertificate(VehicleRecord vehicle) async {
-    final label = <String>[
-      vehicle.vRegistrationNo,
-      vehicle.vName,
-    ].where((String s) => s.trim().isNotEmpty).join(' ').trim();
-
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
         builder: (_) => PositionCertificateScreen(
           vehicleId: vehicle.id,
-          vehicleLabel: label.isEmpty ? 'Vehicle' : label,
+          // displayName already prefers the registration number and falls
+          // back to the name — the same label the rest of the app shows.
+          vehicleLabel:
+              vehicle.displayName.isEmpty ? 'Vehicle' : vehicle.displayName,
         ),
       ),
     );
