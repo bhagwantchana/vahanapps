@@ -50,6 +50,27 @@ Color _statusColorFor(VehicleRecord vehicle) {
   }
 }
 
+/// The polyline the map draws is history + live trail stitched together, and
+/// any gap in that chain — an ignition-off pause, a signal hole, the seam
+/// where the freshly-fetched history meets the live session — used to render
+/// as a straight chord slashed across whole blocks of buildings (the owner
+/// photographed one). A >500 m step between consecutive points is never
+/// driving; it is a break between two separate runs. Draw only the newest
+/// continuous run: the road actually behind the vehicle right now.
+List<LatLng> newestContinuousRun(List<LatLng> points,
+    {double breakMeters = 500}) {
+  if (points.length < 2) return points;
+  const d = Distance();
+  var start = 0;
+  for (var i = points.length - 1; i > 0; i--) {
+    if (d.as(LengthUnit.Meter, points[i - 1], points[i]) > breakMeters) {
+      start = i;
+      break;
+    }
+  }
+  return start == 0 ? points : points.sublist(start);
+}
+
 class VehicleDetailScreen extends StatefulWidget {
   const VehicleDetailScreen({super.key});
 
@@ -159,9 +180,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   }
 
   int _trailPointLimit(VehicleSettingsModel settings) {
+    // 240 full-resolution fixes (~40 min at a 10 s cadence). The old fallback
+    // of 25 compressed two hours of driving into two dozen points, and the
+    // straight lines between them cut across buildings on the map.
     return settings.mobileMapTrailPoints > 0
         ? settings.mobileMapTrailPoints
-        : 25;
+        : 240;
   }
 
   Future<List<LatLng>> _loadRouteTrail(
@@ -349,7 +373,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     }
   }
 
-  /// Append the latest fix to the on-screen trail (min 5 m step, capped).
+    /// Append the latest fix to the on-screen trail (min 5 m step, capped).
   void _growLiveTrail(VehicleRecord vehicle) {
     if (vehicle.latitude == 0 && vehicle.longitude == 0) return;
     if (_liveTrailVehicleId != vehicle.id) {
@@ -1403,10 +1427,12 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 // History snapshot + the live-growing session
                                 // trail (SSE/poll-fed) = a route line that
                                 // extends as the vehicle drives, like the web map.
-                                final trailPoints = <LatLng>[
-                                  ...(snapshot.data ?? <LatLng>[]),
-                                  ..._liveTrail,
-                                ];
+                                final trailPoints = newestContinuousRun(
+                                  <LatLng>[
+                                    ...(snapshot.data ?? <LatLng>[]),
+                                    ..._liveTrail,
+                                  ],
+                                );
                                 return Stack(
                                   children: <Widget>[
                                     settings.mobileMapProvider.toLowerCase() ==
@@ -2893,9 +2919,11 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
     final minutes = (settings?.mobileMapTrailMinutes ?? 0) > 0
         ? settings!.mobileMapTrailMinutes
         : 120;
+    // Same 240-point fallback as the detail card — 25 turned two hours of
+    // route into straight lines across the map.
     final limit = (settings?.mobileMapTrailPoints ?? 0) > 0
         ? settings!.mobileMapTrailPoints
-        : 25;
+        : 240;
     try {
       final now = DateTime.now();
       final points = await _trackRepository.fetchTripHistoryTrail(
@@ -2962,7 +2990,8 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
           _measureBar();
           // Same shape as the preview: the road already driven, then the line
           // this screen has grown since it opened.
-          final trailPoints = <LatLng>[..._historyTrail, ..._liveTrail];
+          final trailPoints = newestContinuousRun(
+              <LatLng>[..._historyTrail, ..._liveTrail]);
           return Stack(
             children: <Widget>[
               Positioned.fill(
