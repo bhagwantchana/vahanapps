@@ -187,6 +187,24 @@ class SingleTrackRepository {
   /// Subscribe/unsubscribe THIS PHONE to "bus is near" pushes for a stop.
   /// Keyed by the phone's FCM token because parents share one login — the
   /// token is the only per-parent identity that exists.
+  /// A public watch-this-vehicle URL, valid for [hours]. The server owns the
+  /// token and its expiry; the app only relays the link into WhatsApp/SMS.
+  Future<String> createLiveShare({required int vehicleId, int hours = 4}) async {
+    final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+    final response = await _networkApi.sendRequest.post(
+      AppUrl.createLiveShare,
+      data: FormData.fromMap(<String, dynamic>{
+        'vehicle_id': vehicleId,
+        'hours': hours,
+      }),
+      options: NetworkApi.buildOptions(authToken: token),
+    );
+    final api = ApiResponse.fromResponse(response);
+    if (api.flag == 0) throw Exception(api.message);
+    final data = (response.data as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    return (data['url'] ?? '').toString();
+  }
+
   Future<void> setStopAlert({
     required String imei,
     required int stopId,

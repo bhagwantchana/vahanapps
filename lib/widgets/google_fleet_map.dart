@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
+import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/widgets/map_motion.dart';
 import 'package:fleet_monitor/widgets/marker_placeholder.dart';
@@ -360,6 +361,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   @override
   void initState() {
     super.initState();
+    LocalStorage.readValue('map_traffic_on').then((v) {
+      if (mounted && v == '1' && !_traffic) setState(() => _traffic = true);
+    });
     WidgetsBinding.instance.addObserver(this);
     _preloadFallback();
     _refreshMarkers();
@@ -1820,7 +1824,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
               _MapCtrlButton(
                 icon: Icons.traffic_outlined,
                 active: _traffic,
-                onTap: () => setState(() => _traffic = !_traffic),
+                onTap: () {
+                  setState(() => _traffic = !_traffic);
+                  // Remembered across screens and app restarts — a layer the
+                  // user turned on should not silently turn itself off.
+                  LocalStorage.setValue('map_traffic_on', _traffic ? '1' : '0');
+                },
               ),
               const SizedBox(height: 8),
               _MapCtrlButton(

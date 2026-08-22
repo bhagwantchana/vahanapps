@@ -17,6 +17,7 @@ import 'package:fleet_monitor/screens/driver_sessions_screen.dart';
 import 'package:fleet_monitor/screens/driving_score_screen.dart';
 import 'package:fleet_monitor/screens/nearby_pois_screen.dart';
 import 'package:fleet_monitor/screens/position_certificate_screen.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:fleet_monitor/screens/trip_replay_screen.dart';
 import 'package:fleet_monitor/services/lifecycle_refresh.dart';
 import 'package:fleet_monitor/widgets/app_logo.dart';
@@ -536,6 +537,23 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         builder: (_) => TripReplayScreen(initialVehicle: vehicle),
       ),
     );
+  }
+
+  Future<void> _shareLiveLink(VehicleRecord vehicle) async {
+    final label = vehicle.displayName.isEmpty ? 'Vehicle' : vehicle.displayName;
+    try {
+      final url = await _trackRepository.createLiveShare(vehicleId: vehicle.id);
+      if (!mounted || url.isEmpty) return;
+      await Share.share(
+        'Track $label LIVE right now:\n$url\n\n'
+        '(Link 4 ghante chalega) — VahanConnect',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Link nahi ban sakeya: ${e.toString().replaceFirst('Exception: ', '')}')),
+      );
+    }
   }
 
   Future<void> _openPositionCertificate(VehicleRecord vehicle) async {
@@ -1959,6 +1977,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 color: AppTheme.primaryBlue,
                                 onTap: () => _openPositionCertificate(vehicle),
                               ),
+                            // The share that markets itself: whoever opens
+                            // the link watches this bus in a plain browser,
+                            // VahanConnect branding and all — no app, no
+                            // login, and the link dies on its own.
+                            _buildFixedActionButton(
+                              icon: LucideIcons.share2,
+                              label: 'Share Live',
+                              color: AppTheme.primaryBlue,
+                              onTap: () => _shareLiveLink(vehicle),
+                            ),
                             _buildFixedActionButton(
                               icon: LucideIcons.navigation,
                               label: 'Find Car',
