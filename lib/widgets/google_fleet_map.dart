@@ -952,46 +952,90 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
-  /// A round coloured badge with the POI's own glyph — petrol pump amber,
-  /// speed camera red, toll violet. Drawn once per type and cached; the
-  /// MaterialIcons font gives a crisp vector glyph at any pixel ratio.
-  Future<BitmapDescriptor> _composePoiBadge(String type) async {
-    const double size = 76;
-    final IconData glyph;
-    final Color fill;
-    switch (type) {
-      case 'fuel':
-        glyph = Icons.local_gas_station;
-        fill = const Color(0xFFF59E0B);
-        break;
-      case 'speed_camera':
-        glyph = Icons.speed;
-        fill = const Color(0xFFDC2626);
-        break;
-      default: // toll_booth
-        glyph = Icons.toll;
-        fill = const Color(0xFF7C3AED);
-    }
-
+  /// POI marker art, drawn once per type and cached. The petrol pump is a
+  /// real little pump — red body, screen, fuel drop, nozzle and hose —
+  /// modelled on the reference art the owner picked, because his verdict on
+  /// the generic glyph-in-a-circle was "unprofessional". Everything renders
+  /// at 4x and DISPLAYS at ~30 dp: the first version passed raw pixels as
+  /// logical pixels and covered half the city in orange.
+  Future<BitmapDescriptor> _composePoiIcon(String type) async {
+    const double c = 120; // canvas px; display width set on the descriptor
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const center = Offset(size / 2, size / 2);
 
+    if (type == 'fuel') {
+      final shadow = Paint()
+        ..color = Colors.black.withValues(alpha: 0.22)
+        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 5);
+      canvas.drawRRect(
+          RRect.fromLTRBR(16, 100, 104, 114, const Radius.circular(6)),
+          shadow);
+      canvas.drawRRect(
+          RRect.fromLTRBR(14, 94, 90, 110, const Radius.circular(7)),
+          Paint()..color = const Color(0xFF37424E));
+      final body = RRect.fromLTRBR(22, 10, 82, 96, const Radius.circular(12));
+      canvas.drawRRect(
+          body,
+          Paint()
+            ..shader = ui.Gradient.linear(
+                const Offset(22, 10), const Offset(82, 96), <Color>[
+              const Color(0xFFEF5350),
+              const Color(0xFFC62828),
+            ]));
+      canvas.drawRRect(
+          RRect.fromLTRBR(32, 20, 72, 44, const Radius.circular(6)),
+          Paint()
+            ..shader = ui.Gradient.linear(
+                const Offset(32, 20), const Offset(72, 44), <Color>[
+              const Color(0xFF80DEEA),
+              const Color(0xFF1E88E5),
+            ]));
+      final drop = Path()
+        ..moveTo(52, 52)
+        ..quadraticBezierTo(66, 70, 60, 80)
+        ..arcToPoint(const Offset(44, 80),
+            radius: const Radius.circular(9), clockwise: true)
+        ..quadraticBezierTo(38, 70, 52, 52)
+        ..close();
+      canvas.drawPath(drop, Paint()..color = const Color(0xFFFFA726));
+      canvas.drawRRect(
+          RRect.fromLTRBR(84, 22, 104, 40, const Radius.circular(5)),
+          Paint()..color = const Color(0xFFB71C1C));
+      final hose = Path()
+        ..moveTo(98, 40)
+        ..quadraticBezierTo(112, 66, 96, 94);
+      canvas.drawPath(
+          hose,
+          Paint()
+            ..color = const Color(0xFF37424E)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 6
+            ..strokeCap = StrokeCap.round);
+      final img =
+          await recorder.endRecording().toImage(c.toInt(), c.toInt());
+      final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+      return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: 30);
+    }
+
+    final IconData glyph =
+        type == 'speed_camera' ? Icons.photo_camera : Icons.toll;
+    final Color fill = type == 'speed_camera'
+        ? const Color(0xFFDC2626)
+        : const Color(0xFF6D28D9);
+    const center = Offset(c / 2, c / 2);
     canvas.drawCircle(
-      center.translate(0, 2),
-      size / 2 - 4,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.25)
-        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4),
-    );
-    canvas.drawCircle(center, size / 2 - 4, Paint()..color = Colors.white);
-    canvas.drawCircle(center, size / 2 - 7, Paint()..color = fill);
-
+        center.translate(0, 3),
+        c / 2 - 8,
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.22)
+          ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 5));
+    canvas.drawCircle(center, c / 2 - 8, Paint()..color = Colors.white);
+    canvas.drawCircle(center, c / 2 - 13, Paint()..color = fill);
     final tp = TextPainter(
       text: TextSpan(
         text: String.fromCharCode(glyph.codePoint),
         style: TextStyle(
-          fontSize: size * 0.55,
+          fontSize: c * 0.48,
           fontFamily: glyph.fontFamily,
           package: glyph.fontPackage,
           color: Colors.white,
@@ -1000,12 +1044,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
-
-    final img = await recorder
-        .endRecording()
-        .toImage(size.toInt(), size.toInt());
+    final img = await recorder.endRecording().toImage(c.toInt(), c.toInt());
     final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: 24);
   }
 
   // ── Markers ───────────────────────────────────────────────────────────────
@@ -1075,7 +1116,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       // badge sits ON the spot instead of pointing at it from above, which
       // read as "the pump is in the wrong place".
       for (final t in <String>{for (final poi in pois) poi.poiType}) {
-        _poiIconCache[t] ??= await _composePoiBadge(t);
+        _poiIconCache[t] ??= await _composePoiIcon(t);
       }
       if (!mounted) return;
       _poiCenter = here;
@@ -1085,7 +1126,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             markerId: MarkerId('poi_${poi.poiType}_${poi.lat}_${poi.lng}'),
             position: LatLng(poi.lat, poi.lng),
             icon: _poiIconCache[poi.poiType] ?? BitmapDescriptor.defaultMarker,
-            anchor: const Offset(0.5, 0.5),
+            // Pump stands ON the spot (base at the coordinate); the small
+            // discs sit centred.
+            anchor: poi.poiType == 'fuel'
+                ? const Offset(0.5, 0.92)
+                : const Offset(0.5, 0.5),
             zIndexInt: 0,
             infoWindow: InfoWindow(
               title: poi.name.isNotEmpty ? poi.name : labelFor(poi.poiType),
