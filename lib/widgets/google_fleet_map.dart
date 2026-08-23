@@ -97,7 +97,26 @@ class GoogleFleetMap extends StatefulWidget {
 
 // Compact Google Maps night + retro themes for the theme picker.
 const String _darkStyle =
-    '[{"elementType":"geometry","stylers":[{"color":"#212121"}]},{"elementType":"labels.icon","stylers":[{"visibility":"off"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#9aa4ad"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#212121"}]},{"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#2c2c2c"}]},{"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#b5b5b5"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3c3c3c"}]},{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#e0d18c"}]},{"featureType":"water","elementType":"geometry","stylers":[{"color":"#152431"}]}]';
+    // Google's reference "Night" palette: navy grounds, clearly readable
+    // roads and labels. The old #212121 flat dark hid the roads entirely —
+    // the owner called it unprofessional, and he was right.
+    '[{"elementType":"geometry","stylers":[{"color":"#242f3e"}]},'
+    '{"elementType":"labels.text.stroke","stylers":[{"color":"#242f3e"}]},'
+    '{"elementType":"labels.text.fill","stylers":[{"color":"#746855"}]},'
+    '{"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},'
+    '{"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#d59563"}]},'
+    '{"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#263c3f"}]},'
+    '{"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#6b9a76"}]},'
+    '{"featureType":"road","elementType":"geometry","stylers":[{"color":"#38414e"}]},'
+    '{"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#212a37"}]},'
+    '{"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#9ca5b3"}]},'
+    '{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#746855"}]},'
+    '{"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#1f2835"}]},'
+    '{"featureType":"road.highway","elementType":"labels.text.fill","stylers":[{"color":"#f3d19c"}]},'
+    '{"featureType":"transit","elementType":"geometry","stylers":[{"color":"#2f3948"}]},'
+    '{"featureType":"water","elementType":"geometry","stylers":[{"color":"#17263c"}]},'
+    '{"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#515c6d"}]}]';
+
 const String _retroStyle =
     '[{"elementType":"geometry","stylers":[{"color":"#ebe3cd"}]},{"elementType":"labels.text.fill","stylers":[{"color":"#523735"}]},{"elementType":"labels.text.stroke","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road","elementType":"geometry","stylers":[{"color":"#f5f1e6"}]},{"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#fdfcf8"}]},{"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#f8c967"}]},{"featureType":"water","elementType":"geometry.fill","stylers":[{"color":"#b9d3c2"}]}]';
 
@@ -161,6 +180,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   Set<Marker> _poiMarkers = <Marker>{};
   LatLng? _poiCenter;
   bool _poiFetching = false;
+  final Map<String, BitmapDescriptor> _poiIconCache = <String, BitmapDescriptor>{};
   bool _navMode = false;
 
   MapType get _resolvedMapType {
@@ -394,18 +414,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         _refreshMarkers();
       }
     });
-    // Map style: an explicitly chosen one always wins. With NO saved choice,
-    // night hours (7 PM - 6 AM) get the dark style automatically — headlights
-    // logic: decide for the user only until the user decides.
+    // Map style: whatever the user last chose, nothing more. Auto-night was
+    // tried and pulled the same day — the owner's verdict on seeing it was
+    // that a map which turns near-black on its own looks broken, not
+    // professional. Dark stays strictly an explicit choice in the picker.
     LocalStorage.readValue('map_theme').then((saved) {
       if (!mounted) return;
-      if (saved != null && saved.isNotEmpty) {
-        if (saved != _mapTheme) setState(() => _mapTheme = saved);
-      } else {
-        final h = DateTime.now().hour;
-        if ((h >= 19 || h < 6) && _mapTheme == 'default') {
-          setState(() => _mapTheme = 'dark');
-        }
+      if (saved != null && saved.isNotEmpty && saved != _mapTheme) {
+        setState(() => _mapTheme = saved);
       }
     });
     WidgetsBinding.instance.addObserver(this);
@@ -936,6 +952,62 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
   }
 
+  /// A round coloured badge with the POI's own glyph — petrol pump amber,
+  /// speed camera red, toll violet. Drawn once per type and cached; the
+  /// MaterialIcons font gives a crisp vector glyph at any pixel ratio.
+  Future<BitmapDescriptor> _composePoiBadge(String type) async {
+    const double size = 76;
+    final IconData glyph;
+    final Color fill;
+    switch (type) {
+      case 'fuel':
+        glyph = Icons.local_gas_station;
+        fill = const Color(0xFFF59E0B);
+        break;
+      case 'speed_camera':
+        glyph = Icons.speed;
+        fill = const Color(0xFFDC2626);
+        break;
+      default: // toll_booth
+        glyph = Icons.toll;
+        fill = const Color(0xFF7C3AED);
+    }
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const center = Offset(size / 2, size / 2);
+
+    canvas.drawCircle(
+      center.translate(0, 2),
+      size / 2 - 4,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.25)
+        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4),
+    );
+    canvas.drawCircle(center, size / 2 - 4, Paint()..color = Colors.white);
+    canvas.drawCircle(center, size / 2 - 7, Paint()..color = fill);
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(glyph.codePoint),
+        style: TextStyle(
+          fontSize: size * 0.55,
+          fontFamily: glyph.fontFamily,
+          package: glyph.fontPackage,
+          color: Colors.white,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, center - Offset(tp.width / 2, tp.height / 2));
+
+    final img = await recorder
+        .endRecording()
+        .toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List());
+  }
+
   // ── Markers ───────────────────────────────────────────────────────────────
   void _refreshMarkers() {
     final markers = <Marker>{};
@@ -995,22 +1067,25 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         limit: 40,
       );
       if (!mounted) return;
-      double hueFor(String t) => t == 'fuel'
-          ? BitmapDescriptor.hueOrange
-          : (t == 'speed_camera'
-              ? BitmapDescriptor.hueRed
-              : BitmapDescriptor.hueViolet);
       String labelFor(String t) => t == 'fuel'
           ? 'Petrol Pump'
           : (t == 'speed_camera' ? 'Speed Camera' : 'Toll Plaza');
+      // Real coloured badges (a pump IS a pump), not Google's generic
+      // teardrop — and anchored dead-centre on the POI's coordinate, so the
+      // badge sits ON the spot instead of pointing at it from above, which
+      // read as "the pump is in the wrong place".
+      for (final t in <String>{for (final poi in pois) poi.poiType}) {
+        _poiIconCache[t] ??= await _composePoiBadge(t);
+      }
+      if (!mounted) return;
       _poiCenter = here;
       _poiMarkers = <Marker>{
         for (final NearbyPoi poi in pois)
           Marker(
             markerId: MarkerId('poi_${poi.poiType}_${poi.lat}_${poi.lng}'),
             position: LatLng(poi.lat, poi.lng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(hueFor(poi.poiType)),
-            alpha: 0.85,
+            icon: _poiIconCache[poi.poiType] ?? BitmapDescriptor.defaultMarker,
+            anchor: const Offset(0.5, 0.5),
             zIndexInt: 0,
             infoWindow: InfoWindow(
               title: poi.name.isNotEmpty ? poi.name : labelFor(poi.poiType),
