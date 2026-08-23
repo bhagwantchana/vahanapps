@@ -341,6 +341,37 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     return (current + delta * t + 360) % 360;
   }
 
+  /// Speed-coloured segments for the travelled polyline. `travelled` is
+  /// _points[0.._currentIndex] plus the interpolated tip, so vertex i takes
+  /// the speed of _points[min(i, _currentIndex)] — the tip inherits the
+  /// segment it is currently riding.
+  List<Polyline> _speedColouredRuns(List<LatLng> travelled) {
+    if (travelled.length < 2) return const <Polyline>[];
+    Color colourFor(double kmh) => kmh <= 30
+        ? const Color(0xFF2FA719)
+        : (kmh <= 60 ? const Color(0xFFF59E0B) : const Color(0xFFDC2626));
+    double speedAt(int i) =>
+        _points[i < _currentIndex ? i : _currentIndex].speed;
+
+    final runs = <Polyline>[];
+    var runStart = 0;
+    var runColour = colourFor(speedAt(0));
+    for (var i = 1; i <= travelled.length; i++) {
+      final c = i < travelled.length ? colourFor(speedAt(i)) : null;
+      if (c != runColour) {
+        final from = runStart == 0 ? 0 : runStart - 1; // joint vertex
+        runs.add(Polyline(
+          points: travelled.sublist(from, i),
+          color: runColour,
+          strokeWidth: 4,
+        ));
+        runStart = i;
+        if (c != null) runColour = c;
+      }
+    }
+    return runs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
@@ -451,11 +482,12 @@ class _TripReplayScreenState extends State<TripReplayScreen>
         ),
         PolylineLayer(
           polylines: <Polyline>[
-            Polyline(
-              points: travelled,
-              color: AppTheme.primaryBlue,
-              strokeWidth: 4,
-            ),
+            // The travelled part is painted in SPEED colours — green under
+            // 30, amber to 60, red above — so the replay's line answers
+            // "where did it speed / crawl" at a glance. Split into runs of
+            // consecutive same-colour source points; each run starts on the
+            // previous run's last vertex so the line stays joined.
+            ..._speedColouredRuns(travelled),
             Polyline(
               points: remaining,
               color: Colors.grey.withValues(alpha: 0.5),

@@ -58,18 +58,26 @@ Color _statusColorFor(VehicleRecord vehicle) {
 /// photographed one). A >500 m step between consecutive points is never
 /// driving; it is a break between two separate runs. Draw only the newest
 /// continuous run: the road actually behind the vehicle right now.
-List<LatLng> newestContinuousRun(List<LatLng> points,
+List<SpeedPoint> newestContinuousRun(List<SpeedPoint> points,
     {double breakMeters = 500}) {
   if (points.length < 2) return points;
   const d = Distance();
   var start = 0;
   for (var i = points.length - 1; i > 0; i--) {
-    if (d.as(LengthUnit.Meter, points[i - 1], points[i]) > breakMeters) {
+    if (d.as(LengthUnit.Meter, points[i - 1].p, points[i].p) > breakMeters) {
       start = i;
       break;
     }
   }
   return start == 0 ? points : points.sublist(start);
+}
+
+/// A trail vertex with the speed it was driven at — the speed is what lets
+/// the map paint the line green/amber/red instead of a single flat colour.
+class SpeedPoint {
+  const SpeedPoint(this.p, this.kmh);
+  final LatLng p;
+  final double kmh;
 }
 
 class VehicleDetailScreen extends StatefulWidget {
@@ -95,7 +103,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   // webmap stays live on its own internal SSE, so it only needs loading once.
   int _loadedVehicleId = -1;
   List<DriverRecordModel> _availableDrivers = <DriverRecordModel>[];
-  Future<List<LatLng>>? _routeTrailFuture;
+  Future<List<SpeedPoint>>? _routeTrailFuture;
   int _routeTrailVehicleId = 0;
   int _routeTrailMinutes = 0;
   int _routeTrailPoints = 0;
@@ -189,7 +197,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         : 240;
   }
 
-  Future<List<LatLng>> _loadRouteTrail(
+  Future<List<SpeedPoint>> _loadRouteTrail(
     VehicleRecord vehicle,
     VehicleSettingsModel settings,
   ) async {
@@ -204,19 +212,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       );
       final limit = _trailPointLimit(settings);
       final trail = points
-          .map((item) => item.toLatLng())
-          .where((point) => point.latitude != 0 || point.longitude != 0)
+          .map((item) => SpeedPoint(item.toLatLng(), item.speed))
+          .where((sp) => sp.p.latitude != 0 || sp.p.longitude != 0)
           .toList();
       if (trail.length <= limit) {
         return trail;
       }
       return trail.sublist(trail.length - limit);
     } catch (_) {
-      return <LatLng>[];
+      return <SpeedPoint>[];
     }
   }
 
-  Future<List<LatLng>> _resolveRouteTrail(
+  Future<List<SpeedPoint>> _resolveRouteTrail(
     VehicleRecord vehicle,
     VehicleSettingsModel settings,
   ) {
@@ -253,7 +261,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       await context.read<SingleTrackCubit>().silentRefreshIfStale();
     },
   );
-  final List<LatLng> _liveTrail = <LatLng>[];
+  final List<SpeedPoint> _liveTrail = <SpeedPoint>[];
   int _liveTrailVehicleId = 0;
   static const int _liveTrailMax = 300;
 
@@ -382,8 +390,9 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       _liveTrailVehicleId = vehicle.id;
     }
     final next = LatLng(vehicle.latitude, vehicle.longitude);
+    final kmh = vehicle.speed.toDouble();
     if (_liveTrail.isNotEmpty) {
-      final last = _liveTrail.last;
+      final last = _liveTrail.last.p;
       final meters = const Distance().as(LengthUnit.Meter, last, next);
       // A chord this long between CONSECUTIVE live fixes is not driving
       // (500 m in ~10 s is 180 km/h) — it is a reconnect after a gap. Start a
@@ -393,7 +402,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       if (meters > 500) {
         _liveTrail
           ..clear()
-          ..add(next);
+          ..add(SpeedPoint(next, kmh));
         return;
       }
       if (meters < 5) return;
@@ -402,7 +411,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       // made. Replace the spur with the new point so the line stays on the
       // road. Real corners survive: their detour ratio stays small.
       if (_liveTrail.length >= 2) {
-        final anchor = _liveTrail[_liveTrail.length - 2];
+        final anchor = _liveTrail[_liveTrail.length - 2].p;
         const d = Distance();
         final aToLast = d.as(LengthUnit.Meter, anchor, last);
         final lastToNext = meters;
@@ -412,7 +421,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         }
       }
     }
-    _liveTrail.add(next);
+    _liveTrail.add(SpeedPoint(next, kmh));
     if (_liveTrail.length > _liveTrailMax) {
       _liveTrail.removeAt(0);
     }
@@ -1439,15 +1448,15 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: useNativeMap
-                          ? FutureBuilder<List<LatLng>>(
+                          ? FutureBuilder<List<SpeedPoint>>(
                               future: routeTrailFuture,
                               builder: (context, snapshot) {
                                 // History snapshot + the live-growing session
                                 // trail (SSE/poll-fed) = a route line that
                                 // extends as the vehicle drives, like the web map.
-                                final trailPoints = newestContinuousRun(
-                                  <LatLng>[
-                                    ...(snapshot.data ?? <LatLng>[]),
+                                final trail = newestContinuousRun(
+                                  <SpeedPoint>[
+                                    ...(snapshot.data ?? <SpeedPoint>[]),
                                     ..._liveTrail,
                                   ],
                                 );
@@ -1469,15 +1478,35 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                             onMapTap: liveMapUrl.isNotEmpty
                                                 ? () => _openLiveMap(vehicle)
                                                 : null,
-                                            trailPoints: trailPoints
-                                                .map((p) => gmaps.LatLng(
-                                                    p.latitude, p.longitude))
+                                            trailPoints: trail
+                                                .map((e) => gmaps.LatLng(
+                                                    e.p.latitude,
+                                                    e.p.longitude))
                                                 .toList(),
+                                            trailSpeeds: <double>[
+                                              for (final e in trail) e.kmh,
+                                            ],
+                                            stops: <MapStopPin>[
+                                              for (final st in _routeStops)
+                                                MapStopPin(
+                                                    st.latitude,
+                                                    st.longitude,
+                                                    '${st.seq}. ${st.name}'),
+                                            ],
                                           )
                                         : NativeVehicleMap(
                                             vehicles: <VehicleRecord>[vehicle],
                                             focusVehicle: vehicle,
-                                            trailPoints: trailPoints,
+                                            trailPoints: <LatLng>[
+                                              for (final e in trail) e.p,
+                                            ],
+                                            stops: <MapStopPin>[
+                                              for (final st in _routeStops)
+                                                MapStopPin(
+                                                    st.latitude,
+                                                    st.longitude,
+                                                    '${st.seq}. ${st.name}'),
+                                            ],
                                             followFocusedVehicle: true,
                                             onMapTap: liveMapUrl.isNotEmpty
                                                 ? () => _openLiveMap(vehicle)
@@ -2899,7 +2928,7 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
       await context.read<SingleTrackCubit>().silentRefreshIfStale();
     },
   );
-  final List<LatLng> _liveTrail = <LatLng>[];
+  final List<SpeedPoint> _liveTrail = <SpeedPoint>[];
   // Guards the trail against the app-scoped cubit's PREVIOUS vehicle: opening
   // vehicle B after viewing A briefly renders A's model, and without this the
   // trail drew a stray straight line from A's position to B's (same guard as
@@ -2912,7 +2941,7 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
   // than the small preview they tapped to get here — a blank map until the
   // vehicle moved.
   final SingleTrackRepository _trackRepository = SingleTrackRepository();
-  List<LatLng> _historyTrail = <LatLng>[];
+  List<SpeedPoint> _historyTrail = <SpeedPoint>[];
   int _historyVehicleId = 0;
 
   // The glass bar is laid OVER the map and its height is not fixed — a long
@@ -2961,8 +2990,8 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
       );
       if (!mounted || _historyVehicleId != vehicle.id) return;
       final trail = points
-          .map((item) => item.toLatLng())
-          .where((p) => p.latitude != 0 || p.longitude != 0)
+          .map((item) => SpeedPoint(item.toLatLng(), item.speed))
+          .where((sp) => sp.p.latitude != 0 || sp.p.longitude != 0)
           .toList();
       setState(() {
         _historyTrail =
@@ -2986,18 +3015,20 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
       _trailVehicleId = vehicle.id;
     }
     final next = LatLng(vehicle.latitude, vehicle.longitude);
+    final kmh = vehicle.speed.toDouble();
     if (_liveTrail.isNotEmpty) {
-      final meters = const Distance().as(LengthUnit.Meter, _liveTrail.last, next);
+      final meters =
+          const Distance().as(LengthUnit.Meter, _liveTrail.last.p, next);
       // Teleport → fresh trail (no long straight line across the map).
       if (meters > 2000) {
         _liveTrail
           ..clear()
-          ..add(next);
+          ..add(SpeedPoint(next, kmh));
         return;
       }
       if (meters < 5) return;
     }
-    _liveTrail.add(next);
+    _liveTrail.add(SpeedPoint(next, kmh));
     if (_liveTrail.length > 300) _liveTrail.removeAt(0);
   }
 
@@ -3018,8 +3049,8 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
           _measureBar();
           // Same shape as the preview: the road already driven, then the line
           // this screen has grown since it opened.
-          final trailPoints = newestContinuousRun(
-              <LatLng>[..._historyTrail, ..._liveTrail]);
+          final trail = newestContinuousRun(
+              <SpeedPoint>[..._historyTrail, ..._liveTrail]);
           return Stack(
             children: <Widget>[
               Positioned.fill(
@@ -3029,14 +3060,16 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
                         vehicles: <VehicleRecord>[vehicle],
                         followVehicleId: vehicle.id,
                         bottomInset: _barHeight,
-                        trailPoints: trailPoints
-                            .map((p) => gmaps.LatLng(p.latitude, p.longitude))
+                        trailPoints: trail
+                            .map((e) =>
+                                gmaps.LatLng(e.p.latitude, e.p.longitude))
                             .toList(),
+                        trailSpeeds: <double>[for (final e in trail) e.kmh],
                       )
                     : NativeVehicleMap(
                         vehicles: <VehicleRecord>[vehicle],
                         focusVehicle: vehicle,
-                        trailPoints: trailPoints,
+                        trailPoints: <LatLng>[for (final e in trail) e.p],
                         followFocusedVehicle: true,
                         moveAnimationDuration:
                             const Duration(milliseconds: 2500),

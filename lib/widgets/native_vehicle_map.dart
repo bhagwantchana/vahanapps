@@ -33,6 +33,7 @@ class NativeVehicleMap extends StatefulWidget {
     required this.vehicles,
     this.focusVehicle,
     this.trailPoints = const <ll.LatLng>[],
+    this.stops = const <MapStopPin>[],
     this.emptyTitle = 'No vehicles mapped yet',
     this.emptySubtitle = 'Live map will appear once a vehicle is tracked',
     this.followFocusedVehicle = false,
@@ -47,6 +48,10 @@ class NativeVehicleMap extends StatefulWidget {
   final List<VehicleRecord> vehicles;
   final VehicleRecord? focusVehicle;
   final List<ll.LatLng> trailPoints;
+
+  /// Route stops drawn as small pins under the moving vehicle — the whole
+  /// route becomes legible at a glance instead of one anonymous line.
+  final List<MapStopPin> stops;
   final String emptyTitle;
   final String emptySubtitle;
   final bool followFocusedVehicle;
@@ -209,6 +214,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   @override
   void didUpdateWidget(covariant NativeVehicleMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    unawaited(_syncStops());
 
     // Keep the glide length in sync if the caller changes it at runtime.
     if (oldWidget.moveAnimationDuration != widget.moveAnimationDuration) {
@@ -444,6 +450,37 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     controller.onSymbolTapped.add(_handleSymbolTapped);
   }
 
+  final List<Circle> _stopCircles = <Circle>[];
+  int _stopsDrawnHash = 0;
+
+  /// (Re)draw the route-stop pins. Cheap: a handful of circles, only touched
+  /// when the stop list itself changes.
+  Future<void> _syncStops() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final h = Object.hashAll(<Object>[
+      for (final st in widget.stops) '${st.lat},${st.lng}',
+    ]);
+    if (h == _stopsDrawnHash) return;
+    _stopsDrawnHash = h;
+    for (final c in List<Circle>.from(_stopCircles)) {
+      try { await controller.removeCircle(c); } catch (_) {}
+    }
+    _stopCircles.clear();
+    for (final st in widget.stops) {
+      try {
+        _stopCircles.add(await controller.addCircle(CircleOptions(
+          geometry: LatLng(st.lat, st.lng),
+          circleRadius: 7,
+          circleColor: '#1C3059',
+          circleStrokeWidth: 2,
+          circleStrokeColor: '#FFFFFF',
+          circleOpacity: 0.9,
+        )));
+      } catch (_) {}
+    }
+  }
+
   Future<void> _onStyleLoaded() async {
     final controller = _controller;
     if (controller == null) {
@@ -506,6 +543,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     } else {
       await _fitToVehicles();
     }
+      unawaited(_syncStops());
   }
 
   // ── Marker bitmaps ─────────────────────────────────────────────────────
@@ -1543,4 +1581,12 @@ class _MapControlButton extends StatelessWidget {
     );
     return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
+}
+
+/// One route stop for the map layer (engine-agnostic little value type).
+class MapStopPin {
+  const MapStopPin(this.lat, this.lng, this.label);
+  final double lat;
+  final double lng;
+  final String label;
 }

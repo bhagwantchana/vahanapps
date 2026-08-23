@@ -6,6 +6,9 @@ import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
+import 'package:fleet_monitor/models/nearby_poi_model.dart';
+import 'package:fleet_monitor/repositorys/poi_repository.dart';
+import 'package:fleet_monitor/widgets/native_vehicle_map.dart' show MapStopPin;
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:fleet_monitor/widgets/map_motion.dart';
 import 'package:fleet_monitor/widgets/marker_placeholder.dart';
@@ -38,6 +41,8 @@ class GoogleFleetMap extends StatefulWidget {
     this.recenterTick = 0,
     this.followVehicleId,
     this.trailPoints = const <LatLng>[],
+    this.trailSpeeds = const <double>[],
+    this.stops = const <MapStopPin>[],
     this.bottomInset = 0,
   });
 
@@ -58,6 +63,16 @@ class GoogleFleetMap extends StatefulWidget {
 
   /// Route/trail polyline points (single-vehicle mode). Empty = no line.
   final List<LatLng> trailPoints;
+
+  /// Optional per-point speeds (km/h), index-aligned with [trailPoints].
+  /// When present, the trail is drawn in speed colours — green under 30,
+  /// amber to 60, red above — so the line itself tells the story of the
+  /// drive. Empty keeps the classic single blue line.
+  final List<double> trailSpeeds;
+
+  /// Route stops drawn as small azure pins with their name in the info
+  /// window — the child's whole route reads at a glance.
+  final List<MapStopPin> stops;
 
   /// The user-selected vehicle: the camera pans to it (clean — no ring). Null
   /// clears the selection (no camera move).
@@ -137,6 +152,15 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // and single-vehicle navigation mode (3D tilt + heading-up).
   String _mapTheme = 'default';
   bool _traffic = false;
+
+  // ── Roadside POI layer (petrol / speed cameras / tolls) ──────────────────
+  // Single-vehicle mode only: it answers "what is on MY route", and a fleet
+  // view drowned in fuel pumps helps nobody. Fetched around the vehicle,
+  // refreshed when it travels far enough that the old circle is behind it.
+  bool _poiOn = false;
+  Set<Marker> _poiMarkers = <Marker>{};
+  LatLng? _poiCenter;
+  bool _poiFetching = false;
   bool _navMode = false;
 
   MapType get _resolvedMapType {
@@ -202,7 +226,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // times a second. Now it is cached: re-smoothed only when the source points
   // change, re-clipped only once the car has moved far enough to see.
   Set<Polyline> _polylines = <Polyline>{};
-  List<MotionPoint> _trailSmoothed = const <MotionPoint>[];
+  List<_TrailRun> _trailRuns = const <_TrailRun>[];
   int _trailSourceLen = -1;
   LatLng? _trailSourceLast;
   LatLng? _trailDrawnAt;
@@ -363,6 +387,26 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     super.initState();
     LocalStorage.readValue('map_traffic_on').then((v) {
       if (mounted && v == '1' && !_traffic) setState(() => _traffic = true);
+    });
+    LocalStorage.readValue('map_poi_on').then((v) {
+      if (mounted && v == '1' && !_poiOn) {
+        setState(() => _poiOn = true);
+        _refreshMarkers();
+      }
+    });
+    // Map style: an explicitly chosen one always wins. With NO saved choice,
+    // night hours (7 PM - 6 AM) get the dark style automatically — headlights
+    // logic: decide for the user only until the user decides.
+    LocalStorage.readValue('map_theme').then((saved) {
+      if (!mounted) return;
+      if (saved != null && saved.isNotEmpty) {
+        if (saved != _mapTheme) setState(() => _mapTheme = saved);
+      } else {
+        final h = DateTime.now().hour;
+        if ((h >= 19 || h < 6) && _mapTheme == 'default') {
+          setState(() => _mapTheme = 'dark');
+        }
+      }
     });
     WidgetsBinding.instance.addObserver(this);
     _preloadFallback();
@@ -907,11 +951,79 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         _addVehicleMarkers(markers, v);
       }
     }
+    if (_poiOn && widget.vehicles.length == 1) {
+      markers.addAll(_poiMarkers);
+      _maybeFetchPois();
+    }
+    for (final st in widget.stops) {
+      markers.add(Marker(
+        markerId: MarkerId('stop_${st.lat}_${st.lng}'),
+        position: LatLng(st.lat, st.lng),
+        icon:
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        alpha: 0.9,
+        anchor: const Offset(0.5, 1.0),
+        zIndexInt: 0,
+        infoWindow: InfoWindow(title: st.label),
+      ));
+    }
     if (!mounted) {
       _markers = markers;
       return;
     }
     setState(() => _markers = markers);
+  }
+
+  Future<void> _maybeFetchPois() async {
+    final v = widget.vehicles.isNotEmpty ? widget.vehicles.first : null;
+    if (v == null || (v.latitude == 0 && v.longitude == 0)) return;
+    final here = LatLng(v.latitude, v.longitude);
+    if (_poiFetching) return;
+    final c = _poiCenter;
+    if (c != null &&
+        distanceMeters(c.latitude, c.longitude, here.latitude, here.longitude) <
+            3000) {
+      return; // old circle still covers us
+    }
+    _poiFetching = true;
+    try {
+      final pois = await PoiRepository().fetchNearby(
+        lat: here.latitude,
+        lng: here.longitude,
+        types: const <String>['fuel', 'speed_camera', 'toll_booth'],
+        radiusKm: 8,
+        limit: 40,
+      );
+      if (!mounted) return;
+      double hueFor(String t) => t == 'fuel'
+          ? BitmapDescriptor.hueOrange
+          : (t == 'speed_camera'
+              ? BitmapDescriptor.hueRed
+              : BitmapDescriptor.hueViolet);
+      String labelFor(String t) => t == 'fuel'
+          ? 'Petrol Pump'
+          : (t == 'speed_camera' ? 'Speed Camera' : 'Toll Plaza');
+      _poiCenter = here;
+      _poiMarkers = <Marker>{
+        for (final NearbyPoi poi in pois)
+          Marker(
+            markerId: MarkerId('poi_${poi.poiType}_${poi.lat}_${poi.lng}'),
+            position: LatLng(poi.lat, poi.lng),
+            icon: BitmapDescriptor.defaultMarkerWithHue(hueFor(poi.poiType)),
+            alpha: 0.85,
+            zIndexInt: 0,
+            infoWindow: InfoWindow(
+              title: poi.name.isNotEmpty ? poi.name : labelFor(poi.poiType),
+              snippet: labelFor(poi.poiType),
+            ),
+          ),
+      };
+      if (_poiOn) _refreshMarkers();
+    } catch (_) {
+      // Roadside extras are a nicety — never surface an error for them.
+    } finally {
+      _poiFetching = false;
+    }
   }
 
   void _addVehicleMarkers(Set<Marker> markers, VehicleRecord v) {
@@ -1273,7 +1385,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (src.length < 2) {
       if (_polylines.isNotEmpty) {
         _polylines = <Polyline>{};
-        _trailSmoothed = const <MotionPoint>[];
+        _trailRuns = const <_TrailRun>[];
         _trailSourceLen = -1;
         _trailSourceLast = null;
         _trailDrawnAt = null;
@@ -1288,9 +1400,40 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     if (sourceChanged) {
       _trailSourceLen = src.length;
       _trailSourceLast = src.last;
-      _trailSmoothed = smoothPath(<MotionPoint>[
-        for (final p in src) MotionPoint(p.latitude, p.longitude),
-      ]);
+      final speeds = widget.trailSpeeds;
+      if (speeds.length == src.length && speeds.isNotEmpty) {
+        // Split into consecutive same-colour runs BEFORE smoothing; each run
+        // starts on the previous run's last point so the line stays joined.
+        int bucket(double kmh) => kmh <= 30 ? 0 : (kmh <= 60 ? 1 : 2);
+        final runs = <_TrailRun>[];
+        var runStart = 0;
+        var runBucket = bucket(speeds[0]);
+        for (var i = 1; i <= src.length; i++) {
+          final b = i < src.length ? bucket(speeds[i]) : -99;
+          if (b != runBucket) {
+            final from = runStart == 0 ? 0 : runStart - 1; // joint point
+            runs.add(_TrailRun(
+              runBucket,
+              smoothPath(<MotionPoint>[
+                for (var j = from; j < i; j++)
+                  MotionPoint(src[j].latitude, src[j].longitude),
+              ]),
+            ));
+            runStart = i;
+            runBucket = b;
+          }
+        }
+        _trailRuns = runs;
+      } else {
+        _trailRuns = <_TrailRun>[
+          _TrailRun(
+            -1,
+            smoothPath(<MotionPoint>[
+              for (final p in src) MotionPoint(p.latitude, p.longitude),
+            ]),
+          ),
+        ];
+      }
     }
 
     final car = _followRendered;
@@ -1300,38 +1443,53 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       if (moved < _trailRebuildMeters) return;
     }
 
-    List<LatLng> points;
-    if (car == null) {
-      points = <LatLng>[
-        for (final p in _trailSmoothed) LatLng(p.lat, p.lng),
-      ];
-    } else {
-      // Cut the line where the vehicle actually is and finish it at the nose,
-      // so the trail can never lead the car it belongs to.
-      final cut =
-          nearestIndexFromEnd(_trailSmoothed, car.latitude, car.longitude);
-      points = <LatLng>[
-        for (var i = 0; i <= cut; i++)
-          LatLng(_trailSmoothed[i].lat, _trailSmoothed[i].lng),
-        car,
-      ];
-      _trailDrawnAt = car;
-    }
-    if (points.length < 2) {
+    if (_trailRuns.isEmpty) {
       _polylines = <Polyline>{};
       return;
     }
-    _polylines = <Polyline>{
-      Polyline(
-        polylineId: const PolylineId('trail'),
-        points: points,
-        color: AppTheme.primaryBlue.withValues(alpha: 0.75),
+
+    Color colourFor(int bucket) {
+      switch (bucket) {
+        case 0:
+          return const Color(0xCC2FA719); // easy — brand green
+        case 1:
+          return const Color(0xDDF59E0B); // brisk — amber
+        case 2:
+          return const Color(0xE6DC2626); // fast — red
+        default:
+          return AppTheme.primaryBlue.withValues(alpha: 0.75);
+      }
+    }
+
+    final polys = <Polyline>{};
+    for (var r = 0; r < _trailRuns.length; r++) {
+      final run = _trailRuns[r];
+      final isLast = r == _trailRuns.length - 1;
+      List<LatLng> pts;
+      if (isLast && car != null) {
+        // Cut the FINAL run where the vehicle actually is and finish it at
+        // the nose, so the trail can never lead the car it belongs to.
+        final cut = nearestIndexFromEnd(run.pts, car.latitude, car.longitude);
+        pts = <LatLng>[
+          for (var i = 0; i <= cut; i++) LatLng(run.pts[i].lat, run.pts[i].lng),
+          car,
+        ];
+        _trailDrawnAt = car;
+      } else {
+        pts = <LatLng>[for (final p in run.pts) LatLng(p.lat, p.lng)];
+      }
+      if (pts.length < 2) continue;
+      polys.add(Polyline(
+        polylineId: PolylineId('trail_$r'),
+        points: pts,
+        color: colourFor(run.bucket),
         width: 5,
         startCap: Cap.roundCap,
         endCap: Cap.roundCap,
         jointType: JointType.round,
-      ),
-    };
+      ));
+    }
+    _polylines = polys;
   }
 
   /// Push the freshly-computed pose to the map, but only if it moved enough to
@@ -1683,7 +1841,13 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         ),
       ),
     );
-    if (picked != null && mounted) setState(() => _mapTheme = picked);
+    if (picked != null && mounted) {
+      setState(() => _mapTheme = picked);
+      // An EXPLICIT choice — remembered, and it permanently opts this user
+      // out of the automatic night style below (picking 'default' included:
+      // that is the user saying "always normal", not "decide for me").
+      LocalStorage.setValue('map_theme', picked);
+    }
   }
 
   Future<void> _shareSnapshot() async {
@@ -1831,6 +1995,21 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
                   LocalStorage.setValue('map_traffic_on', _traffic ? '1' : '0');
                 },
               ),
+              if (widget.vehicles.length == 1) ...<Widget>[
+                const SizedBox(height: 8),
+                _MapCtrlButton(
+                  icon: Icons.local_gas_station_outlined,
+                  active: _poiOn,
+                  onTap: () {
+                    setState(() => _poiOn = !_poiOn);
+                    LocalStorage.setValue('map_poi_on', _poiOn ? '1' : '0');
+                    if (_poiOn) {
+                      _poiCenter = null; // force a fresh fetch around the car
+                    }
+                    _refreshMarkers();
+                  },
+                ),
+              ],
               const SizedBox(height: 8),
               _MapCtrlButton(
                 icon: Icons.ios_share,
@@ -1975,4 +2154,11 @@ class _MapCtrlButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One same-colour stretch of the smoothed trail (bucket -1 = classic blue).
+class _TrailRun {
+  const _TrailRun(this.bucket, this.pts);
+  final int bucket;
+  final List<MotionPoint> pts;
 }

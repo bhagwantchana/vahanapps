@@ -349,6 +349,12 @@ class _StudentMapScreenState extends State<StudentMapScreen> {
         vehicles: <VehicleRecord>[_vehicle!],
         focusVehicle: _vehicle,
         followFocusedVehicle: true,
+        // Every stop on the child's route, so the map reads as a journey —
+        // not one bus wandering an empty map.
+        stops: <MapStopPin>[
+          for (final st in _routeStops)
+            MapStopPin(st.latitude, st.longitude, '${st.seq}. ${st.name}'),
+        ],
         emptyTitle: 'No live location yet',
         emptySubtitle: 'The tracking map will appear once your vehicle reports.',
         onVehicleTap: (_) {},
