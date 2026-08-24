@@ -360,11 +360,15 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       final c = i < travelled.length ? colourFor(speedAt(i)) : null;
       if (c != runColour) {
         final from = runStart == 0 ? 0 : runStart - 1; // joint vertex
-        runs.add(Polyline(
-          points: travelled.sublist(from, i),
-          color: runColour,
-          strokeWidth: 4,
-        ));
+        // A single point is not a line - one fix whose colour differs from
+        // its neighbours would otherwise add a polyline that draws nothing.
+        if (i - from >= 2) {
+          runs.add(Polyline(
+            points: travelled.sublist(from, i),
+            color: runColour,
+            strokeWidth: 4,
+          ));
+        }
         runStart = i;
         if (c != null) runColour = c;
       }

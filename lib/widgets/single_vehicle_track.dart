@@ -705,7 +705,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute<void>(
-          builder: (_) => NativeLiveMapScreen(title: vehicle.displayName),
+          builder: (_) => NativeLiveMapScreen(
+            title: vehicle.displayName,
+            stops: <MapStopPin>[
+              for (final st in _routeStops)
+                MapStopPin(st.latitude, st.longitude, '${st.seq}. ${st.name}'),
+            ],
+          ),
         ),
       );
       return;
@@ -2908,9 +2914,18 @@ class _VehicleLiveMapScreenState extends State<VehicleLiveMapScreen> {
 /// positions (SSE + its own silent fallback poll), grows a session trail, and
 /// reuses the frosted glass bar with the speed shown (no webmap gauge here).
 class NativeLiveMapScreen extends StatefulWidget {
-  const NativeLiveMapScreen({super.key, required this.title});
+  const NativeLiveMapScreen({
+    super.key,
+    required this.title,
+    this.stops = const <MapStopPin>[],
+  });
 
   final String title;
+
+  /// The route's stop pins. The detail screen has already loaded them and
+  /// passes its own list through; opening this screen straight from home
+  /// leaves it empty, because no route has been chosen there.
+  final List<MapStopPin> stops;
 
   @override
   State<NativeLiveMapScreen> createState() => _NativeLiveMapScreenState();
@@ -3065,11 +3080,13 @@ class _NativeLiveMapScreenState extends State<NativeLiveMapScreen> {
                                 gmaps.LatLng(e.p.latitude, e.p.longitude))
                             .toList(),
                         trailSpeeds: <double>[for (final e in trail) e.kmh],
+                        stops: widget.stops,
                       )
                     : NativeVehicleMap(
                         vehicles: <VehicleRecord>[vehicle],
                         focusVehicle: vehicle,
                         trailPoints: <LatLng>[for (final e in trail) e.p],
+                        stops: widget.stops,
                         followFocusedVehicle: true,
                         moveAnimationDuration:
                             const Duration(milliseconds: 2500),

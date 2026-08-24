@@ -495,6 +495,14 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     // Same for the selection highlight ring — the reloaded style dropped it.
     _highlightCircle = null;
     _highlightVehicleId = null;
+    // And the route-stop pins. _syncStops() skips its work when the stop list
+    // hashes the same as what it last drew, so without clearing that hash the
+    // call further down would decide the pins were already on the map and
+    // leave the route with no stops on it until the screen was left and
+    // re-entered. The circle handles point at annotations the style reload
+    // already destroyed, so drop them rather than trying to remove them.
+    _stopsDrawnHash = 0;
+    _stopCircles.clear();
 
     // The same applies to style IMAGES and symbols: a style (re)load — e.g.
     // the map-provider setting flipping between liberty and positron, which
