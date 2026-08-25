@@ -959,12 +959,38 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// the generic glyph-in-a-circle was "unprofessional". Everything renders
   /// at 4x and DISPLAYS at ~30 dp: the first version passed raw pixels as
   /// logical pixels and covered half the city in orange.
-  Future<BitmapDescriptor> _composePoiIcon(String type) async {
+  Future<BitmapDescriptor> _composePoiIcon(String type,
+      {String label = ''}) async {
     const double c = 120; // canvas px; display width set on the descriptor
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
     if (type == 'fuel') {
+      // Name plate: painted below the pump at 4x, so at display scale it is
+      // a ~9.5dp label. White halo keeps it readable on every map style.
+      TextPainter? labelTp;
+      double canvasW = c;
+      const double labelBlock = 46; // fixed, so the anchor stays constant
+      if (label.isNotEmpty) {
+        labelTp = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: const TextStyle(
+              fontSize: 34,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          ellipsis: '…',
+        )..layout(maxWidth: 560);
+        canvasW = math.max(c, labelTp.width + 16);
+      }
+      // Centre the pump art on the (possibly wider) canvas.
+      canvas.save();
+      canvas.translate((canvasW - c) / 2, 0);
       final shadow = Paint()
         ..color = Colors.black.withValues(alpha: 0.22)
         ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 5);
@@ -1012,10 +1038,43 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
             ..style = PaintingStyle.stroke
             ..strokeWidth = 6
             ..strokeCap = StrokeCap.round);
-      final img =
-          await recorder.endRecording().toImage(c.toInt(), c.toInt());
+      canvas.restore();
+
+      double canvasH = c;
+      if (labelTp != null) {
+        canvasH = c + labelBlock;
+        final tx = (canvasW - labelTp.width) / 2;
+        const ty = c + 6;
+        // Halo first: same text stroked in white behind the fill.
+        final halo = TextPainter(
+          text: TextSpan(
+            text: label,
+            style: TextStyle(
+              fontSize: 34,
+              height: 1.1,
+              fontWeight: FontWeight.w700,
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 8
+                ..color = Colors.white,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+          maxLines: 1,
+          ellipsis: '…',
+        )..layout(maxWidth: 560);
+        halo.paint(canvas, Offset(tx, ty));
+        labelTp.paint(canvas, Offset(tx, ty));
+      }
+
+      final img = await recorder
+          .endRecording()
+          .toImage(canvasW.toInt(), canvasH.toInt());
       final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-      return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(), width: 30);
+      // Display size derives from the canvas so the pump stays 30dp tall
+      // whether or not a name plate widened the bitmap.
+      return BitmapDescriptor.bytes(bytes!.buffer.asUint8List(),
+          width: canvasW / 4);
     }
 
     final IconData glyph =
@@ -1116,8 +1175,20 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       // teardrop — and anchored dead-centre on the POI's coordinate, so the
       // badge sits ON the spot instead of pointing at it from above, which
       // read as "the pump is in the wrong place".
-      for (final t in <String>{for (final poi in pois) poi.poiType}) {
-        _poiIconCache[t] ??= await _composePoiIcon(t);
+      // Named pumps carry their name INTO the bitmap (Google markers can't
+      // label text any other way), so the key is per-name, not per-type.
+      // The cache is bounded: a long drive past many stations would
+      // otherwise grow it without limit; recomposing is cheap.
+      if (_poiIconCache.length > 80) _poiIconCache.clear();
+      String keyFor(NearbyPoi poi) =>
+          poi.poiType == 'fuel' && poi.name.isNotEmpty
+              ? 'fuel|${poi.name}'
+              : poi.poiType;
+      for (final NearbyPoi poi in pois) {
+        _poiIconCache[keyFor(poi)] ??= await _composePoiIcon(
+          poi.poiType,
+          label: poi.poiType == 'fuel' ? poi.name : '',
+        );
       }
       if (!mounted) return;
       _poiCenter = here;
@@ -1126,11 +1197,14 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           Marker(
             markerId: MarkerId('poi_${poi.poiType}_${poi.lat}_${poi.lng}'),
             position: LatLng(poi.lat, poi.lng),
-            icon: _poiIconCache[poi.poiType] ?? BitmapDescriptor.defaultMarker,
-            // Pump stands ON the spot (base at the coordinate); the small
-            // discs sit centred.
+            icon: _poiIconCache[keyFor(poi)] ?? BitmapDescriptor.defaultMarker,
+            // Pump stands ON the spot (base at the coordinate); with a name
+            // plate below, the base sits proportionally higher in the
+            // bitmap. The small discs sit centred.
             anchor: poi.poiType == 'fuel'
-                ? const Offset(0.5, 0.92)
+                ? (poi.name.isNotEmpty
+                    ? const Offset(0.5, 0.66)
+                    : const Offset(0.5, 0.92))
                 : const Offset(0.5, 0.5),
             zIndexInt: 0,
             infoWindow: InfoWindow(
