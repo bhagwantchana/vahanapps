@@ -1145,6 +1145,31 @@ class AppStrings {
       'hi': 'कम डेटा खर्च के लिए धीमा रिफ्रेश',
       'pa': 'ਘੱਟ ਡਾਟਾ ਵਰਤੋਂ ਲਈ ਹੌਲੀ ਰਿਫਰੈਸ਼',
     },
+    'today_journey': <String, String>{
+      'en': "Today's journey",
+      'hi': 'आज का सफ़र',
+      'pa': 'ਅੱਜ ਦਾ ਸਫ਼ਰ',
+    },
+    'tl_left': <String, String>{
+      'en': 'Bus started',
+      'hi': 'बस चली',
+      'pa': 'ਬੱਸ ਚੱਲੀ',
+    },
+    'tl_reached': <String, String>{
+      'en': 'Reached {name}',
+      'hi': '{name} पहुंची',
+      'pa': '{name} ਪਹੁੰਚੀ',
+    },
+    'tl_trip_end': <String, String>{
+      'en': 'Trip ended',
+      'hi': 'ट्रिप पूरी हुई',
+      'pa': 'ਸਫ਼ਰ ਪੂਰਾ ਹੋਇਆ',
+    },
+    'tl_trip_end_km': <String, String>{
+      'en': 'Trip ended — {km} km',
+      'hi': 'ट्रिप पूरी — {km} km',
+      'pa': 'ਸਫ਼ਰ ਪੂਰਾ — {km} km',
+    },
   };
 
   String t(String key) {

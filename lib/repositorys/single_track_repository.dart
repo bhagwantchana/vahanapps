@@ -135,6 +135,40 @@ class SingleTrackRepository {
 
   // ── "Mera Stop" / ETA-to-stop ─────────────────────────────────────────────
 
+  Future<List<TimelineEvent>> fetchDayTimeline({
+    required int vehicleId,
+    required String imei,
+  }) async {
+    try {
+      final response = await _networkApi.sendRequest.post(
+        AppUrl.dayTimeline,
+        data: FormData.fromMap(<String, dynamic>{
+          'vehicle_id': vehicleId.toString(),
+          'imei': imei,
+        }),
+        options: NetworkApi.buildOptions(authToken: await _getToken()),
+      );
+      final apiResponse = ApiResponse.fromResponse(response);
+      if (apiResponse.flag == 0) {
+        throw Exception(apiResponse.message);
+      }
+      final data = response.data as Map<String, dynamic>;
+      final events = <TimelineEvent>[];
+      final list = (data['data'] as Map?)?['events'];
+      if (list is List) {
+        for (final item in list) {
+          if (item is Map<String, dynamic>) {
+            events.add(TimelineEvent.fromJson(item));
+          }
+        }
+      }
+      return events;
+    } catch (_) {
+      // The day story is a bonus card, never an error state.
+      return <TimelineEvent>[];
+    }
+  }
+
   Future<List<RouteStop>> fetchRouteStops(String imei) async {
     try {
       final response = await _networkApi.sendRequest.post(
@@ -234,4 +268,33 @@ class SingleTrackRepository {
       throw Exception(NetworkApi.parseError(error));
     }
   }
+}
+
+/// One line of the parent's "today" story: the bus left / reached a stop /
+/// finished a trip. Times come as server-local "HH:mm" out of the SQL
+/// datetime; only the clock part is shown.
+class TimelineEvent {
+  const TimelineEvent({
+    required this.time,
+    required this.type,
+    this.stopName = '',
+    this.distanceKm,
+  });
+
+  factory TimelineEvent.fromJson(Map<String, dynamic> json) {
+    final raw = (json['time'] ?? '').toString();
+    return TimelineEvent(
+      time: raw.length >= 16 ? raw.substring(11, 16) : raw,
+      type: (json['type'] ?? '').toString(),
+      stopName: (json['stop_name'] ?? '').toString(),
+      distanceKm: json['distance_km'] == null
+          ? null
+          : double.tryParse(json['distance_km'].toString()),
+    );
+  }
+
+  final String time;
+  final String type;
+  final String stopName;
+  final double? distanceKm;
 }

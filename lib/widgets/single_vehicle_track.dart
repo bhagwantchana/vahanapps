@@ -273,6 +273,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   // token. Nothing per-parent ever touches the shared account.
   List<RouteStop> _routeStops = <RouteStop>[];
   int _myStopInitFor = 0; // vehicle.id the stop state was loaded for
+  // "Today" story card. Loaded once per vehicle, refreshed only on screen
+  // re-entry - it describes the past, it does not need to be live.
+  int _timelineFor = 0;
+  List<TimelineEvent> _timeline = const <TimelineEvent>[];
   String _myStopImei = '';
   int? _myStopId;
   bool _myStopAlert = false;
@@ -298,6 +302,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   Future<void> _ensureMyStopLoaded(VehicleRecord vehicle) async {
     if (_myStopInitFor == vehicle.id || vehicle.imei.isEmpty) return;
     _myStopInitFor = vehicle.id;
+    _loadDayTimeline(vehicle);
     _myStopImei = vehicle.imei;
     try {
       final stops = await _trackRepository.fetchRouteStops(vehicle.imei);
@@ -1805,6 +1810,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         // "My Stop" + ETA — renders nothing until the school
                         // has defined stops for this route.
                         _buildMyStopCard(vehicle),
+                        _buildTodayCard(vehicle),
                         Row(
                           children: <Widget>[
                             CircleAvatar(
@@ -2113,6 +2119,118 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   /// vehicle, so rolling the feature out changes nothing for routes without
   /// them. ETA wording comes from the bus's own past days; when history can't
   /// answer yet the card says so instead of inventing a number.
+  Future<void> _loadDayTimeline(VehicleRecord vehicle) async {
+    if (_timelineFor == vehicle.id) return;
+    _timelineFor = vehicle.id;
+    final events = await _trackRepository.fetchDayTimeline(
+      vehicleId: vehicle.id,
+      imei: vehicle.imei,
+    );
+    if (!mounted) return;
+    setState(() => _timeline = events);
+  }
+
+  /// "Today" - the day's journey as a story, for the parent who was not
+  /// watching the map: left at 7:42, reached your stop 8:05, trip done
+  /// 8:20. Hidden entirely when the day has nothing to tell yet.
+  Widget _buildTodayCard(VehicleRecord vehicle) {
+    if (_timeline.isEmpty) return const SizedBox.shrink();
+    final strings = AppStrings.of(context);
+
+    String labelFor(TimelineEvent e) {
+      switch (e.type) {
+        case 'trip_start':
+          return strings.t('tl_left');
+        case 'trip_end':
+          return e.distanceKm != null
+              ? strings.tf('tl_trip_end_km',
+                  {'km': e.distanceKm!.toStringAsFixed(1)})
+              : strings.t('tl_trip_end');
+        case 'stop':
+          return strings.tf('tl_reached', {'name': e.stopName});
+        default:
+          return e.type;
+      }
+    }
+
+    IconData iconFor(TimelineEvent e) {
+      switch (e.type) {
+        case 'trip_start':
+          return Icons.play_circle_outline_rounded;
+        case 'trip_end':
+          return Icons.flag_circle_outlined;
+        default:
+          return Icons.location_on_outlined;
+      }
+    }
+
+    return Column(
+      children: <Widget>[
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+              width: 1,
+            ),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                strings.t('today_journey'),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 8),
+              for (final e in _timeline.take(10))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(iconFor(e), size: 16, color: AppTheme.primaryBlue),
+                      const SizedBox(width: 8),
+                      Text(
+                        e.time,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5,
+                          fontFeatures: <FontFeature>[
+                            FontFeature.tabularFigures(),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          labelFor(e),
+                          style: const TextStyle(fontSize: 12.5),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   Widget _buildMyStopCard(VehicleRecord vehicle) {
     if (_routeStops.isEmpty) return const SizedBox.shrink();
 
