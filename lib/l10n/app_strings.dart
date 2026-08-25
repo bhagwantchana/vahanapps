@@ -1135,6 +1135,16 @@ class AppStrings {
       'hi': 'नया पासवर्ड',
       'pa': 'ਨਵਾਂ ਪਾਸਵਰਡ',
     },
+    'data_saver': <String, String>{
+      'en': 'Data saver',
+      'hi': 'डेटा सेवर',
+      'pa': 'ਡਾਟਾ ਸੇਵਰ',
+    },
+    'data_saver_subtitle': <String, String>{
+      'en': 'Refresh less often to use less mobile data',
+      'hi': 'कम डेटा खर्च के लिए धीमा रिफ्रेश',
+      'pa': 'ਘੱਟ ਡਾਟਾ ਵਰਤੋਂ ਲਈ ਹੌਲੀ ਰਿਫਰੈਸ਼',
+    },
   };
 
   String t(String key) {

@@ -23,6 +23,7 @@ import 'package:fleet_monitor/widgets/help_sport.dart';
 import 'package:fleet_monitor/widgets/profile_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:fleet_monitor/services/data_saver.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onSelectTab, this.isStudent = false});
@@ -310,6 +311,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     value: _biometricEnabled,
                     enabled: _biometricSupported && !_biometricBusy,
                     onChanged: _toggleBiometricLogin,
+                  ),
+                  _settingsSwitch(
+                    Icons.data_saver_on_rounded,
+                    AppStrings.of(context).t('data_saver'),
+                    AppStrings.of(context).t('data_saver_subtitle'),
+                    value: DataSaver.isOn,
+                    enabled: true,
+                    onChanged: (v) async {
+                      await DataSaver.set(v);
+                      if (mounted) setState(() {});
+                    },
                   ),
                   _buildDeviceHealthTile(),
                   _settingsItem(

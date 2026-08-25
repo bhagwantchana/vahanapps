@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:fleet_monitor/services/data_saver.dart';
 
 Future<void> main() async {
   // Crashlytics needs `runZonedGuarded` to catch async errors that the
@@ -62,6 +63,9 @@ Future<void> main() async {
     }
 
     await CustomNotificationSoundService().initialize();
+    // Data-saver preference must be in memory before the first screen
+    // constructs its poll timers, or the first session ignores the switch.
+    await DataSaver.load();
     // Start watching internet reachability so the global "No internet" overlay
     // can take over when connectivity drops (see NoInternetOverlay below).
     ConnectivityService.instance.init();

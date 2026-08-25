@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:fleet_monitor/services/data_saver.dart';
+
 /// Lifecycle-aware data refresh helper. Lets a screen:
 ///
 /// - Auto-refresh on **app resume** from background (so the user lands on
@@ -69,7 +71,11 @@ class LifecycleRefresh extends WidgetsBindingObserver {
   void _startTimer() {
     _cancelTimer();
     if (interval <= Duration.zero) return;
-    _timer = Timer.periodic(interval, (_) => _runRefresh());
+    // Data-saver is applied here, at timer (re)start, rather than at
+    // construction: the flag is checked again on every resume and screen
+    // open, so flipping the switch in Profile takes effect without a
+    // restart and without threading the setting through constructors.
+    _timer = Timer.periodic(DataSaver.scale(interval), (_) => _runRefresh());
   }
 
   void _cancelTimer() {
