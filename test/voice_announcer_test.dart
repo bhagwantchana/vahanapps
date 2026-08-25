@@ -94,4 +94,78 @@ void main() {
       expect(buildSpokenSentence(data('towing')), startsWith('Alert!'));
     });
   });
+
+  group('the voice speaks the app language', () {
+    Map<String, dynamic> data(String type, {String? kind, String? stop}) =>
+        <String, dynamic>{
+          'alert_type': type,
+          if (kind != null) 'notification_kind': kind,
+          if (stop != null) 'stop_name': stop,
+        };
+
+    test('the in-app choice wins over the phone locale', () {
+      expect(resolveVoiceLang('pa', 'en_US'), 'pa');
+      expect(resolveVoiceLang('hi', 'pa_IN'), 'hi');
+      expect(resolveVoiceLang('en', 'hi_IN'), 'en');
+    });
+
+    test('"system" (no pref) follows the phone', () {
+      expect(resolveVoiceLang(null, 'pa_IN'), 'pa');
+      expect(resolveVoiceLang('', 'hi_IN'), 'hi');
+      expect(resolveVoiceLang(null, 'en_IN'), 'en');
+      expect(resolveVoiceLang(null, 'fr_FR'), 'en');
+      expect(resolveVoiceLang('junk', 'de_DE'), 'en');
+    });
+
+    test('start/stop in Punjabi and Hindi — the exact ask', () {
+      expect(buildSpokenSentence(data('ignition_on'), lang: 'pa'),
+          'ਗੱਡੀ ਚਾਲੂ ਹੋਈ।');
+      expect(buildSpokenSentence(data('ignition_off'), lang: 'pa'),
+          'ਗੱਡੀ ਬੰਦ ਹੋਈ।');
+      expect(buildSpokenSentence(data('ignition_on'), lang: 'hi'),
+          'गाड़ी चालू हुई।');
+      expect(buildSpokenSentence(data('ignition_off'), lang: 'hi'),
+          'गाड़ी बंद हुई।');
+    });
+
+    test('stop arrival keeps the stop name in every language', () {
+      final pa = buildSpokenSentence(
+          data('geofence_enter', kind: 'stop_arrival', stop: 'Model Town'),
+          lang: 'pa');
+      expect(pa, contains('Model Town'));
+      expect(pa, contains('ਬੱਸ'));
+      final hi = buildSpokenSentence(
+          data('geofence_enter', kind: 'stop_arrival', stop: 'Model Town'),
+          lang: 'hi');
+      expect(hi, contains('Model Town'));
+      expect(hi, contains('बस'));
+    });
+
+    test('every safety type has a sentence in all three languages', () {
+      const types = <String>[
+        'ignition_on', 'ignition_off', 'overspeed', 'sos', 'geofence_enter',
+        'geofence_exit', 'power_cut', 'tampering', 'low_battery',
+        'parking_guard', 'towing', 'speed_camera', 'harsh_brake',
+        'harsh_accel', 'harsh_corner', 'offline', 'device_back_online',
+        'idle',
+      ];
+      for (final t in types) {
+        for (final lang in <String>['en', 'hi', 'pa']) {
+          expect(buildSpokenSentence(data(t), lang: lang), isNotEmpty,
+              reason: '$t has no $lang voice');
+        }
+      }
+    });
+
+    test('wallet noise stays silent in every language', () {
+      for (final lang in <String>['en', 'hi', 'pa']) {
+        expect(buildSpokenSentence(data('wallet_credit'), lang: lang), '');
+      }
+    });
+
+    test('an unknown language falls back to English, never to silence', () {
+      expect(buildSpokenSentence(data('ignition_on'), lang: 'ta'),
+          'Vehicle started.');
+    });
+  });
 }
