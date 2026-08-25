@@ -17,6 +17,8 @@ import 'package:fleet_monitor/widgets/skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_cubit.dart';
+import 'package:fleet_monitor/cubits/home_cubit/home_state.dart';
 
 class VehicleListWidget extends StatefulWidget {
   const VehicleListWidget({super.key, this.onSelectTab});
@@ -113,9 +115,47 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
         ),
         title: const AppLogo(),
         actions: [
-          IconButton(
-            icon: Icon(LucideIcons.bell, color: Color(0xFF1A1A1A)),
-            onPressed: () {},
+          // Same live bell as Home: unread badge from the dashboard model,
+          // tap jumps to the Alerts tab. This one was a dead icon - no
+          // count, no tap - which read as "broken" next to Home's.
+          BlocBuilder<HomeCubit, HomeState>(
+            builder: (context, state) {
+              final alertCount =
+                  state.dashboardModel?.data?.unreadAlertCount ?? 0;
+              return IconButton(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(LucideIcons.bell, color: Color(0xFF1A1A1A)),
+                    if (alertCount > 0)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(6),
+                            border:
+                                Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          constraints: const BoxConstraints(
+                              minWidth: 14, minHeight: 14),
+                          child: Text(
+                            alertCount > 9 ? '9+' : alertCount.toString(),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 7,
+                                fontWeight: FontWeight.w900),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () => widget.onSelectTab?.call(2),
+              );
+            },
           ),
         ],
       ),
