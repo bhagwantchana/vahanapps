@@ -4,6 +4,7 @@ import 'package:fleet_monitor/repositorys/poi_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// "Nearby" — world POIs around the VEHICLE's live position (petrol pumps,
 /// EV chargers, toll plazas, speed cameras, traffic lights). Data comes from
@@ -80,13 +81,13 @@ class _NearbyPoisScreenState extends State<NearbyPoisScreen> {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open maps app')),
+          SnackBar(content: Text(AppStrings.of(context).t('could_not_open_maps'))),
         );
       }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open maps app')),
+        SnackBar(content: Text(AppStrings.of(context).t('could_not_open_maps'))),
       );
     }
   }
@@ -168,7 +169,7 @@ class _NearbyPoisScreenState extends State<NearbyPoisScreen> {
               const SizedBox(height: 12),
               Text(_error, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: _load, child: const Text('Retry')),
+              OutlinedButton(onPressed: _load, child: Text(AppStrings.of(context).t('retry'))),
             ],
           ),
         ),

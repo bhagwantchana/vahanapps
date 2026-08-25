@@ -6,6 +6,7 @@ import 'package:fleet_monitor/services/assigned_vehicle_reminder_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 class AssignedVehicleMaintenanceScreen extends StatefulWidget {
   const AssignedVehicleMaintenanceScreen({
@@ -194,8 +195,8 @@ class _AssignedVehicleMaintenanceScreenState
                   Navigator.pop(sheetContext);
                 }
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Maintenance log added successfully'),
+                  SnackBar(
+                    content: Text(AppStrings.of(context).t('maintenance_added')),
                   ),
                 );
                 await _loadVehicleCare();
@@ -267,8 +268,8 @@ class _AssignedVehicleMaintenanceScreenState
                             }
                             setSheetState(() => selectedServiceKey = value);
                           },
-                          decoration: const InputDecoration(
-                            labelText: 'Service Type',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_service_type'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -290,8 +291,8 @@ class _AssignedVehicleMaintenanceScreenState
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Odometer',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_odometer'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -300,8 +301,8 @@ class _AssignedVehicleMaintenanceScreenState
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Cost',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_cost'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -332,8 +333,8 @@ class _AssignedVehicleMaintenanceScreenState
                             }
                             setSheetState(() => selectedStatus = value);
                           },
-                          decoration: const InputDecoration(
-                            labelText: 'Status',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_status'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -438,8 +439,8 @@ class _AssignedVehicleMaintenanceScreenState
               children: <Widget>[
                 ListTile(
                   leading: Icon(LucideIcons.folderOpen),
-                  title: const Text('Open Documents'),
-                  subtitle: const Text('View all linked files'),
+                  title: Text(AppStrings.of(context).t('open_documents')),
+                  subtitle: Text(AppStrings.of(context).t('view_linked_files')),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _openInsuranceDocs(snapshot);
@@ -447,8 +448,8 @@ class _AssignedVehicleMaintenanceScreenState
                 ),
                 ListTile(
                   leading: Icon(LucideIcons.uploadCloud),
-                  title: const Text('Upload Insurance Document'),
-                  subtitle: const Text('Add new insurance file for this vehicle'),
+                  title: Text(AppStrings.of(context).t('upload_insurance')),
+                  subtitle: Text(AppStrings.of(context).t('upload_insurance_sub')),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showInsuranceUploadSheet(snapshot);
@@ -523,7 +524,7 @@ class _AssignedVehicleMaintenanceScreenState
                   isUploading) {
                 if (filePath.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please select a file to upload')),
+                    SnackBar(content: Text(AppStrings.of(context).t('select_file_first'))),
                   );
                 }
                 return;
@@ -550,7 +551,7 @@ class _AssignedVehicleMaintenanceScreenState
                   Navigator.pop(sheetContext);
                 }
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Insurance document uploaded')),
+                  SnackBar(content: Text(AppStrings.of(context).t('insurance_uploaded'))),
                 );
                 await _loadVehicleCare();
               } catch (error) {
@@ -619,15 +620,15 @@ class _AssignedVehicleMaintenanceScreenState
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: numberController,
-                          decoration: const InputDecoration(
-                            labelText: 'Document Number',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_document_number'),
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: authorityController,
-                          decoration: const InputDecoration(
-                            labelText: 'Issuing Authority',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_issuing_authority'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -647,8 +648,8 @@ class _AssignedVehicleMaintenanceScreenState
                         TextFormField(
                           controller: notesController,
                           maxLines: 2,
-                          decoration: const InputDecoration(
-                            labelText: 'Notes',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_notes_opt'),
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -734,7 +735,7 @@ class _AssignedVehicleMaintenanceScreenState
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text('Vehicle Care')),
+      appBar: AppBar(title: Text(AppStrings.of(context).t('vehicle_care'))),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error.isNotEmpty
@@ -767,10 +768,10 @@ class _AssignedVehicleMaintenanceScreenState
                   ),
                   const SizedBox(height: 16),
                   if (_snapshots.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 120),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 120),
                       child: Center(
-                        child: Text('No assigned vehicles found'),
+                        child: Text(AppStrings.of(context).t('no_assigned_vehicles')),
                       ),
                     ),
                   for (final snapshot in _snapshots) ...<Widget>[
@@ -1087,7 +1088,7 @@ class _VehicleCareErrorState extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: onRetry,
-              child: const Text('Retry'),
+              child: Text(AppStrings.of(context).t('retry')),
             ),
           ],
         ),

@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Locked single-map home for a "student" sub-user. Shows ONLY the live map of
 /// the vehicle assigned to this sub-user — no drawer, no bottom nav, no
@@ -202,7 +203,7 @@ class _StudentMapScreenState extends State<StudentMapScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Stop alert: ${error.toString()}')),
+        SnackBar(content: Text(AppStrings.of(context).tf('stop_alert_failed', {'error': error.toString()}))),
       );
     }
   }
@@ -246,7 +247,7 @@ class _StudentMapScreenState extends State<StudentMapScreen> {
                       dense: true,
                       value: null,
                       groupValue: pickedId,
-                      title: const Text('No stop (hide ETA)'),
+                      title: Text(AppStrings.of(context).t('no_stop_hide_eta')),
                       onChanged: (v) => setSheetState(() {
                         pickedId = null;
                         alertOn = false;
@@ -287,7 +288,7 @@ class _StudentMapScreenState extends State<StudentMapScreen> {
                     Navigator.of(sheetContext).pop();
                     _saveMyStop(vehicle, pickedId, alertOn);
                   },
-                  child: const Text('Save'),
+                  child: Text(AppStrings.of(context).t('save')),
                 ),
               ),
             ],

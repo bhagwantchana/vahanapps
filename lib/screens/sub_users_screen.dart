@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Primary customer screen to manage sub-users (foreman / manager).
 ///   • list current sub-users with their assigned-vehicle counts
@@ -123,18 +124,18 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Remove ${sub.displayName}?'),
+        title: Text(AppStrings.of(context).tf('remove_user_q', {'name': sub.displayName})),
         content: Text(
             'They will lose access to all ${sub.assignedCount} assigned vehicle(s).'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(AppStrings.of(context).t('cancel'))),
           ElevatedButton(
             style:
                 ElevatedButton.styleFrom(backgroundColor: Colors.red.shade600),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
+            child: Text(AppStrings.of(context).t('remove')),
           ),
         ],
       ),
@@ -162,7 +163,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Share link — ${sub.displayName}'),
+          title: Text(AppStrings.of(context).tf('share_link_title', {'name': sub.displayName})),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,11 +180,11 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
           actions: <Widget>[
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Close')),
+                child: Text(AppStrings.of(context).t('close'))),
             // Secondary fallback: copy to clipboard.
             TextButton.icon(
               icon: const Icon(Icons.copy, size: 16),
-              label: const Text('Copy'),
+              label: Text(AppStrings.of(context).t('copy')),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: url));
                 Navigator.pop(ctx);
@@ -193,7 +194,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
             // Primary action: real OS share sheet.
             ElevatedButton.icon(
               icon: const Icon(Icons.share, size: 16),
-              label: const Text('Share'),
+              label: Text(AppStrings.of(context).t('share')),
               onPressed: () {
                 Navigator.pop(ctx);
                 Share.share(
@@ -222,12 +223,12 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text('Manage Sub-Users')),
+      appBar: AppBar(title: Text(AppStrings.of(context).t('manage_sub_users'))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.primaryGreen,
         onPressed: _openAddDialog,
         icon: const Icon(LucideIcons.userPlus, color: Colors.white),
-        label: const Text('Add Sub-User',
+        label: Text(AppStrings.of(context).t('add_sub_user'),
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
       ),
       body: _loading
@@ -291,7 +292,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
             ElevatedButton.icon(
               onPressed: _refresh,
               icon: const Icon(LucideIcons.refreshCcw, size: 16),
-              label: const Text('Retry'),
+              label: Text(AppStrings.of(context).t('retry')),
             ),
           ],
         ),
@@ -387,7 +388,7 @@ class _SubUsersScreenState extends State<SubUsersScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   icon: const Icon(LucideIcons.car, size: 15),
-                  label: const Text('Assign vehicles'),
+                  label: Text(AppStrings.of(context).t('assign_vehicles')),
                   onPressed: () => _openAssignDialog(s),
                 ),
               ),
@@ -526,7 +527,7 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Add Sub-User',
+            Text(AppStrings.of(context).t('add_sub_user'),
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 14),
             Row(children: [
@@ -561,14 +562,14 @@ class _AddSubUserSheetState extends State<_AddSubUserSheet> {
                       'Student = locked single-map screen (no menu/details)',
                   helperMaxLines: 2,
                 ),
-                items: const <DropdownMenuItem<String>>[
+                items: <DropdownMenuItem<String>>[
                   DropdownMenuItem<String>(
                     value: 'general',
-                    child: Text('General (full app)'),
+                    child: Text(AppStrings.of(context).t('view_general')),
                   ),
                   DropdownMenuItem<String>(
                     value: 'student',
-                    child: Text('Student (map only)'),
+                    child: Text(AppStrings.of(context).t('view_student')),
                   ),
                 ],
                 onChanged: _saving
@@ -743,7 +744,7 @@ class _AssignVehiclesSheetState extends State<_AssignVehiclesSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Assign to ${widget.subUser.displayName}',
+                      Text(AppStrings.of(context).tf('assign_to', {'name': widget.subUser.displayName}),
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w800)),
                       Text('@${widget.subUser.username}',
@@ -763,7 +764,7 @@ class _AssignVehiclesSheetState extends State<_AssignVehiclesSheet> {
             if (vehicles.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
-                child: Text('No vehicles to assign.',
+                child: Text(AppStrings.of(context).t('no_vehicles_to_assign'),
                     style: TextStyle(color: Colors.grey.shade600)),
               )
             else
@@ -889,7 +890,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
       await _repo.resetPassword(widget.sub.id, pwd);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password updated')),
+        SnackBar(content: Text(AppStrings.of(context).t('password_updated'))),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -904,7 +905,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Reset password — ${widget.sub.displayName}',
+      title: Text(AppStrings.of(context).tf('reset_password_for', {'name': widget.sub.displayName}),
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
       content: SingleChildScrollView(
         child: Column(
@@ -942,7 +943,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
             autofocus: true,
             obscureText: _obscure,
             decoration: InputDecoration(
-              labelText: 'New password',
+              labelText: AppStrings.of(context).t('label_new_password'),
               prefixIcon: const Icon(LucideIcons.lock, size: 18),
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -956,9 +957,9 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
                             Clipboard.setData(
                                 ClipboardData(text: _ctl.text));
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Copied'),
-                                  duration: Duration(seconds: 1)),
+                              SnackBar(
+                                  content: Text(AppStrings.of(context).t('copied')),
+                                  duration: const Duration(seconds: 1)),
                             );
                           },
                   ),
@@ -977,7 +978,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Icon(LucideIcons.wand2, size: 16),
-            label: const Text('Generate strong password'),
+            label: Text(AppStrings.of(context).t('generate_strong_password')),
             onPressed: _generate,
           ),
           if (_error != null) ...[
@@ -994,7 +995,7 @@ class _ResetPasswordDialogState extends State<_ResetPasswordDialog> {
       actions: [
         TextButton(
             onPressed: _saving ? null : () => Navigator.pop(context, false),
-            child: const Text('Cancel')),
+            child: Text(AppStrings.of(context).t('cancel'))),
         ElevatedButton.icon(
           icon: _saving
               ? const SizedBox(
@@ -1069,12 +1070,12 @@ class _AssignedListSheetState extends State<_AssignedListSheet> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+              child: Text(AppStrings.of(context).t('cancel'))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove'),
+            child: Text(AppStrings.of(context).t('remove')),
           ),
         ],
       ),
@@ -1128,7 +1129,7 @@ class _AssignedListSheetState extends State<_AssignedListSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Assigned to ${widget.subUser.displayName}',
+                      Text(AppStrings.of(context).tf('assigned_to', {'name': widget.subUser.displayName}),
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w800)),
                       Text('${_items.length} vehicle(s)',
@@ -1163,7 +1164,7 @@ class _AssignedListSheetState extends State<_AssignedListSheet> {
                   Icon(LucideIcons.car,
                       size: 40, color: Colors.grey.shade400),
                   const SizedBox(height: 8),
-                  Text('No vehicles assigned yet',
+                  Text(AppStrings.of(context).t('no_vehicles_assigned_yet'),
                       style: TextStyle(color: Colors.grey.shade600)),
                 ]),
               )
@@ -1210,7 +1211,7 @@ class _AssignedListSheetState extends State<_AssignedListSheet> {
             const SizedBox(height: 10),
             TextButton(
               onPressed: () => Navigator.pop(context, _changed),
-              child: const Text('Close'),
+              child: Text(AppStrings.of(context).t('close')),
             ),
           ],
         ),

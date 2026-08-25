@@ -3,6 +3,7 @@ import 'package:fleet_monitor/services/force_update_service.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Terminal screen shown when the server reports the running build is below
 /// the configured minimum. There is deliberately no way past it — no back
@@ -25,7 +26,7 @@ class UpdateRequiredScreen extends StatelessWidget {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the store')),
+        SnackBar(content: Text(AppStrings.of(context).t('could_not_open_store'))),
       );
     }
   }
@@ -89,7 +90,7 @@ class UpdateRequiredScreen extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: () => _openStore(context),
                       icon: const Icon(LucideIcons.download, size: 18),
-                      label: const Text('Update Now'),
+                      label: Text(AppStrings.of(context).t('update_now')),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),

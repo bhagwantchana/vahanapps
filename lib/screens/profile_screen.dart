@@ -90,14 +90,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _biometricEnabled = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Biometric login disabled')));
+      ).showSnackBar(SnackBar(content: Text(AppStrings.of(context).t('biometric_disabled'))));
       return;
     }
 
     if (!_biometricSupported) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Biometric login is not available on this device'),
+        SnackBar(
+          content: Text(AppStrings.of(context).t('biometric_unavailable')),
         ),
       );
       return;
@@ -118,10 +118,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _biometricEnabled = true);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Biometric login enabled')));
+      ).showSnackBar(SnackBar(content: Text(AppStrings.of(context).t('biometric_enabled'))));
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric verification was cancelled')),
+        SnackBar(content: Text(AppStrings.of(context).t('biometric_cancelled'))),
       );
     }
 

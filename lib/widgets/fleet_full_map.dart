@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// School / fleet "front look": a FULL-SCREEN native **Google Maps** fleet view.
 /// A catchy status bar on top (Total / Running / Idle / Stopped / Offline /
@@ -511,7 +512,7 @@ class _VehicleDetailsCard extends StatelessWidget {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Call this vehicle?'),
+        title: Text(AppStrings.of(context).t('call_vehicle_q')),
         content: Text(
           'Dials the tracker in ${vehicle.displayName} on $number.\n\n'
           'The device answers with its microphone open, so you will hear '
@@ -520,11 +521,11 @@ class _VehicleDetailsCard extends StatelessWidget {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(AppStrings.of(context).t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Call'),
+            child: Text(AppStrings.of(context).t('call')),
           ),
         ],
       ),

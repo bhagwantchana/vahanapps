@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// "Where was it?" — one vehicle, one moment, one shareable answer.
 ///
@@ -106,7 +107,7 @@ class _PositionCertificateScreenState extends State<PositionCertificateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Where was it?'), elevation: 0),
+      appBar: AppBar(title: Text(AppStrings.of(context).t('where_was_it')), elevation: 0),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: <Widget>[
@@ -259,7 +260,7 @@ class _PositionCertificateScreenState extends State<PositionCertificateScreen> {
                     }
                   },
                   icon: const Icon(LucideIcons.map, size: 16),
-                  label: const Text('Open map'),
+                  label: Text(AppStrings.of(context).t('open_map')),
                 ),
               ),
               const SizedBox(width: 10),
@@ -267,7 +268,7 @@ class _PositionCertificateScreenState extends State<PositionCertificateScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () => Share.share(r.toShareText()),
                   icon: const Icon(LucideIcons.share2, size: 16),
-                  label: const Text('Share'),
+                  label: Text(AppStrings.of(context).t('share')),
                 ),
               ),
             ],

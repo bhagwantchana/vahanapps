@@ -660,6 +660,481 @@ class AppStrings {
       'hi': 'बदलें',
       'pa': 'ਬਦਲੋ',
     },
+    'close': <String, String>{
+      'en': 'Close',
+      'hi': 'बंद करें',
+      'pa': 'ਬੰਦ ਕਰੋ',
+    },
+    'copy': <String, String>{
+      'en': 'Copy',
+      'hi': 'कॉपी',
+      'pa': 'ਕਾਪੀ',
+    },
+    'copied': <String, String>{
+      'en': 'Copied',
+      'hi': 'कॉपी हो गया',
+      'pa': 'ਕਾਪੀ ਹੋ ਗਿਆ',
+    },
+    'share': <String, String>{
+      'en': 'Share',
+      'hi': 'साझा करें',
+      'pa': 'ਸਾਂਝਾ ਕਰੋ',
+    },
+    'remove': <String, String>{
+      'en': 'Remove',
+      'hi': 'हटाएं',
+      'pa': 'ਹਟਾਓ',
+    },
+    'send': <String, String>{
+      'en': 'Send',
+      'hi': 'भेजें',
+      'pa': 'ਭੇਜੋ',
+    },
+    'call': <String, String>{
+      'en': 'Call',
+      'hi': 'कॉल',
+      'pa': 'ਕਾਲ',
+    },
+    'all': <String, String>{
+      'en': 'All',
+      'hi': 'सभी',
+      'pa': 'ਸਾਰੇ',
+    },
+    'unread': <String, String>{
+      'en': 'Unread',
+      'hi': 'बिना पढ़े',
+      'pa': 'ਅਣਪੜ੍ਹੇ',
+    },
+    'update_now': <String, String>{
+      'en': 'Update Now',
+      'hi': 'अभी अपडेट करें',
+      'pa': 'ਹੁਣੇ ਅੱਪਡੇਟ ਕਰੋ',
+    },
+    'remove_user_q': <String, String>{
+      'en': 'Remove {name}?',
+      'hi': '{name} को हटाएं?',
+      'pa': '{name} ਹਟਾਓ?',
+    },
+    'share_link_title': <String, String>{
+      'en': 'Share link — {name}',
+      'hi': 'लिंक साझा करें — {name}',
+      'pa': 'ਲਿੰਕ ਸਾਂਝਾ ਕਰੋ — {name}',
+    },
+    'manage_sub_users': <String, String>{
+      'en': 'Manage Sub-Users',
+      'hi': 'सब-यूज़र प्रबंधन',
+      'pa': 'ਸਬ-ਯੂਜ਼ਰ ਪ੍ਰਬੰਧਨ',
+    },
+    'add_sub_user': <String, String>{
+      'en': 'Add Sub-User',
+      'hi': 'सब-यूज़र जोड़ें',
+      'pa': 'ਸਬ-ਯੂਜ਼ਰ ਜੋੜੋ',
+    },
+    'assign_vehicles': <String, String>{
+      'en': 'Assign vehicles',
+      'hi': 'वाहन असाइन करें',
+      'pa': 'ਵਾਹਨ ਸੌਂਪੋ',
+    },
+    'view_general': <String, String>{
+      'en': 'General (full app)',
+      'hi': 'जनरल (पूरी ऐप)',
+      'pa': 'ਜਨਰਲ (ਪੂਰੀ ਐਪ)',
+    },
+    'view_student': <String, String>{
+      'en': 'Student (map only)',
+      'hi': 'स्टूडेंट (सिर्फ़ नक्शा)',
+      'pa': 'ਸਟੂਡੈਂਟ (ਸਿਰਫ਼ ਨਕਸ਼ਾ)',
+    },
+    'assign_to': <String, String>{
+      'en': 'Assign to {name}',
+      'hi': '{name} को असाइन करें',
+      'pa': '{name} ਨੂੰ ਸੌਂਪੋ',
+    },
+    'no_vehicles_to_assign': <String, String>{
+      'en': 'No vehicles to assign.',
+      'hi': 'असाइन करने के लिए कोई वाहन नहीं।',
+      'pa': 'ਸੌਂਪਣ ਲਈ ਕੋਈ ਵਾਹਨ ਨਹੀਂ।',
+    },
+    'password_updated': <String, String>{
+      'en': 'Password updated',
+      'hi': 'पासवर्ड अपडेट हो गया',
+      'pa': 'ਪਾਸਵਰਡ ਅੱਪਡੇਟ ਹੋ ਗਿਆ',
+    },
+    'reset_password_for': <String, String>{
+      'en': 'Reset password — {name}',
+      'hi': 'पासवर्ड रीसेट — {name}',
+      'pa': 'ਪਾਸਵਰਡ ਰੀਸੈੱਟ — {name}',
+    },
+    'generate_strong_password': <String, String>{
+      'en': 'Generate strong password',
+      'hi': 'मज़बूत पासवर्ड बनाएं',
+      'pa': 'ਮਜ਼ਬੂਤ ਪਾਸਵਰਡ ਬਣਾਓ',
+    },
+    'assigned_to': <String, String>{
+      'en': 'Assigned to {name}',
+      'hi': '{name} को असाइन',
+      'pa': '{name} ਨੂੰ ਸੌਂਪੇ ਹੋਏ',
+    },
+    'no_vehicles_assigned_yet': <String, String>{
+      'en': 'No vehicles assigned yet',
+      'hi': 'अभी कोई वाहन असाइन नहीं',
+      'pa': 'ਹਾਲੇ ਕੋਈ ਵਾਹਨ ਨਹੀਂ ਸੌਂਪਿਆ',
+    },
+    'stop_alert_failed': <String, String>{
+      'en': 'Stop alert: {error}',
+      'hi': 'स्टॉप अलर्ट: {error}',
+      'pa': 'ਸਟਾਪ ਅਲਰਟ: {error}',
+    },
+    'link_failed': <String, String>{
+      'en': 'Could not create link: {error}',
+      'hi': 'लिंक नहीं बन सका: {error}',
+      'pa': 'ਲਿੰਕ ਨਹੀਂ ਬਣ ਸਕਿਆ: {error}',
+    },
+    'call_vehicle_q': <String, String>{
+      'en': 'Call this vehicle?',
+      'hi': 'इस वाहन को कॉल करें?',
+      'pa': 'ਇਸ ਵਾਹਨ ਨੂੰ ਕਾਲ ਕਰੀਏ?',
+    },
+    'no_dialler': <String, String>{
+      'en': 'No dialler available on this phone',
+      'hi': 'इस फ़ोन में डायलर उपलब्ध नहीं',
+      'pa': 'ਇਸ ਫ਼ੋਨ ਵਿੱਚ ਡਾਇਲਰ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'call_failed': <String, String>{
+      'en': 'Could not start the call',
+      'hi': 'कॉल शुरू नहीं हो सकी',
+      'pa': 'ਕਾਲ ਸ਼ੁਰੂ ਨਹੀਂ ਹੋ ਸਕੀ',
+    },
+    'no_live_location_yet': <String, String>{
+      'en': 'No live location for this vehicle yet',
+      'hi': 'इस वाहन की लाइव लोकेशन अभी नहीं',
+      'pa': 'ਇਸ ਵਾਹਨ ਦੀ ਲਾਈਵ ਲੋਕੇਸ਼ਨ ਹਾਲੇ ਨਹੀਂ',
+    },
+    'could_not_open_maps': <String, String>{
+      'en': 'Could not open maps',
+      'hi': 'नक्शा ऐप नहीं खुल सका',
+      'pa': 'ਨਕਸ਼ਾ ਐਪ ਨਹੀਂ ਖੁੱਲ੍ਹ ਸਕੀ',
+    },
+    'live_map_unavailable': <String, String>{
+      'en': 'Live map is not available for this vehicle',
+      'hi': 'इस वाहन के लिए लाइव नक्शा उपलब्ध नहीं',
+      'pa': 'ਇਸ ਵਾਹਨ ਲਈ ਲਾਈਵ ਨਕਸ਼ਾ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'push_notifications': <String, String>{
+      'en': 'Push Notifications',
+      'hi': 'पुश सूचनाएं',
+      'pa': 'ਪੁਸ਼ ਸੂਚਨਾਵਾਂ',
+    },
+    'parking_guard': <String, String>{
+      'en': 'Parking Guard',
+      'hi': 'पार्किंग गार्ड',
+      'pa': 'ਪਾਰਕਿੰਗ ਗਾਰਡ',
+    },
+    'night_lock': <String, String>{
+      'en': 'Night Lock',
+      'hi': 'नाइट लॉक',
+      'pa': 'ਨਾਈਟ ਲਾਕ',
+    },
+    'map_link_unavailable': <String, String>{
+      'en': 'Map link not available',
+      'hi': 'नक्शा लिंक उपलब्ध नहीं',
+      'pa': 'ਨਕਸ਼ਾ ਲਿੰਕ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'no_stop_hide_eta': <String, String>{
+      'en': 'No stop (hide ETA)',
+      'hi': 'कोई स्टॉप नहीं (ETA छिपाएं)',
+      'pa': 'ਕੋਈ ਸਟਾਪ ਨਹੀਂ (ETA ਲੁਕਾਓ)',
+    },
+    'vehicle_overview': <String, String>{
+      'en': 'Vehicle Overview',
+      'hi': 'वाहन ओवरव्यू',
+      'pa': 'ਵਾਹਨ ਓਵਰਵਿਊ',
+    },
+    'map_style': <String, String>{
+      'en': 'Map style',
+      'hi': 'नक्शे की स्टाइल',
+      'pa': 'ਨਕਸ਼ੇ ਦੀ ਸਟਾਈਲ',
+    },
+    'send_panic_title': <String, String>{
+      'en': 'Send Panic Alert',
+      'hi': 'पैनिक अलर्ट भेजें',
+      'pa': 'ਪੈਨਿਕ ਅਲਰਟ ਭੇਜੋ',
+    },
+    'panic': <String, String>{
+      'en': 'Panic',
+      'hi': 'पैनिक',
+      'pa': 'ਪੈਨਿਕ',
+    },
+    'no_alerts_yet': <String, String>{
+      'en': 'No alerts yet',
+      'hi': 'अभी कोई अलर्ट नहीं',
+      'pa': 'ਹਾਲੇ ਕੋਈ ਅਲਰਟ ਨਹੀਂ',
+    },
+    'no_vehicle_for_panic': <String, String>{
+      'en': 'No vehicle found to trigger panic alert',
+      'hi': 'पैनिक अलर्ट के लिए कोई वाहन नहीं मिला',
+      'pa': 'ਪੈਨਿਕ ਅਲਰਟ ਲਈ ਕੋਈ ਵਾਹਨ ਨਹੀਂ ਮਿਲਿਆ',
+    },
+    'panic_note_hint': <String, String>{
+      'en': 'Any emergency context to share',
+      'hi': 'आपातकाल की कोई जानकारी',
+      'pa': 'ਐਮਰਜੈਂਸੀ ਦੀ ਕੋਈ ਜਾਣਕਾਰੀ',
+    },
+    'visual_analytics': <String, String>{
+      'en': 'Visual Analytics',
+      'hi': 'विज़ुअल एनालिटिक्स',
+      'pa': 'ਵਿਜ਼ੂਅਲ ਐਨਾਲਿਟਿਕਸ',
+    },
+    'detailed_report_data': <String, String>{
+      'en': 'Detailed Report Data',
+      'hi': 'विस्तृत रिपोर्ट डेटा',
+      'pa': 'ਵਿਸਤ੍ਰਿਤ ਰਿਪੋਰਟ ਡੇਟਾ',
+    },
+    'no_chart_data': <String, String>{
+      'en': 'No chart data available',
+      'hi': 'चार्ट डेटा उपलब्ध नहीं',
+      'pa': 'ਚਾਰਟ ਡੇਟਾ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'select_title': <String, String>{
+      'en': 'Select {title}',
+      'hi': '{title} चुनें',
+      'pa': '{title} ਚੁਣੋ',
+    },
+    'export_unavailable': <String, String>{
+      'en': 'Export is not available for this report',
+      'hi': 'इस रिपोर्ट के लिए एक्सपोर्ट उपलब्ध नहीं',
+      'pa': 'ਇਸ ਰਿਪੋਰਟ ਲਈ ਐਕਸਪੋਰਟ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'export_failed': <String, String>{
+      'en': 'Unable to prepare export file',
+      'hi': 'एक्सपोर्ट फ़ाइल तैयार नहीं हो सकी',
+      'pa': 'ਐਕਸਪੋਰਟ ਫ਼ਾਇਲ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ',
+    },
+    'vehicle_care': <String, String>{
+      'en': 'Vehicle Care',
+      'hi': 'वाहन देखभाल',
+      'pa': 'ਵਾਹਨ ਦੇਖਭਾਲ',
+    },
+    'maintenance_added': <String, String>{
+      'en': 'Maintenance log added successfully',
+      'hi': 'मेंटेनेंस लॉग जुड़ गया',
+      'pa': 'ਮੇਂਟੇਨੈਂਸ ਲਾਗ ਜੁੜ ਗਿਆ',
+    },
+    'open_documents': <String, String>{
+      'en': 'Open Documents',
+      'hi': 'दस्तावेज़ खोलें',
+      'pa': 'ਦਸਤਾਵੇਜ਼ ਖੋਲ੍ਹੋ',
+    },
+    'view_linked_files': <String, String>{
+      'en': 'View all linked files',
+      'hi': 'सभी जुड़ी फ़ाइलें देखें',
+      'pa': 'ਸਾਰੀਆਂ ਜੁੜੀਆਂ ਫ਼ਾਇਲਾਂ ਵੇਖੋ',
+    },
+    'upload_insurance': <String, String>{
+      'en': 'Upload Insurance Document',
+      'hi': 'बीमा दस्तावेज़ अपलोड करें',
+      'pa': 'ਬੀਮਾ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਕਰੋ',
+    },
+    'upload_insurance_sub': <String, String>{
+      'en': 'Add new insurance file for this vehicle',
+      'hi': 'इस वाहन के लिए नई बीमा फ़ाइल जोड़ें',
+      'pa': 'ਇਸ ਵਾਹਨ ਲਈ ਨਵੀਂ ਬੀਮਾ ਫ਼ਾਇਲ ਜੋੜੋ',
+    },
+    'select_file_first': <String, String>{
+      'en': 'Please select a file to upload',
+      'hi': 'पहले अपलोड के लिए फ़ाइल चुनें',
+      'pa': 'ਪਹਿਲਾਂ ਅੱਪਲੋਡ ਲਈ ਫ਼ਾਇਲ ਚੁਣੋ',
+    },
+    'insurance_uploaded': <String, String>{
+      'en': 'Insurance document uploaded',
+      'hi': 'बीमा दस्तावेज़ अपलोड हो गया',
+      'pa': 'ਬੀਮਾ ਦਸਤਾਵੇਜ਼ ਅੱਪਲੋਡ ਹੋ ਗਿਆ',
+    },
+    'no_assigned_vehicles': <String, String>{
+      'en': 'No assigned vehicles found',
+      'hi': 'कोई असाइन किया वाहन नहीं मिला',
+      'pa': 'ਕੋਈ ਸੌਂਪਿਆ ਵਾਹਨ ਨਹੀਂ ਮਿਲਿਆ',
+    },
+    'no_file_for_document': <String, String>{
+      'en': 'No file uploaded for this document yet',
+      'hi': 'इस दस्तावेज़ की फ़ाइल अभी अपलोड नहीं',
+      'pa': 'ਇਸ ਦਸਤਾਵੇਜ਼ ਦੀ ਫ਼ਾਇਲ ਹਾਲੇ ਅੱਪਲੋਡ ਨਹੀਂ',
+    },
+    'document_link_invalid': <String, String>{
+      'en': 'Document link is invalid',
+      'hi': 'दस्तावेज़ लिंक अमान्य है',
+      'pa': 'ਦਸਤਾਵੇਜ਼ ਲਿੰਕ ਗ਼ਲਤ ਹੈ',
+    },
+    'open_document': <String, String>{
+      'en': 'Open Document',
+      'hi': 'दस्तावेज़ खोलें',
+      'pa': 'ਦਸਤਾਵੇਜ਼ ਖੋਲ੍ਹੋ',
+    },
+    'no_documents': <String, String>{
+      'en': 'No documents available',
+      'hi': 'कोई दस्तावेज़ उपलब्ध नहीं',
+      'pa': 'ਕੋਈ ਦਸਤਾਵੇਜ਼ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'no_active_sessions': <String, String>{
+      'en': 'No active driver sessions',
+      'hi': 'कोई सक्रिय ड्राइवर सेशन नहीं',
+      'pa': 'ਕੋਈ ਚਾਲੂ ਡਰਾਇਵਰ ਸੈਸ਼ਨ ਨਹੀਂ',
+    },
+    'open_vehicle': <String, String>{
+      'en': 'Open Vehicle',
+      'hi': 'वाहन खोलें',
+      'pa': 'ਵਾਹਨ ਖੋਲ੍ਹੋ',
+    },
+    'driving_score': <String, String>{
+      'en': 'Driving Score',
+      'hi': 'ड्राइविंग स्कोर',
+      'pa': 'ਡਰਾਇਵਿੰਗ ਸਕੋਰ',
+    },
+    'no_trip_data_day': <String, String>{
+      'en': 'No trip data for this day yet.',
+      'hi': 'इस दिन का ट्रिप डेटा अभी नहीं।',
+      'pa': 'ਇਸ ਦਿਨ ਦਾ ਟ੍ਰਿਪ ਡੇਟਾ ਹਾਲੇ ਨਹੀਂ।',
+    },
+    'tips': <String, String>{
+      'en': 'Tips',
+      'hi': 'सुझाव',
+      'pa': 'ਸੁਝਾਅ',
+    },
+    'device_health': <String, String>{
+      'en': 'Device Health',
+      'hi': 'डिवाइस हेल्थ',
+      'pa': 'ਡਿਵਾਈਸ ਹੈਲਥ',
+    },
+    'no_vehicle_live_yet': <String, String>{
+      'en': 'No vehicle with a live location yet',
+      'hi': 'अभी किसी वाहन की लाइव लोकेशन नहीं',
+      'pa': 'ਹਾਲੇ ਕਿਸੇ ਵਾਹਨ ਦੀ ਲਾਈਵ ਲੋਕੇਸ਼ਨ ਨਹੀਂ',
+    },
+    'fill_all_fields': <String, String>{
+      'en': 'Please fill all fields correctly',
+      'hi': 'सभी फ़ील्ड सही भरें',
+      'pa': 'ਸਾਰੇ ਫੀਲਡ ਸਹੀ ਭਰੋ',
+    },
+    'no_distance_data': <String, String>{
+      'en': 'No distance data available',
+      'hi': 'दूरी का डेटा उपलब्ध नहीं',
+      'pa': 'ਦੂਰੀ ਦਾ ਡੇਟਾ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'where_was_it': <String, String>{
+      'en': 'Where was it?',
+      'hi': 'कहाँ थी?',
+      'pa': 'ਕਿੱਥੇ ਸੀ?',
+    },
+    'open_map': <String, String>{
+      'en': 'Open map',
+      'hi': 'नक्शा खोलें',
+      'pa': 'ਨਕਸ਼ਾ ਖੋਲ੍ਹੋ',
+    },
+    'biometric_disabled': <String, String>{
+      'en': 'Biometric login disabled',
+      'hi': 'बायोमेट्रिक लॉगिन बंद',
+      'pa': 'ਬਾਇਓਮੈਟ੍ਰਿਕ ਲਾਗਇਨ ਬੰਦ',
+    },
+    'biometric_enabled': <String, String>{
+      'en': 'Biometric login enabled',
+      'hi': 'बायोमेट्रिक लॉगिन चालू',
+      'pa': 'ਬਾਇਓਮੈਟ੍ਰਿਕ ਲਾਗਇਨ ਚਾਲੂ',
+    },
+    'biometric_unavailable': <String, String>{
+      'en': 'Biometric login is not available on this device',
+      'hi': 'इस डिवाइस पर बायोमेट्रिक लॉगिन उपलब्ध नहीं',
+      'pa': 'ਇਸ ਡਿਵਾਈਸ ਤੇ ਬਾਇਓਮੈਟ੍ਰਿਕ ਲਾਗਇਨ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'biometric_cancelled': <String, String>{
+      'en': 'Biometric verification was cancelled',
+      'hi': 'बायोमेट्रिक सत्यापन रद्द हुआ',
+      'pa': 'ਬਾਇਓਮੈਟ੍ਰਿਕ ਤਸਦੀਕ ਰੱਦ ਹੋਈ',
+    },
+    'single_date': <String, String>{
+      'en': 'Single date',
+      'hi': 'एक तारीख़',
+      'pa': 'ਇੱਕ ਤਾਰੀਖ਼',
+    },
+    'date_range': <String, String>{
+      'en': 'Date range',
+      'hi': 'तारीख़ सीमा',
+      'pa': 'ਤਾਰੀਖ਼ ਦਾਇਰਾ',
+    },
+    'no_vehicles_available': <String, String>{
+      'en': 'No vehicles available',
+      'hi': 'कोई वाहन उपलब्ध नहीं',
+      'pa': 'ਕੋਈ ਵਾਹਨ ਉਪਲਬਧ ਨਹੀਂ',
+    },
+    'could_not_open_store': <String, String>{
+      'en': 'Could not open the store',
+      'hi': 'स्टोर नहीं खुल सका',
+      'pa': 'ਸਟੋਰ ਨਹੀਂ ਖੁੱਲ੍ਹ ਸਕਿਆ',
+    },
+    'label_cost': <String, String>{
+      'en': 'Cost',
+      'hi': 'लागत',
+      'pa': 'ਲਾਗਤ',
+    },
+    'label_odometer': <String, String>{
+      'en': 'Odometer',
+      'hi': 'ओडोमीटर',
+      'pa': 'ਓਡੋਮੀਟਰ',
+    },
+    'label_service_type': <String, String>{
+      'en': 'Service Type',
+      'hi': 'सर्विस प्रकार',
+      'pa': 'ਸਰਵਿਸ ਕਿਸਮ',
+    },
+    'label_service_date': <String, String>{
+      'en': 'Service Date',
+      'hi': 'सर्विस तारीख़',
+      'pa': 'ਸਰਵਿਸ ਤਾਰੀਖ਼',
+    },
+    'label_notes_opt': <String, String>{
+      'en': 'Notes (optional)',
+      'hi': 'नोट्स (वैकल्पिक)',
+      'pa': 'ਨੋਟਸ (ਵਿਕਲਪਿਕ)',
+    },
+    'label_status': <String, String>{
+      'en': 'Status',
+      'hi': 'स्थिति',
+      'pa': 'ਸਥਿਤੀ',
+    },
+    'label_expiry_date': <String, String>{
+      'en': 'Expiry Date',
+      'hi': 'समाप्ति तारीख़',
+      'pa': 'ਮਿਆਦ ਖ਼ਤਮ ਤਾਰੀਖ਼',
+    },
+    'label_document_number': <String, String>{
+      'en': 'Document Number',
+      'hi': 'दस्तावेज़ नंबर',
+      'pa': 'ਦਸਤਾਵੇਜ਼ ਨੰਬਰ',
+    },
+    'label_issuing_authority': <String, String>{
+      'en': 'Issuing Authority',
+      'hi': 'जारीकर्ता',
+      'pa': 'ਜਾਰੀ ਕਰਤਾ',
+    },
+    'label_overspeed_limit': <String, String>{
+      'en': 'Overspeed Limit (km/h)',
+      'hi': 'ओवरस्पीड सीमा (km/h)',
+      'pa': 'ਓਵਰਸਪੀਡ ਹੱਦ (km/h)',
+    },
+    'label_radius_alert': <String, String>{
+      'en': 'Radius Alert (meters)',
+      'hi': 'रेडियस अलर्ट (मीटर)',
+      'pa': 'ਰੇਡੀਅਸ ਅਲਰਟ (ਮੀਟਰ)',
+    },
+    'label_select_driver': <String, String>{
+      'en': 'Select Driver',
+      'hi': 'ड्राइवर चुनें',
+      'pa': 'ਡਰਾਇਵਰ ਚੁਣੋ',
+    },
+    'label_new_password': <String, String>{
+      'en': 'New password',
+      'hi': 'नया पासवर्ड',
+      'pa': 'ਨਵਾਂ ਪਾਸਵਰਡ',
+    },
   };
 
   String t(String key) {
@@ -667,6 +1142,17 @@ class AppStrings {
     final byKey = _table[key];
     if (byKey == null) return key; // loud fallback so missing keys show up in QA
     return byKey[lang] ?? byKey['en'] ?? key;
+  }
+
+  /// t() for strings with runtime values: the table entry carries {token}
+  /// placeholders and tf() fills them in AFTER translation, so word order
+  /// stays natural in every language ("Remove {name}?" vs "{name} ਹਟਾਓ?").
+  String tf(String key, Map<String, String> params) {
+    var out = t(key);
+    params.forEach((token, value) {
+      out = out.replaceAll('{$token}', value);
+    });
+    return out;
   }
 }
 

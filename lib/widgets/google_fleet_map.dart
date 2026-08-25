@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Native **Google Maps** fleet overview (the owner wants the real Google look,
 /// not the OSM/MapLibre tiles). Every vehicle is a CLEAN car marker — its own
@@ -1941,7 +1942,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             const SizedBox(height: 14),
-            const Text('Map style',
+            Text(AppStrings.of(context).t('map_style'),
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             for (final o in options)

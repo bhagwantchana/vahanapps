@@ -13,6 +13,7 @@ import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key, this.onSelectTab});
@@ -86,8 +87,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
         vehicleCubit.state.vechileListModel?.data ?? <VehicleRecord>[];
     if (vehicles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No vehicle found to trigger panic alert'),
+        SnackBar(
+          content: Text(AppStrings.of(context).t('no_vehicle_for_panic')),
         ),
       );
       return;
@@ -117,9 +118,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
-                    'Send Panic Alert',
-                    style: TextStyle(
+                  Text(
+                    AppStrings.of(context).t('send_panic_title'),
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.primaryBlue,
@@ -153,9 +154,9 @@ class _AlertsScreenState extends State<AlertsScreen> {
                   TextField(
                     controller: noteController,
                     maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Note (optional)',
-                      hintText: 'Any emergency context to share',
+                    decoration: InputDecoration(
+                      labelText: AppStrings.of(context).t('label_notes_opt'),
+                      hintText: AppStrings.of(context).t('panic_note_hint'),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -164,7 +165,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => Navigator.pop(sheetContext, false),
-                          child: const Text('Cancel'),
+                          child: Text(AppStrings.of(context).t('cancel')),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -175,7 +176,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             backgroundColor: AppColors.red,
                           ),
                           onPressed: () => Navigator.pop(sheetContext, true),
-                          label: const Text('Send'),
+                          label: Text(AppStrings.of(context).t('send')),
                         ),
                       ),
                     ],
@@ -252,7 +253,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
               children: <Widget>[
                 FilterChip(
                   selected: !_unreadOnly,
-                  label: const Text('All'),
+                  label: Text(AppStrings.of(context).t('all')),
                   onSelected: (_) {
                     setState(() => _unreadOnly = false);
                     context.read<AlertsCubit>().fetchAlerts(unreadOnly: false);
@@ -260,7 +261,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                 ),
                 FilterChip(
                   selected: _unreadOnly,
-                  label: const Text('Unread'),
+                  label: Text(AppStrings.of(context).t('unread')),
                   onSelected: (_) {
                     setState(() => _unreadOnly = true);
                     context.read<AlertsCubit>().fetchAlerts(unreadOnly: true);
@@ -284,7 +285,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                             ),
                           )
                         : const Icon(Icons.sos, size: 16),
-                    label: const Text('Panic'),
+                    label: Text(AppStrings.of(context).t('panic')),
                   ),
               ],
             ),
@@ -315,7 +316,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                         const SizedBox(height: 12),
                         ElevatedButton(
                           onPressed: _refreshAlerts,
-                          child: const Text('Retry'),
+                          child: Text(AppStrings.of(context).t('retry')),
                         ),
                       ],
                     ),
@@ -329,7 +330,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       children: <Widget>[
                         SizedBox(
                           height: MediaQuery.of(context).size.height * 0.5,
-                          child: const Center(child: Text('No alerts yet')),
+                          child: Center(child: Text(AppStrings.of(context).t('no_alerts_yet'))),
                         ),
                       ],
                     ),

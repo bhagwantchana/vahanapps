@@ -260,7 +260,7 @@ class _GeofenceEditorState extends State<_GeofenceEditor> {
             .toList();
     if (liveVehicles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No vehicle with a live location yet')),
+        SnackBar(content: Text(AppStrings.of(context).t('no_vehicle_live_yet'))),
       );
       return;
     }
@@ -398,7 +398,7 @@ class _GeofenceEditorState extends State<_GeofenceEditor> {
     final radius = int.tryParse(_radius.text.trim());
     if (name.isEmpty || lat == null || lng == null || radius == null || radius <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields correctly')),
+        SnackBar(content: Text(AppStrings.of(context).t('fill_all_fields'))),
       );
       return;
     }

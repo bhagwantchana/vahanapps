@@ -2,6 +2,7 @@ import 'package:fleet_monitor/models/device_health_model.dart';
 import 'package:fleet_monitor/repositorys/device_health_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// "Device Health" — the trackers themselves, not the vehicles.
 ///
@@ -81,7 +82,7 @@ class _DeviceHealthScreenState extends State<DeviceHealthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Device Health'),
+        title: Text(AppStrings.of(context).t('device_health')),
         elevation: 0,
       ),
       body: RefreshIndicator(

@@ -5,6 +5,7 @@ import 'package:fleet_monitor/constant/preferences_key.dart';
 import 'package:fleet_monitor/networks/network_api.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Help & Support — pulls live email / phone contacts from the server so
 /// the admin can change them via superadmin → Settings → Help & Support
@@ -83,7 +84,7 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Help & Support')),
+      appBar: AppBar(title: Text(AppStrings.of(context).t('help_support'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(

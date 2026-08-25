@@ -4,6 +4,7 @@ import 'package:fleet_monitor/repositorys/single_track_repository.dart';
 import 'package:fleet_monitor/services/driving_score.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Client-side driving-safety score for one vehicle over a day. Computed from
 /// the trip-history points (speed + time) the API already returns — no new
@@ -87,7 +88,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Driving Score'),
+        title: Text(AppStrings.of(context).t('driving_score')),
         actions: <Widget>[
           IconButton(
             tooltip: 'Pick day',
@@ -120,7 +121,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
                   ElevatedButton.icon(
                     onPressed: _load,
                     icon: const Icon(LucideIcons.refreshCcw, size: 16),
-                    label: const Text('Retry'),
+                    label: Text(AppStrings.of(context).t('retry')),
                   ),
                 ],
               ),
@@ -150,7 +151,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
-                child: Text('No trip data for this day yet.',
+                child: Text(AppStrings.of(context).t('no_trip_data_day'),
                     style: TextStyle(color: onSurface.withValues(alpha: 0.7))),
               ),
             ),
@@ -300,7 +301,7 @@ class _DrivingScoreScreenState extends State<DrivingScoreScreen> {
               children: <Widget>[
                 const Icon(LucideIcons.lightbulb, size: 18, color: AppColors.orange),
                 const SizedBox(width: 8),
-                Text('Tips',
+                Text(AppStrings.of(context).t('tips'),
                     style: TextStyle(
                         fontWeight: FontWeight.w800, color: onSurface)),
               ],

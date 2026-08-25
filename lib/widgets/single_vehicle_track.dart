@@ -34,6 +34,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Status colour from the one status rule — grey/red/green/orange, matching
 /// the map markers. The badges used to pick their colour from isMoving/isIdle,
@@ -377,7 +378,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Stop alert: ${error.toString()}')),
+        SnackBar(content: Text(AppStrings.of(context).tf('stop_alert_failed', {'error': error.toString()}))),
       );
     }
   }
@@ -500,11 +501,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+                child: Text(AppStrings.of(context).t('cancel')),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Confirm'),
+                child: Text(AppStrings.of(context).t('confirm')),
               ),
             ],
           ),
@@ -560,7 +561,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Link nahi ban sakeya: ${e.toString().replaceFirst('Exception: ', '')}')),
+        SnackBar(content: Text(AppStrings.of(context).tf('link_failed', {'error': e.toString().replaceFirst('Exception: ', '')}))),
       );
     }
   }
@@ -600,7 +601,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Call this vehicle?'),
+        title: Text(AppStrings.of(context).t('call_vehicle_q')),
         content: Text(
           'Dials the tracker in ${vehicle.displayName} on $number.\n\n'
           'The device answers with its microphone open, so you will hear '
@@ -609,11 +610,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(AppStrings.of(context).t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Call'),
+            child: Text(AppStrings.of(context).t('call')),
           ),
         ],
       ),
@@ -625,13 +626,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       final ok = await launchUrl(uri);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No dialler available on this phone')),
+          SnackBar(content: Text(AppStrings.of(context).t('no_dialler'))),
         );
       }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start the call')),
+        SnackBar(content: Text(AppStrings.of(context).t('call_failed'))),
       );
     }
   }
@@ -643,8 +644,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     if (vehicle.latitude == 0 || vehicle.longitude == 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No live location for this vehicle yet'),
+        SnackBar(
+          content: Text(AppStrings.of(context).t('no_live_location_yet')),
         ),
       );
       return;
@@ -668,7 +669,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     if (vehicle.latitude == 0 || vehicle.longitude == 0) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No location available yet for this vehicle')),
+        SnackBar(content: Text(AppStrings.of(context).t('no_live_location_yet'))),
       );
       return;
     }
@@ -681,13 +682,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open maps')),
+          SnackBar(content: Text(AppStrings.of(context).t('could_not_open_maps'))),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open maps')),
+          SnackBar(content: Text(AppStrings.of(context).t('could_not_open_maps'))),
         );
       }
     }
@@ -727,8 +728,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Live map is not available for this vehicle'),
+        SnackBar(
+          content: Text(AppStrings.of(context).t('live_map_unavailable')),
         ),
       );
       return;
@@ -803,7 +804,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     SwitchListTile(
                       value: notificationsEnabled,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Push Notifications'),
+                      title: Text(AppStrings.of(context).t('push_notifications')),
                       subtitle: const Text(
                         'Receive ignition, overspeed, and radius alerts',
                       ),
@@ -814,7 +815,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     SwitchListTile(
                       value: guardEnabled,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Parking Guard'),
+                      title: Text(AppStrings.of(context).t('parking_guard')),
                       subtitle: const Text(
                         'Alert when the parked vehicle moves away',
                       ),
@@ -825,7 +826,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     SwitchListTile(
                       value: nightLockEnabled,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Night Lock'),
+                      title: Text(AppStrings.of(context).t('night_lock')),
                       subtitle: const Text(
                         'Auto queue engine stop in the configured night window',
                       ),
@@ -837,16 +838,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     TextFormField(
                       controller: overspeedController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Overspeed Limit (km/h)',
+                      decoration: InputDecoration(
+                        labelText: AppStrings.of(context).t('label_overspeed_limit'),
                       ),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: radiusController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Radius Alert (meters)',
+                      decoration: InputDecoration(
+                        labelText: AppStrings.of(context).t('label_radius_alert'),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -991,7 +992,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(AppStrings.of(context).t('cancel')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
@@ -1123,8 +1124,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       if (drivers.isNotEmpty)
                         DropdownButtonFormField<int>(
                           initialValue: selectedDriverId,
-                          decoration: const InputDecoration(
-                            labelText: 'Select Driver',
+                          decoration: InputDecoration(
+                            labelText: AppStrings.of(context).t('label_select_driver'),
                           ),
                           items: drivers
                               .map(
@@ -1192,8 +1193,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       TextFormField(
                         controller: notesController,
                         maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Notes (optional)',
+                        decoration: InputDecoration(
+                          labelText: AppStrings.of(context).t('label_notes_opt'),
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -1579,8 +1580,8 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                               },
                             )
                           : (_controller == null
-                                ? const Center(
-                                    child: Text('Map link not available'),
+                                ? Center(
+                                    child: Text(AppStrings.of(context).t('map_link_unavailable')),
                                   )
                                 : WebViewWidget(
                                     controller: _controller!,
@@ -2265,7 +2266,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       dense: true,
                       value: null,
                       groupValue: pickedId,
-                      title: const Text('No stop (hide ETA)'),
+                      title: Text(AppStrings.of(context).t('no_stop_hide_eta')),
                       onChanged: (v) => setSheetState(() {
                         pickedId = null;
                         alertOn = false;
@@ -2306,7 +2307,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                     Navigator.of(sheetContext).pop();
                     _saveMyStop(vehicle, pickedId, alertOn);
                   },
-                  child: const Text('Save'),
+                  child: Text(AppStrings.of(context).t('save')),
                 ),
               ),
             ],
@@ -2678,7 +2679,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text('Vehicle Overview', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
+          Text(AppStrings.of(context).t('vehicle_overview'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
           const SizedBox(height: 20),
           LayoutBuilder(
             builder: (context, constraints) {

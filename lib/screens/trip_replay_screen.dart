@@ -221,12 +221,12 @@ class _TripReplayScreenState extends State<TripReplayScreen>
           children: <Widget>[
             ListTile(
               leading: const Icon(LucideIcons.calendar),
-              title: const Text('Single date'),
+              title: Text(AppStrings.of(context).t('single_date')),
               onTap: () => Navigator.pop(ctx, 'single'),
             ),
             ListTile(
               leading: const Icon(Icons.date_range),
-              title: const Text('Date range'),
+              title: Text(AppStrings.of(context).t('date_range')),
               onTap: () => Navigator.pop(ctx, 'range'),
             ),
           ],
@@ -726,7 +726,7 @@ class _VehiclePicker extends StatelessWidget {
           if (state is VehicleLoadingState) {
             return const Center(child: CircularProgressIndicator());
           }
-          return const Center(child: Text('No vehicles available'));
+          return Center(child: Text(AppStrings.of(context).t('no_vehicles_available')));
         }
         return ListView.separated(
           padding: const EdgeInsets.all(16),

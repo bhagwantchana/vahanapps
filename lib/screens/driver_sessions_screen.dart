@@ -6,6 +6,7 @@ import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 class DriverSessionsScreen extends StatefulWidget {
   const DriverSessionsScreen({
@@ -128,7 +129,7 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
                   const SizedBox(height: 12),
                   ElevatedButton(
                     onPressed: _loadSessions,
-                    child: const Text('Retry'),
+                    child: Text(AppStrings.of(context).t('retry')),
                   ),
                 ],
               ),
@@ -137,10 +138,10 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
           ? RefreshIndicator(
               onRefresh: _loadSessions,
               child: ListView(
-                children: const <Widget>[
+                children: <Widget>[
                   SizedBox(
                     height: 320,
-                    child: Center(child: Text('No active driver sessions')),
+                    child: Center(child: Text(AppStrings.of(context).t('no_active_sessions'))),
                   ),
                 ],
               ),
@@ -257,7 +258,7 @@ class _DriverSessionsScreenState extends State<DriverSessionsScreen> {
                                       ? () => _openVehicle(session)
                                       : null,
                                   icon: Icon(LucideIcons.map),
-                                  label: const Text('Open Vehicle'),
+                                  label: Text(AppStrings.of(context).t('open_vehicle')),
                                 ),
                               ),
                               const SizedBox(width: 12),

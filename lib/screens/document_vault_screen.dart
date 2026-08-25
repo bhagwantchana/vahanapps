@@ -4,6 +4,7 @@ import 'package:fleet_monitor/repositorys/document_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 class DocumentVaultScreen extends StatefulWidget {
   const DocumentVaultScreen({
@@ -89,7 +90,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
   Future<void> _openFile(DocumentItemModel document) async {
     if (document.fileUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No file uploaded for this document yet')),
+        SnackBar(content: Text(AppStrings.of(context).t('no_file_for_document'))),
       );
       return;
     }
@@ -97,7 +98,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
     final uri = Uri.tryParse(document.fileUrl);
     if (uri == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document link is invalid')),
+        SnackBar(content: Text(AppStrings.of(context).t('document_link_invalid'))),
       );
       return;
     }
@@ -177,7 +178,7 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _openFile(document),
                     icon: Icon(LucideIcons.externalLink),
-                    label: const Text('Open Document'),
+                    label: Text(AppStrings.of(context).t('open_document')),
                   ),
                 ),
               ],
@@ -244,10 +245,10 @@ class _DocumentVaultScreenState extends State<DocumentVaultScreen> {
                 ? RefreshIndicator(
                     onRefresh: _loadDocuments,
                     child: ListView(
-                      children: const <Widget>[
+                      children: <Widget>[
                         SizedBox(
                           height: 320,
-                          child: Center(child: Text('No documents available')),
+                          child: Center(child: Text(AppStrings.of(context).t('no_documents'))),
                         ),
                       ],
                     ),
@@ -463,7 +464,7 @@ class _DocumentErrorState extends StatelessWidget {
           const SizedBox(height: 12),
           ElevatedButton(
             onPressed: onRetry,
-            child: const Text('Retry'),
+            child: Text(AppStrings.of(context).t('retry')),
           ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 /// Minimal in-app browser for site pages (Privacy Policy, Terms, …).
 /// Navigation is locked to the page it was opened for so in-page links
@@ -99,7 +100,7 @@ class _WebPageScreenState extends State<WebPageScreen> {
                   ElevatedButton.icon(
                     onPressed: _retry,
                     icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Retry'),
+                    label: Text(AppStrings.of(context).t('retry')),
                   ),
                 ],
               ),

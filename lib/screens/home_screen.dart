@@ -556,8 +556,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (parsed == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Live map not available for this vehicle'),
+        SnackBar(
+          content: Text(AppStrings.of(context).t('live_map_unavailable')),
         ),
       );
       return;
@@ -1127,9 +1127,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 20),
               if (spots.isEmpty)
-                const SizedBox(
+                SizedBox(
                   height: 120,
-                  child: Center(child: Text('No distance data available', style: TextStyle(fontSize: 12, color: Colors.grey))),
+                  child: Center(child: Text(AppStrings.of(context).t('no_distance_data'), style: const TextStyle(fontSize: 12, color: Colors.grey))),
                 )
               else
                 SizedBox(

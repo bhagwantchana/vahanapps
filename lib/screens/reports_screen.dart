@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:fleet_monitor/l10n/app_strings.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key, this.initialReportKey, this.onSelectTab});
@@ -93,7 +94,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Future<void> _exportCsv(ReportExport? export) async {
     if (export == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Export is not available for this report')),
+        SnackBar(content: Text(AppStrings.of(context).t('export_unavailable'))),
       );
       return;
     }
@@ -101,7 +102,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final bytes = export.decodeBytes();
     if (bytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to prepare export file')),
+        SnackBar(content: Text(AppStrings.of(context).t('export_failed'))),
       );
       return;
     }
@@ -251,7 +252,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Select $title', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            Text(AppStrings.of(context).tf('select_title', {'title': title}), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 16),
             Flexible(
               child: ListView.builder(
@@ -353,7 +354,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Visual Analytics', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
+              Text(AppStrings.of(context).t('visual_analytics'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: AppTheme.primaryBlue.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(8)),
@@ -364,7 +365,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(height: 24),
           SizedBox(
             height: 220,
-            child: hasData ? _chartWidget(chart) : const Center(child: Text('No chart data available')),
+            child: hasData ? _chartWidget(chart) : Center(child: Text(AppStrings.of(context).t('no_chart_data'))),
           ),
         ],
       ),
@@ -384,7 +385,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _lineChart(ReportChart chart) {
     final primary = chart.series.isNotEmpty ? chart.series.first : const ReportSeries();
     if (primary.data.isEmpty) {
-      return const Center(child: Text('No line chart data'));
+      return Center(child: Text(AppStrings.of(context).t('no_chart_data')));
     }
 
     final spots = <FlSpot>[];
@@ -423,7 +424,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _barChart(ReportChart chart) {
     final primary = chart.series.isNotEmpty ? chart.series.first : const ReportSeries();
     if (primary.data.isEmpty) {
-      return const Center(child: Text('No bar chart data'));
+      return Center(child: Text(AppStrings.of(context).t('no_chart_data')));
     }
 
     final groups = <BarChartGroupData>[];
@@ -459,7 +460,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _pieChart(ReportChart chart) {
     final primary = chart.series.isNotEmpty ? chart.series.first : const ReportSeries();
     if (primary.data.isEmpty) {
-      return const Center(child: Text('No donut data'));
+      return Center(child: Text(AppStrings.of(context).t('no_chart_data')));
     }
 
     final colors = <Color>[
@@ -507,7 +508,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text('Detailed Report Data', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
+            child: Text(AppStrings.of(context).t('detailed_report_data'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
           ),
           const SizedBox(height: 16),
           SingleChildScrollView(
