@@ -53,6 +53,29 @@ class VehicleCubit extends Cubit<VehicleState> {
 
   Future<void> fetchVehicles() async {
     emit(VehicleLoadingState(vechileListModel: state.vechileListModel));
+
+    // COLD-START PAINT. The disk cache used to be consulted only when the
+    // network FAILED, which meant every app open stared at a spinner for as
+    // long as the request took - on morning cell coverage, seconds. The last
+    // known fleet is on disk right now and is exactly what the map showed
+    // when the app was last closed, so paint it immediately, flagged with
+    // its age; the fresh answer replaces it the moment it lands, and
+    // _keepNewestFixes already guarantees the swap can't step any marker
+    // backwards.
+    if (state.vechileListModel == null) {
+      final cached = await OfflineCache.readVehicleList();
+      if (cached != null && !isClosed && state.vechileListModel == null) {
+        try {
+          emit(VehicleLoggedInState(
+            vechileListModel: VehicleListModel.fromJson(cached),
+            cachedAge: await OfflineCache.vehicleListAge() ?? Duration.zero,
+          ));
+        } catch (_) {
+          // A corrupt cache row must never block the real fetch below.
+        }
+      }
+    }
+
     try {
       final result = await _vehicleRepository.fetchVehicles();
       if (isClosed) return;

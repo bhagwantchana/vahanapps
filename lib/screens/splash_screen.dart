@@ -56,15 +56,25 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _bootstrap() async {
-    // Check Play Store for a mandatory update before anything else.
-    // If an update is found, a full-screen blocking UI appears and
-    // the app restarts automatically after install.
-    await ForceUpdateService.checkAndForceUpdate();
-
-    // Server-driven minimum-version gate. Play's flow above covers Android;
-    // this is what reaches iOS and side-loaded builds. A blocked build stops
-    // here permanently — no route past UpdateRequiredScreen.
-    final updateRequirement = await ForceUpdateService.checkServerRequirement();
+    // These three used to run one after another, each awaiting the network
+    // before the next began - the Play update check, the server version
+    // gate and the FCM token fetch - followed by a THREE-second vanity
+    // delay. On a slow morning connection that made every single cold
+    // start five-plus seconds of logo. None of them depends on another,
+    // so they now run together, and the splash holds only the one second
+    // the entry animation needs to land.
+    //
+    // checkAndForceUpdate shows its own blocking UI when Play has a
+    // mandatory update; checkServerRequirement is what reaches iOS and
+    // side-loaded builds. A blocked build still stops here permanently -
+    // no route past UpdateRequiredScreen.
+    final results = await Future.wait(<Future<dynamic>>[
+      ForceUpdateService.checkAndForceUpdate(),
+      ForceUpdateService.checkServerRequirement(),
+      Functions.getDeviceTokenToSendNotification(),
+      Future<void>.delayed(const Duration(seconds: 1)),
+    ]);
+    final updateRequirement = results[1];
     if (updateRequirement != null) {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -74,9 +84,6 @@ class _SplashScreenState extends State<SplashScreen>
       );
       return;
     }
-
-    await Functions.getDeviceTokenToSendNotification();
-    await Future<void>.delayed(const Duration(seconds: 3));
 
     final isLogin = await LocalStorage.readValue(PreferencesKey.isLogin);
     final token = await LocalStorage.readValue(PreferencesKey.token);
