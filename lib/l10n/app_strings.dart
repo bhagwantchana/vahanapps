@@ -1170,6 +1170,16 @@ class AppStrings {
       'hi': 'ट्रिप पूरी — {km} km',
       'pa': 'ਸਫ਼ਰ ਪੂਰਾ — {km} km',
     },
+    'trip_live_card': <String, String>{
+      'en': 'Trip Live card',
+      'hi': 'ट्रिप लाइव कार्ड',
+      'pa': 'ਟ੍ਰਿਪ ਲਾਈਵ ਕਾਰਡ',
+    },
+    'trip_live_card_subtitle': <String, String>{
+      'en': 'Pinned live status in the notification bar while the bus is on a trip',
+      'hi': 'सफ़र के दौरान नोटिफिकेशन बार में लाइव स्थिति',
+      'pa': 'ਸਫ਼ਰ ਦੌਰਾਨ ਨੋਟੀਫਿਕੇਸ਼ਨ ਬਾਰ ਵਿੱਚ ਲਾਈਵ ਹਾਲਤ',
+    },
   };
 
   String t(String key) {

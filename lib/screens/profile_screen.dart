@@ -24,6 +24,7 @@ import 'package:fleet_monitor/widgets/profile_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fleet_monitor/services/data_saver.dart';
+import 'package:fleet_monitor/services/trip_live_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onSelectTab, this.isStudent = false});
@@ -44,6 +45,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _biometricEnabled = false;
   bool _biometricSupported = false;
+  bool _tripLiveEnabled = false;
   bool _biometricBusy = false;
   bool _voiceAlerts = false; // opt-in — mirrors VoiceAnnouncer's default
   int? _deviceHealthNeeds; // null until the first fetch lands
@@ -69,12 +71,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadBiometricState() async {
     final enabled = await BiometricAuthService.isEnabled();
     final supported = await BiometricAuthService.isSupported();
+    final tripLive = await TripLiveCard.instance.isEnabled();
     if (!mounted) {
       return;
     }
     setState(() {
       _biometricEnabled = enabled;
       _biometricSupported = supported;
+      _tripLiveEnabled = tripLive;
     });
   }
 
@@ -321,6 +325,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onChanged: (v) async {
                       await DataSaver.set(v);
                       if (mounted) setState(() {});
+                    },
+                  ),
+                  _settingsSwitch(
+                    Icons.push_pin_outlined,
+                    AppStrings.of(context).t('trip_live_card'),
+                    AppStrings.of(context).t('trip_live_card_subtitle'),
+                    value: _tripLiveEnabled,
+                    enabled: true,
+                    onChanged: (v) async {
+                      await TripLiveCard.instance.setEnabled(v);
+                      if (mounted) setState(() => _tripLiveEnabled = v);
                     },
                   ),
                   _buildDeviceHealthTile(),

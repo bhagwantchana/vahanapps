@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:fleet_monitor/services/voice_announcer.dart';
+import 'package:fleet_monitor/services/trip_live_card.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -35,6 +36,9 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // long enough for one sentence; announce() itself checks the user's toggle
   // and never throws). On iOS this is a no-op in background by platform rule.
   await VoiceAnnouncer.instance.announce(message.data);
+  // Rewrite the pinned Trip Live card if that vehicle has one (opt-in,
+  // Android-only, never throws — see trip_live_card.dart).
+  await TripLiveCard.instance.onPush(message.data);
 }
 
 class CustomNotificationSoundService {
@@ -262,6 +266,7 @@ class CustomNotificationSoundService {
         showNotification(message);
         // Spoken alert — fire-and-forget; the banner/sound never wait on TTS.
         VoiceAnnouncer.instance.announce(message.data);
+        TripLiveCard.instance.onPush(message.data);
         // NOTE (2026-07-08): removed the push-triggered cubit refresh here.
         // It called HomeCubit.fetchHomeData() on every vehicle alert, which
         // rebuilt the HOME MAP — so a burst of alerts made the map visibly
