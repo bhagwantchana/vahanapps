@@ -1180,6 +1180,91 @@ class AppStrings {
       'hi': 'सफ़र के दौरान नोटिफिकेशन बार में लाइव स्थिति',
       'pa': 'ਸਫ਼ਰ ਦੌਰਾਨ ਨੋਟੀਫਿਕੇਸ਼ਨ ਬਾਰ ਵਿੱਚ ਲਾਈਵ ਹਾਲਤ',
     },
+    'dash_today_title': <String, String>{
+      'en': 'Today\'s Activity',
+      'hi': 'आज की एक्टिविटी',
+      'pa': 'ਅੱਜ ਦੀ ਐਕਟੀਵਿਟੀ',
+    },
+    'dash_today_subtitle': <String, String>{
+      'en': 'The day so far, at a glance',
+      'hi': 'आज का दिन एक नज़र में',
+      'pa': 'ਅੱਜ ਦਾ ਦਿਨ ਇੱਕ ਨਜ਼ਰ ਵਿੱਚ',
+    },
+    'dash_km_today': <String, String>{
+      'en': 'km today',
+      'hi': 'km आज',
+      'pa': 'km ਅੱਜ',
+    },
+    'dash_trips_today': <String, String>{
+      'en': 'Trips today',
+      'hi': 'आज की ट्रिप',
+      'pa': 'ਅੱਜ ਦੀਆਂ ਟ੍ਰਿਪਾਂ',
+    },
+    'dash_active_today': <String, String>{
+      'en': 'Vehicles moved',
+      'hi': 'चले वाहन',
+      'pa': 'ਚੱਲੇ ਵਾਹਨ',
+    },
+    'dash_top_vehicles': <String, String>{
+      'en': 'Busiest vehicles',
+      'hi': 'सबसे व्यस्त वाहन',
+      'pa': 'ਸਭ ਤੋਂ ਰੁੱਝੇ ਵਾਹਨ',
+    },
+    'dash_no_activity': <String, String>{
+      'en': 'Nothing yet today',
+      'hi': 'आज अभी कुछ नहीं',
+      'pa': 'ਅੱਜ ਹਾਲੇ ਕੁਝ ਨਹੀਂ',
+    },
+    'dash_safety_title': <String, String>{
+      'en': 'Safety Score',
+      'hi': 'सेफ्टी स्कोर',
+      'pa': 'ਸੇਫਟੀ ਸਕੋਰ',
+    },
+    'dash_safety_subtitle': <String, String>{
+      'en': 'Last 7 days across the fleet',
+      'hi': 'पिछले 7 दिन, पूरा फ्लीट',
+      'pa': 'ਪਿਛਲੇ 7 ਦਿਨ, ਪੂਰਾ ਫਲੀਟ',
+    },
+    'dash_safety_of_100': <String, String>{
+      'en': 'out of 100',
+      'hi': '100 में से',
+      'pa': '100 ਵਿੱਚੋਂ',
+    },
+    'dash_overspeed': <String, String>{
+      'en': 'Overspeed',
+      'hi': 'ओवरस्पीड',
+      'pa': 'ਓਵਰਸਪੀਡ',
+    },
+    'dash_harsh_events': <String, String>{
+      'en': 'Harsh driving',
+      'hi': 'तेज़ ड्राइविंग',
+      'pa': 'ਤੇਜ਼ ਡਰਾਈਵਿੰਗ',
+    },
+    'dash_power_tamper': <String, String>{
+      'en': 'Power / tamper',
+      'hi': 'पावर / छेड़छाड़',
+      'pa': 'ਪਾਵਰ / ਛੇੜਛਾੜ',
+    },
+    'dash_geofence_exits': <String, String>{
+      'en': 'Geofence exits',
+      'hi': 'जियोफेंस से बाहर',
+      'pa': 'ਜੀਓਫੈਂਸ ਤੋਂ ਬਾਹਰ',
+    },
+    'dash_needs_attention': <String, String>{
+      'en': 'Needs attention',
+      'hi': 'ध्यान चाहिए',
+      'pa': 'ਧਿਆਨ ਚਾਹੀਦਾ',
+    },
+    'dash_n_events': <String, String>{
+      'en': '{n} events',
+      'hi': '{n} घटनाएं',
+      'pa': '{n} ਘਟਨਾਵਾਂ',
+    },
+    'dash_clean_week': <String, String>{
+      'en': 'A clean week — no events',
+      'hi': 'साफ़ हफ्ता — कोई घटना नहीं',
+      'pa': 'ਸਾਫ਼ ਹਫ਼ਤਾ — ਕੋਈ ਘਟਨਾ ਨਹੀਂ',
+    },
   };
 
   String t(String key) {

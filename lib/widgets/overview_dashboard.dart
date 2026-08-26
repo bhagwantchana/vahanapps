@@ -3,13 +3,17 @@ import 'package:fleet_monitor/constant/app_theme.dart';
 import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:fleet_monitor/widgets/dash_safety.dart';
+import 'package:fleet_monitor/widgets/dash_today_activity.dart';
 
-/// The "Overview" home dashboard: a status donut chart (Running / Idle /
-/// Stopped / Offline) with the fleet total in the centre, plus tappable count
-/// tiles. Tapping a slice or a tile opens the full fleet map filtered to just
-/// those vehicles. Selected via Settings → Dashboard style; the other option is
-/// the full-screen map.
-class OverviewDashboard extends StatelessWidget {
+/// The home dashboard PAGER: three swipeable pages sharing one card
+/// language — Fleet Overview (the status donut), Today's Activity (km and
+/// trips so far today) and Safety Score (last-7-days events as one 0-100
+/// ring). The dots under the pages are the whole navigation; the owner's
+/// brief was "more dashboards, zero clutter", and a swipe is the least
+/// clutter there is. Selected via Settings → Dashboard style; the other
+/// option is the full-screen map.
+class OverviewDashboard extends StatefulWidget {
   const OverviewDashboard({
     super.key,
     required this.vehicles,
@@ -20,6 +24,74 @@ class OverviewDashboard extends StatelessWidget {
 
   /// Opens the fleet map filtered to [filter] (all|running|idle|stopped|
   /// offline|overspeed).
+  final void Function(String filter) onOpenMap;
+
+  @override
+  State<OverviewDashboard> createState() => _OverviewDashboardState();
+}
+
+class _OverviewDashboardState extends State<OverviewDashboard> {
+  final PageController _pager = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Expanded(
+          child: PageView(
+            controller: _pager,
+            onPageChanged: (i) => setState(() => _page = i),
+            children: <Widget>[
+              _FleetOverviewPage(
+                vehicles: widget.vehicles,
+                onOpenMap: widget.onOpenMap,
+              ),
+              const TodayActivityDashboard(),
+              const SafetyDashboard(),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 6, bottom: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              for (var i = 0; i < 3; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: _page == i ? 20 : 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: _page == i
+                        ? AppTheme.primaryBlue
+                        : Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Page 1 — the original status donut, byte-for-byte behaviour.
+class _FleetOverviewPage extends StatelessWidget {
+  const _FleetOverviewPage({
+    required this.vehicles,
+    required this.onOpenMap,
+  });
+
+  final List<VehicleRecord> vehicles;
   final void Function(String filter) onOpenMap;
 
   // isMoving is stale-aware, so a fix minutes old can no longer raise an

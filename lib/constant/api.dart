@@ -79,6 +79,7 @@ class AppUrl {
   /// subscription is keyed by this phone's FCM token, never the account.
   static const String routeStops = '${baseUrl}routeStops';
   static const String dayTimeline = '${baseUrl}dayTimeline';
+  static const String safetySummary = '${baseUrl}safetySummary';
   static const String stopEta = '${baseUrl}stopEta';
   static const String setStopAlert = '${baseUrl}setStopAlert';
 }

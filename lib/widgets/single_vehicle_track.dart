@@ -1810,7 +1810,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         // "My Stop" + ETA — renders nothing until the school
                         // has defined stops for this route.
                         _buildMyStopCard(vehicle),
-                        _buildTodayCard(vehicle),
                         Row(
                           children: <Widget>[
                             CircleAvatar(
@@ -2008,6 +2007,17 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 color: AppTheme.primaryBlue,
                                 onTap: () => _openHistory(vehicle),
                               ),
+                            // The day's story lives behind a button now, not
+                            // inline - the owner's call: the card ate half a
+                            // screen on the detail page. Hidden entirely on a
+                            // day with nothing to tell.
+                            if (_timeline.isNotEmpty)
+                              _buildFixedActionButton(
+                                icon: LucideIcons.calendarClock,
+                                label: AppStrings.of(context).t('today_journey'),
+                                color: AppTheme.primaryBlue,
+                                onTap: () => _openTodaySheet(vehicle),
+                              ),
                             // Sits beside History on purpose: both answer
                             // "what happened earlier", but this one answers it
                             // for a single moment, in a form you can hand to
@@ -2130,11 +2140,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     setState(() => _timeline = events);
   }
 
-  /// "Today" - the day's journey as a story, for the parent who was not
-  /// watching the map: left at 7:42, reached your stop 8:05, trip done
-  /// 8:20. Hidden entirely when the day has nothing to tell yet.
-  Widget _buildTodayCard(VehicleRecord vehicle) {
-    if (_timeline.isEmpty) return const SizedBox.shrink();
+  /// "Today's journey" as a slide-up sheet - the same pattern as the
+  /// vehicle sheet on the home map: a small trigger, the details slide up
+  /// from below, and a long day just scrolls inside the sheet.
+  void _openTodaySheet(VehicleRecord vehicle) {
     final strings = AppStrings.of(context);
 
     String labelFor(TimelineEvent e) {
@@ -2164,70 +2173,94 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       }
     }
 
-    return Column(
-      children: <Widget>[
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-              width: 1,
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                strings.t('today_journey'),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              for (final e in _timeline.take(10))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(iconFor(e), size: 16, color: AppTheme.primaryBlue),
-                      const SizedBox(width: 8),
-                      Text(
-                        e.time,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12.5,
-                          fontFeatures: <FontFeature>[
-                            FontFeature.tabularFigures(),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          labelFor(e),
-                          style: const TextStyle(fontSize: 12.5),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(sheetContext).size.height * 0.7,
         ),
-        const SizedBox(height: 12),
-      ],
+        decoration: BoxDecoration(
+          color: Theme.of(sheetContext).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const SizedBox(height: 10),
+            Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+              child: Row(
+                children: <Widget>[
+                  Icon(LucideIcons.calendarClock,
+                      size: 18, color: AppTheme.primaryBlue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      strings.t('today_journey'),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                  Text(
+                    vehicle.displayName,
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.grey.shade600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                itemCount: _timeline.length,
+                itemBuilder: (_, i) {
+                  final e = _timeline[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(iconFor(e),
+                            size: 18, color: AppTheme.primaryBlue),
+                        const SizedBox(width: 10),
+                        Text(
+                          e.time,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                            fontFeatures: <FontFeature>[
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            labelFor(e),
+                            style: const TextStyle(fontSize: 13.5),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
