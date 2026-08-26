@@ -737,6 +737,14 @@ class CustomNotificationSoundService {
     final alertType = (data['alert_type'] ?? '').toString().trim().toLowerCase();
     final isVehicleAlert = _isVehicleAlertType(alertType);
 
+    // The pinned Trip Live card: its whole point is THAT vehicle, so the
+    // tap goes straight to the vehicle's screen - falling through to the
+    // Alerts tab here was the owner's first field complaint about it.
+    if (kind == 'trip_live' && imei.isNotEmpty) {
+      _openVehicleDetail(imei: imei);
+      return;
+    }
+
     if (isVehicleAlert && imei.isNotEmpty) {
       _openVehicleDetail(imei: imei);
       return;

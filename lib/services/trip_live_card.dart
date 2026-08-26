@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:io' show Platform;
 
+import 'package:dio/dio.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:fleet_monitor/constant/api.dart';
 import 'package:fleet_monitor/constant/preferences.dart';
 import 'package:fleet_monitor/constant/preferences_key.dart';
 
@@ -81,6 +84,70 @@ class TripLiveCard {
     await LocalStorage.setValue(_activeKey, ids.join(','));
   }
 
+  /// One light snapshot at push time: current speed from /vehicleTrack and
+  /// the address from /geocodeAddress (server-cached). Two short calls per
+  /// EVENT for an opt-in card - not a poll, not a stream. Any failure just
+  /// means the card shows its event line without the extras.
+  Future<({int? speedKmh, String address})> _fetchLive(
+      int vid, String imei) async {
+    try {
+      final token = await LocalStorage.readValue(PreferencesKey.token) ?? '';
+      if (token.isEmpty) return (speedKmh: null, address: '');
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 6),
+        receiveTimeout: const Duration(seconds: 6),
+        headers: <String, String>{'X-Auth-Token': token},
+      ));
+      final track = await dio.post(
+        AppUrl.vehicleTrack,
+        data: FormData.fromMap(<String, dynamic>{
+          'vehicle_id': vid.toString(),
+          'imei': imei,
+        }),
+      );
+      final body = track.data is Map
+          ? track.data as Map
+          : jsonDecode(track.data.toString()) as Map;
+      if ((body['flag'] ?? 0) != 1) return (speedKmh: null, address: '');
+      final rec = (body['data'] as Map?) ?? const {};
+      final speed =
+          double.tryParse((rec['speed'] ?? '').toString())?.round();
+      final lat = double.tryParse((rec['latitude'] ?? '').toString());
+      final lng = double.tryParse((rec['longitude'] ?? '').toString());
+      var address = '';
+      if (lat != null && lng != null && (lat != 0 || lng != 0)) {
+        try {
+          final geo = await dio.post(
+            AppUrl.geocodeAddress,
+            data: FormData.fromMap(<String, dynamic>{
+              'lat': lat.toString(),
+              'lng': lng.toString(),
+            }),
+          );
+          final gbody = geo.data is Map
+              ? geo.data as Map
+              : jsonDecode(geo.data.toString()) as Map;
+          if ((gbody['flag'] ?? 0) == 1) {
+            address =
+                ((gbody['data'] as Map?)?['address'] ?? '').toString().trim();
+          }
+        } catch (_) {}
+      }
+      return (speedKmh: speed, address: address);
+    } catch (_) {
+      return (speedKmh: null, address: '');
+    }
+  }
+
+  /// Tap payload: routes straight to the vehicle's own screen. Without it
+  /// the tap fell through the deep-link handler's default and landed on the
+  /// Alerts tab - the owner's exact complaint.
+  String _tapPayload(int vid, String imei) => jsonEncode(<String, String>{
+        'notification_kind': 'trip_live',
+        'vehicle_id': '$vid',
+        'imei': imei,
+      });
+
   Future<void> _ensureChannel() async {
     if (_channelReady || !Platform.isAndroid) return;
     try {
@@ -115,12 +182,19 @@ class TripLiveCard {
 
       final lang = await _lang();
       final label = _label(data);
+      var imei = (data['imei'] ?? '').toString().trim();
+      if (imei.isNotEmpty) {
+        await LocalStorage.setValue('trip_live_imei_$vid', imei);
+      } else {
+        imei = await LocalStorage.readValue('trip_live_imei_$vid') ?? '';
+      }
 
       if (type == 'ignition_on') {
         final startMs = DateTime.now().millisecondsSinceEpoch;
         await LocalStorage.setValue('trip_live_start_$vid', '$startMs');
         await _rememberVid(vid);
-        await _showOngoing(vid, label, tripLiveText('running', lang), startMs);
+        await _showOngoing(
+            vid, imei, label, tripLiveText('running', lang), startMs);
         return;
       }
 
@@ -132,12 +206,13 @@ class TripLiveCard {
                 .replaceAll('{stop}', stop)
                 .replaceAll('{min}', '$eta')
             : tripLiveText('near_stop', lang).replaceAll('{stop}', stop);
-        await _updateIfRunning(vid, label, line);
+        await _updateIfRunning(vid, imei, label, line);
         return;
       }
 
       if (type == 'overspeed') {
-        await _updateIfRunning(vid, label, tripLiveText('overspeed', lang));
+        await _updateIfRunning(
+            vid, imei, label, tripLiveText('overspeed', lang));
         return;
       }
 
@@ -149,6 +224,7 @@ class TripLiveCard {
         if (!hadTrip) return;
         await _showSummary(
             vid,
+            imei,
             label,
             type == 'offline'
                 ? tripLiveText('connection_lost', lang)
@@ -159,20 +235,39 @@ class TripLiveCard {
     }
   }
 
-  Future<void> _updateIfRunning(int vid, String label, String line) async {
+  Future<void> _updateIfRunning(
+      int vid, String imei, String label, String line) async {
     final saved = await LocalStorage.readValue('trip_live_start_$vid');
     final startMs = int.tryParse(saved ?? '');
     if (startMs == null) return; // no live card to rewrite
-    await _showOngoing(vid, label, line, startMs);
+    await _showOngoing(vid, imei, label, line, startMs);
   }
 
   Future<void> _showOngoing(
-      int vid, String label, String line, int startMs) async {
+      int vid, String imei, String label, String line, int startMs) async {
     await _ensureChannel();
+
+    // The professional half of the card: where the vehicle IS right now and
+    // how fast it is going, fetched at the moment of the event.
+    var title = label;
+    var body = line;
+    var expanded = line;
+    if (imei.isNotEmpty) {
+      final live = await _fetchLive(vid, imei);
+      if (live.speedKmh != null) {
+        title = '$label · ${live.speedKmh} km/h';
+      }
+      if (live.address.isNotEmpty) {
+        body = live.address;
+        expanded = '$line\n📍 ${live.address}';
+      }
+    }
+
     await _plugin.show(
       id: _idBase + (vid % 1000),
-      title: label,
-      body: line,
+      title: title,
+      body: body,
+      payload: _tapPayload(vid, imei),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
@@ -190,18 +285,37 @@ class TripLiveCard {
           usesChronometer: true,
           showWhen: true,
           category: AndroidNotificationCategory.transport,
+          // The alive feel: a softly animating bar while the trip runs.
+          showProgress: true,
+          indeterminate: true,
+          styleInformation: BigTextStyleInformation(
+            expanded,
+            contentTitle: title,
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _showSummary(int vid, String label, String line) async {
+  Future<void> _showSummary(
+      int vid, String imei, String label, String line) async {
     await _ensureChannel();
+
+    // The summary answers "where did it stop?" - one last snapshot.
+    var body = line;
+    if (imei.isNotEmpty) {
+      final live = await _fetchLive(vid, imei);
+      if (live.address.isNotEmpty) {
+        body = '$line · ${live.address}';
+      }
+    }
+
     await _plugin.show(
       id: _idBase + (vid % 1000),
       title: label,
-      body: line,
-      notificationDetails: const NotificationDetails(
+      body: body,
+      payload: _tapPayload(vid, imei),
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           'Trip Live',
@@ -211,6 +325,7 @@ class TripLiveCard {
           autoCancel: true,
           playSound: false,
           enableVibration: false,
+          styleInformation: BigTextStyleInformation(body, contentTitle: label),
         ),
       ),
     );
