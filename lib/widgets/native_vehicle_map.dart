@@ -11,6 +11,7 @@ import 'package:fleet_monitor/widgets/marker_placeholder.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'dart:math' as math;
 
 /// Live vehicle map rendered with **MapLibre GL Native** vector tiles from
 /// **OpenFreeMap** — completely free: no API key, no billing account, no
@@ -154,6 +155,12 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
 
   final Map<int, LatLng> _renderedPositions = <int, LatLng>{};
   Map<int, LatLng> _animationStart = <int, LatLng>{};
+  // No-backslide: per vehicle, the bearing of its last forward hop and how
+  // many consecutive backward retargets we have skipped. GPS jitter at road
+  // width flips a moving marker back across its own path; a real reversal
+  // persists, so after two skips the truth wins.
+  final Map<int, double> _lastHopBearing = <int, double>{};
+  final Map<int, int> _backslideSkips = <int, int>{};
   Map<int, LatLng> _animationEnd = <int, LatLng>{};
 
   /// Heading (course) is interpolated alongside position so turns glide
@@ -253,6 +260,27 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   }
 
   // ── Vehicle helpers ────────────────────────────────────────────────────
+
+  static double _distanceMeters(LatLng a, LatLng b) {
+    const r = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * (math.pi / 180);
+    final dLng = (b.longitude - a.longitude) * (math.pi / 180);
+    final la1 = a.latitude * (math.pi / 180);
+    final la2 = b.latitude * (math.pi / 180);
+    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(la1) * math.cos(la2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    return 2 * r * math.asin(math.sqrt(h));
+  }
+
+  static double _bearingDeg(LatLng a, LatLng b) {
+    final la1 = a.latitude * (math.pi / 180);
+    final la2 = b.latitude * (math.pi / 180);
+    final dLng = (b.longitude - a.longitude) * (math.pi / 180);
+    final y = math.sin(dLng) * math.cos(la2);
+    final x = math.cos(la1) * math.sin(la2) -
+        math.sin(la1) * math.cos(la2) * math.cos(dLng);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
 
   List<VehicleRecord> get _visibleVehicles {
     return widget.vehicles.where((vehicle) => vehicle.hasLiveLocation).toList();
@@ -1054,6 +1082,43 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
     final nextCourses = <int, double>{
       for (final vehicle in visible) vehicle.id: _targetCourse(vehicle),
     };
+
+    // NO-BACKSLIDE. The owner filmed a moving marker hop forward and then
+    // slide back again: GPS jitter at road width lands the next fix a few
+    // metres BEHIND the last one, and a faithful tween renders the vehicle
+    // reversing. A small step (<120 m) roughly opposite the marker's own
+    // last direction of travel is held instead - the following fix carries
+    // it forward. A real reversal persists, so after two consecutive holds
+    // the truth wins; big steps are never held.
+    nextPositions.forEach((vehicleId, target) {
+      final current = _renderedPositions[vehicleId];
+      if (current == null) return;
+      final d = _distanceMeters(current, target);
+      if (d < 1.0 || d >= 120) {
+        if (d >= 1.0) {
+          _lastHopBearing[vehicleId] =
+              _bearingDeg(current, target);
+        }
+        _backslideSkips[vehicleId] = 0;
+        return;
+      }
+      final travel = _lastHopBearing[vehicleId];
+      if (travel == null) {
+        _lastHopBearing[vehicleId] = _bearingDeg(current, target);
+        return;
+      }
+      final step = _bearingDeg(current, target);
+      var diff = (step - travel).abs() % 360;
+      if (diff > 180) diff = 360 - diff;
+      final skips = _backslideSkips[vehicleId] ?? 0;
+      if (diff > 100 && skips < 2) {
+        nextPositions[vehicleId] = current; // hold this frame
+        _backslideSkips[vehicleId] = skips + 1;
+      } else {
+        if (diff <= 100) _lastHopBearing[vehicleId] = step;
+        _backslideSkips[vehicleId] = 0;
+      }
+    });
 
     // Nothing actually moved (e.g. a parked fleet re-emitting the same SSE
     // position on every poll) → don't restart the controller. Re-running

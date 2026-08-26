@@ -1151,9 +1151,34 @@ class AppStrings {
       'pa': 'ਅੱਜ ਦਾ ਸਫ਼ਰ',
     },
     'tl_left': <String, String>{
-      'en': 'Bus started',
-      'hi': 'बस चली',
-      'pa': 'ਬੱਸ ਚੱਲੀ',
+      'en': '{veh} started',
+      'hi': '{veh} चली',
+      'pa': '{veh} ਚੱਲੀ',
+    },
+    'veh_bus': <String, String>{
+      'en': 'Bus',
+      'hi': 'बस',
+      'pa': 'ਬੱਸ',
+    },
+    'veh_car': <String, String>{
+      'en': 'Car',
+      'hi': 'कार',
+      'pa': 'ਕਾਰ',
+    },
+    'veh_bike': <String, String>{
+      'en': 'Bike',
+      'hi': 'बाइक',
+      'pa': 'ਬਾਈਕ',
+    },
+    'veh_truck': <String, String>{
+      'en': 'Truck',
+      'hi': 'गाड़ी',
+      'pa': 'ਗੱਡੀ',
+    },
+    'veh_generic': <String, String>{
+      'en': 'Vehicle',
+      'hi': 'गाड़ी',
+      'pa': 'ਗੱਡੀ',
     },
     'tl_reached': <String, String>{
       'en': 'Reached {name}',

@@ -366,6 +366,10 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   // next fix lands.
   int _coastStartMs = 0;
   LatLng? _coastAnchor;
+  // No-backslide guard: the last position actually DRAWN, and since when we
+  // have been holding it against a backward correction.
+  LatLng? _lastForwardDrawn;
+  int _backslideHoldSinceMs = 0;
   double _coastBearing = 0;
   double _coastMps = 0;
 
@@ -1691,8 +1695,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// see and only at [_pushIntervalMs]. Everything above this line is pure
   /// maths; everything below crosses the platform channel.
   void _pushPose({bool force = false}) {
-    final pos = _followRendered;
+    var pos = _followRendered;
     if (pos == null) return;
+    // Every rendered position passes the no-backslide gate, whatever path
+    // computed it (coast, reconcile blend, playback interpolation).
+    pos = _noBackslide(pos, DateTime.now().millisecondsSinceEpoch);
+    _followRendered = pos;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (!force) {
       if (nowMs - _lastPushMs < _pushIntervalMs) return;
@@ -1873,6 +1881,49 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     }
 
     _pushPose();
+  }
+
+  /// A vehicle on a road does not move backwards, so neither may its marker.
+  ///
+  /// The owner filmed exactly this: the coast projects the marker ahead at
+  /// the last known speed, the vehicle actually slowed, and the reconcile
+  /// then slid the marker BACK down the road to the truth - forward, jerk
+  /// back, forward, jerk back. The guard: when the next candidate position
+  /// is a SMALL step (<120 m) roughly OPPOSITE to the travel bearing, hold
+  /// the drawn position and let the truth catch up instead of reversing.
+  /// A genuine reversal - a U-turn, a reversing bus - is either a big step
+  /// or persists; after 2.7 s of holding, the truth wins unconditionally.
+  LatLng _noBackslide(LatLng candidate, int nowMs) {
+    final last = _lastForwardDrawn;
+    final bearing = _renderBearing ?? _followBearing;
+    if (last == null || bearing == null) {
+      _lastForwardDrawn = candidate;
+      _backslideHoldSinceMs = 0;
+      return candidate;
+    }
+    final d = distanceMeters(
+        last.latitude, last.longitude, candidate.latitude, candidate.longitude);
+    if (d < 1.0) {
+      return candidate; // same spot; nothing to judge
+    }
+    final stepBearing = bearingDegrees(
+        last.latitude, last.longitude, candidate.latitude, candidate.longitude);
+    var diff = (stepBearing - bearing).abs() % 360;
+    if (diff > 180) diff = 360 - diff;
+    final isBackward = diff > 100 && d < 120;
+    if (!isBackward) {
+      _lastForwardDrawn = candidate;
+      _backslideHoldSinceMs = 0;
+      return candidate;
+    }
+    if (_backslideHoldSinceMs == 0) _backslideHoldSinceMs = nowMs;
+    if (nowMs - _backslideHoldSinceMs < 2700) {
+      return last; // hold; the true position will catch up
+    }
+    // Held long enough - this is a real reversal, accept it.
+    _lastForwardDrawn = candidate;
+    _backslideHoldSinceMs = 0;
+    return candidate;
   }
 
   /// Blend the leftover dead-reckoning correction into a position.

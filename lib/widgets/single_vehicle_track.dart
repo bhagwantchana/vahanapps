@@ -2146,10 +2146,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   void _openTodaySheet(VehicleRecord vehicle) {
     final strings = AppStrings.of(context);
 
+    // "Bus started" on a car read as a bug to the owner. The word follows
+    // the vehicle's own type; anything unrecognised gets the generic word,
+    // which also keeps the Punjabi/Hindi grammar safe.
+    final typeKey = vehicleTypeWordKey(vehicle.typeName);
+
     String labelFor(TimelineEvent e) {
       switch (e.type) {
         case 'trip_start':
-          return strings.t('tl_left');
+          return strings
+              .tf('tl_left', {'veh': strings.t(typeKey)});
         case 'trip_end':
           return e.distanceKm != null
               ? strings.tf('tl_trip_end_km',
@@ -3499,4 +3505,18 @@ class _StatusPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Which localisation key names this vehicle's KIND, from its free-text type
+/// name ("School Bus", "Car", "Motor Cycle"...). Pure, so tests can pin it.
+String vehicleTypeWordKey(String typeName) {
+  final t = typeName.toLowerCase();
+  if (t.contains('bus')) return 'veh_bus';
+  if (t.contains('car') || t.contains('cab')) return 'veh_car';
+  if (t.contains('bike') || t.contains('cycle') || t.contains('scoot') ||
+      t.contains('activa')) {
+    return 'veh_bike';
+  }
+  if (t.contains('truck') || t.contains('lorr')) return 'veh_truck';
+  return 'veh_generic';
 }

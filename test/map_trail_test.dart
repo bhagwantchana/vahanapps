@@ -1,5 +1,5 @@
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart'
-    show SpeedPoint, newestContinuousRun;
+    show SpeedPoint, newestContinuousRun, vehicleTypeWordKey;
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart'
     show MapStopPin;
 import 'package:flutter_test/flutter_test.dart';
@@ -58,6 +58,21 @@ void main() {
       expect(pin.lat, 30.91);
       expect(pin.lng, 75.84);
       expect(pin.label, '2. Model Town');
+    });
+  });
+
+  group('vehicleTypeWordKey — the timeline says what the vehicle IS', () {
+    test('recognises the common types from free-text names', () {
+      expect(vehicleTypeWordKey('School Bus'), 'veh_bus');
+      expect(vehicleTypeWordKey('CAR'), 'veh_car');
+      expect(vehicleTypeWordKey('Motor Cycle'), 'veh_bike');
+      expect(vehicleTypeWordKey('Activa'), 'veh_bike');
+      expect(vehicleTypeWordKey('Truck'), 'veh_truck');
+    });
+
+    test('anything unknown gets the generic word, never "Bus"', () {
+      expect(vehicleTypeWordKey(''), 'veh_generic');
+      expect(vehicleTypeWordKey('Tractor'), 'veh_generic');
     });
   });
 }
