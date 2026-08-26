@@ -1,5 +1,6 @@
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart'
     show SpeedPoint, newestContinuousRun, vehicleTypeWordKey;
+import 'package:fleet_monitor/widgets/map_motion.dart' show StatusSmoother;
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart'
     show MapStopPin;
 import 'package:flutter_test/flutter_test.dart';
@@ -73,6 +74,33 @@ void main() {
     test('anything unknown gets the generic word, never "Bus"', () {
       expect(vehicleTypeWordKey(''), 'veh_generic');
       expect(vehicleTypeWordKey('Tractor'), 'veh_generic');
+    });
+  });
+
+  group('StatusSmoother — the icon cannot blink', () {
+    test('a threshold wobble shows nothing at all', () {
+      final sm = StatusSmoother();
+      expect(sm.shownFor(1, 'moving', 0), 'moving');
+      // Slow traffic: raw status flaps every ~4s, never holding 10s.
+      expect(sm.shownFor(1, 'idle', 4000), 'moving');
+      expect(sm.shownFor(1, 'moving', 8000), 'moving');
+      expect(sm.shownFor(1, 'idle', 12000), 'moving');
+      expect(sm.shownFor(1, 'moving', 16000), 'moving');
+    });
+
+    test('a genuine stop shows after the hold', () {
+      final sm = StatusSmoother();
+      expect(sm.shownFor(1, 'moving', 0), 'moving');
+      expect(sm.shownFor(1, 'stopped', 5000), 'moving'); // candidate starts
+      expect(sm.shownFor(1, 'stopped', 16000), 'stopped'); // held 11s
+    });
+
+    test('vehicles are independent', () {
+      final sm = StatusSmoother();
+      expect(sm.shownFor(1, 'moving', 0), 'moving');
+      expect(sm.shownFor(2, 'offline', 0), 'offline');
+      expect(sm.shownFor(1, 'offline', 1000), 'moving');
+      expect(sm.shownFor(2, 'offline', 1000), 'offline');
     });
   });
 }

@@ -263,3 +263,49 @@ int advancePlaybackClock({
   if (next < floorMs) next = floorMs;
   return next;
 }
+
+/// Keeps a marker's status ICON from flapping.
+///
+/// isMoving flips at speed > 5, and slow city traffic crosses that line on
+/// nearly every fix - 4, 7, 3, 8 km/h - so the icon swapped green/orange
+/// every few seconds. On film that reads as the marker BLINKING. The raw
+/// status still drives counts and logic everywhere else; only the DRAWN icon
+/// waits until a new status has held for [holdMs] before it switches, so a
+/// genuine stop shows within ten seconds and a threshold wobble shows
+/// nothing at all.
+class StatusSmoother {
+  final Map<int, String> _shown = <int, String>{};
+  final Map<int, String> _candidate = <int, String>{};
+  final Map<int, int> _candidateSince = <int, int>{};
+
+  String shownFor(int id, String raw, int nowMs, {int holdMs = 10000}) {
+    final shown = _shown[id];
+    if (shown == null) {
+      _shown[id] = raw;
+      return raw;
+    }
+    if (raw == shown) {
+      _candidate.remove(id);
+      _candidateSince.remove(id);
+      return shown;
+    }
+    if (_candidate[id] != raw) {
+      _candidate[id] = raw;
+      _candidateSince[id] = nowMs;
+      return shown;
+    }
+    if (nowMs - (_candidateSince[id] ?? nowMs) >= holdMs) {
+      _shown[id] = raw;
+      _candidate.remove(id);
+      _candidateSince.remove(id);
+      return raw;
+    }
+    return shown;
+  }
+
+  void clear() {
+    _shown.clear();
+    _candidate.clear();
+    _candidateSince.clear();
+  }
+}

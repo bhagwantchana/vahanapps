@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart' as ll;
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'dart:math' as math;
+import 'package:fleet_monitor/widgets/map_motion.dart';
 
 /// Live vehicle map rendered with **MapLibre GL Native** vector tiles from
 /// **OpenFreeMap** — completely free: no API key, no billing account, no
@@ -160,6 +161,7 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
   // width flips a moving marker back across its own path; a real reversal
   // persists, so after two skips the truth wins.
   final Map<int, double> _lastHopBearing = <int, double>{};
+  final StatusSmoother _statusSmoother = StatusSmoother();
   final Map<int, int> _backslideSkips = <int, int>{};
   Map<int, LatLng> _animationEnd = <int, LatLng>{};
 
@@ -808,8 +810,15 @@ class _NativeVehicleMapState extends State<NativeVehicleMap>
       // Snapshot each vehicle's status ONCE for this whole pass so image
       // registration, addSymbol and the swap loop can never disagree on the
       // icon name (the offline bucket is wall-clock dependent).
+      // Drawn through the smoother: the raw status flaps across the 5 km/h
+      // line in slow traffic, and every flap swapped the icon - the "marker
+      // blinks while driving" the owner filmed. Logic elsewhere still sees
+      // the raw status; only the icon waits for a status to hold.
+      final nowForStatus = DateTime.now().millisecondsSinceEpoch;
       final statusById = <int, String>{
-        for (final vehicle in visible) vehicle.id: _vehicleStatus(vehicle),
+        for (final vehicle in visible)
+          vehicle.id: _statusSmoother.shownFor(
+              vehicle.id, _vehicleStatus(vehicle), nowForStatus),
       };
       await _ensureImages(visible, statusById, gen);
       if (!mounted || _controller == null || gen != _styleGeneration) {

@@ -725,7 +725,13 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
   /// with a 30-minute offline window, which put every vehicle silent for 8-30
   /// minutes on the `idle` fallthrough: orange, claiming an idling engine on a
   /// device that had gone quiet.
-  String _status(VehicleRecord v) => v.statusKey;
+  final StatusSmoother _statusSmoother = StatusSmoother();
+
+  /// The DRAWN status: smoothed, so the icon cannot flap green/orange as
+  /// slow traffic wobbles across the 5 km/h moving threshold (the filmed
+  /// "blink"). Counts and filters elsewhere still use the raw statusKey.
+  String _status(VehicleRecord v) => _statusSmoother.shownFor(
+      v.id, v.statusKey, DateTime.now().millisecondsSinceEpoch);
 
   Color _statusColor(String status) {
     switch (status) {
