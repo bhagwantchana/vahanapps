@@ -189,12 +189,17 @@ class TripLiveCard {
         imei = await LocalStorage.readValue('trip_live_imei_$vid') ?? '';
       }
 
+      // The alert push often carries the address it resolved server-side;
+      // keep it as the fallback for when the live fetch cannot run (no
+      // network in the background isolate, token missing).
+      final pushAddress = (data['address'] ?? '').toString().trim();
+
       if (type == 'ignition_on') {
         final startMs = DateTime.now().millisecondsSinceEpoch;
         await LocalStorage.setValue('trip_live_start_$vid', '$startMs');
         await _rememberVid(vid);
-        await _showOngoing(
-            vid, imei, label, tripLiveText('running', lang), startMs);
+        await _showOngoing(vid, imei, label, tripLiveText('running', lang),
+            startMs, fallbackAddress: pushAddress);
         return;
       }
 
@@ -244,7 +249,8 @@ class TripLiveCard {
   }
 
   Future<void> _showOngoing(
-      int vid, String imei, String label, String line, int startMs) async {
+      int vid, String imei, String label, String line, int startMs,
+      {String fallbackAddress = ''}) async {
     await _ensureChannel();
 
     // The professional half of the card: where the vehicle IS right now and
@@ -252,15 +258,19 @@ class TripLiveCard {
     var title = label;
     var body = line;
     var expanded = line;
+    var address = fallbackAddress;
     if (imei.isNotEmpty) {
       final live = await _fetchLive(vid, imei);
       if (live.speedKmh != null) {
         title = '$label · ${live.speedKmh} km/h';
       }
       if (live.address.isNotEmpty) {
-        body = live.address;
-        expanded = '$line\n📍 ${live.address}';
+        address = live.address;
       }
+    }
+    if (address.isNotEmpty) {
+      body = address;
+      expanded = '$line\n📍 $address';
     }
 
     await _plugin.show(
