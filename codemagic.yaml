@@ -23,6 +23,16 @@ workflows:
     name: Fleet Monitor — iOS → TestFlight
     max_build_duration: 90
     instance_type: mac_mini_m2
+    # Push a tag like `ios-91` and this workflow starts on its own — no Mac,
+    # no dashboard click. Manual "Start new build" still works exactly as
+    # before; this only ADDS a trigger, tags are the release act.
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'ios-*'
+          include: true
+      cancel_previous_builds: true
     integrations:
       # NAME of the App Store Connect API key as it appears in Codemagic UI
       # (Settings → Developer Portal → Manage keys). The connected key for
