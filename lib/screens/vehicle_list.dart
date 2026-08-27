@@ -462,7 +462,13 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(vehicle.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: titleColor)),
+                    // The number itself is a second door to the same page
+                    // Track opens - same handler, and GestureDetector draws
+                    // NOTHING, so the text, font and layout stay pixel-equal.
+                    GestureDetector(
+                      onTap: () => _navigateToDetail(vehicle),
+                      child: Text(vehicle.registrationNumber, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: titleColor)),
+                    ),
                     if (vehicle.showExpiryBadge) ...<Widget>[
                       const SizedBox(height: 5),
                       _buildExpiryBadge(vehicle),
