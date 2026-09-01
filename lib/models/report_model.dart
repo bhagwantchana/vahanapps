@@ -32,6 +32,11 @@ class ReportData {
   final List<Map<String, dynamic>> rows;
   final ReportExport? exportData;
   final ReportMeta meta;
+  // The date window the server actually applied. The app never sends dates,
+  // so the server defaults to the last 7 days; showing this back to the user
+  // makes every report state which period it covers.
+  final String fromDate;
+  final String toDate;
 
   const ReportData({
     this.reportKey = 'trip',
@@ -41,9 +46,14 @@ class ReportData {
     this.rows = const <Map<String, dynamic>>[],
     this.exportData,
     this.meta = const ReportMeta(),
+    this.fromDate = '',
+    this.toDate = '',
   });
 
+  bool get isEmpty => rows.isEmpty && summaryCards.isEmpty;
+
   factory ReportData.fromJson(Map<String, dynamic> json) {
+    final filters = json['filters'] is Map ? json['filters'] as Map : const {};
     final summaries = <ReportSummaryCard>[];
     if (json['summary_cards'] is List) {
       for (final item in json['summary_cards'] as List<dynamic>) {
@@ -80,6 +90,8 @@ class ReportData {
       meta: json['meta'] is Map<String, dynamic>
           ? ReportMeta.fromJson(json['meta'] as Map<String, dynamic>)
           : const ReportMeta(),
+      fromDate: toStringValue(filters['from_date']),
+      toDate: toStringValue(filters['to_date']),
     );
   }
 }

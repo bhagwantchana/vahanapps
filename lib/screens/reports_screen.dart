@@ -173,17 +173,106 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                       children: <Widget>[
-                        _buildPremiumSummary(report?.summaryCards ?? const <ReportSummaryCard>[]),
-                        const SizedBox(height: 24),
-                        _buildPremiumChart(report?.chart ?? const ReportChart()),
-                        const SizedBox(height: 24),
-                        _buildModernTable(report?.rows ?? const <Map<String, dynamic>>[]),
+                        _buildDateRangeBar(report),
+                        const SizedBox(height: 12),
+                        if (report != null && report.isEmpty)
+                          _buildEmptyState(report)
+                        else ...<Widget>[
+                          _buildPremiumSummary(report?.summaryCards ?? const <ReportSummaryCard>[]),
+                          const SizedBox(height: 24),
+                          _buildPremiumChart(report?.chart ?? const ReportChart()),
+                          const SizedBox(height: 24),
+                          _buildModernTable(report?.rows ?? const <Map<String, dynamic>>[]),
+                        ],
                       ],
                     ),
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  /// Human date like "26 Aug 2026" from the server's "2026-08-26".
+  String _prettyDate(String ymd) {
+    final parts = ymd.split('-');
+    if (parts.length != 3) return ymd;
+    const months = <String>['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final m = int.tryParse(parts[1]) ?? 0;
+    final d = int.tryParse(parts[2]) ?? 0;
+    if (m < 1 || m > 12 || d < 1) return ymd;
+    return '$d ${months[m]} ${parts[0]}';
+  }
+
+  /// Always-visible bar stating which period this report covers. The report
+  /// used to give no hint of its date range at all, so a 7-day default looked
+  /// like "everything" — and an empty period looked like a broken screen.
+  Widget _buildDateRangeBar(ReportData? report) {
+    final from = report?.fromDate ?? '';
+    final to = report?.toDate ?? '';
+    final label = (from.isEmpty || to.isEmpty)
+        ? 'Last 7 days'
+        : (from == to
+            ? _prettyDate(from)
+            : '${_prettyDate(from)}  –  ${_prettyDate(to)}');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryBlue.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(LucideIcons.calendarDays, size: 16, color: AppTheme.primaryBlue),
+          const SizedBox(width: 8),
+          Text('Period: ',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600)),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryBlue)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Clear "nothing here" state, so an empty period never renders as a blank
+  /// page. Names the exact date window it looked in.
+  Widget _buildEmptyState(ReportData report) {
+    final from = report.fromDate;
+    final to = report.toDate;
+    final range = (from.isEmpty || to.isEmpty)
+        ? 'the last 7 days'
+        : '${_prettyDate(from)} – ${_prettyDate(to)}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 60),
+      child: Column(
+        children: <Widget>[
+          Icon(LucideIcons.fileText, size: 46, color: Colors.grey.shade400),
+          const SizedBox(height: 14),
+          Text('No records in this period',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.grey.shade700)),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              'Nothing was recorded for $range. Try another report or a different vehicle.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
