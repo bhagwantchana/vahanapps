@@ -201,6 +201,15 @@ class _StudentMapScreenState extends State<StudentMapScreen> {
             imei: vehicle.imei, stopId: stopId, enable: true);
       }
     } catch (error) {
+      // The bell went green before the call; if the server never took the
+      // subscription, put it back. Otherwise the parent sees "alert on" and
+      // waits at the stop for a push that was never armed. The STOP choice
+      // stays — the ETA chip works without the server — only the alert flag
+      // is rolled back, and the stored copy with it so a restart agrees.
+      if (!mounted) return;
+      setState(() => _myStopAlert = previousAlert && previousStop == stopId);
+      await LocalStorage.setValue(
+          'my_stop_alert_${vehicle.id}', _myStopAlert ? '1' : '0');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppStrings.of(context).tf('stop_alert_failed', {'error': error.toString()}))),

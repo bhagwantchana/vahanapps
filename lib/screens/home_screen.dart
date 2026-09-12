@@ -176,8 +176,17 @@ class _HomeScreenState extends State<HomeScreen> {
     if (incoming.id <= 0) return;
     final index = _liveVehicles.indexWhere((v) => v.id == incoming.id);
     if (index < 0) return; // not in the current set — the dashboard adds it
+    // Merge the live fields onto the record we have, the way the vehicle and
+    // single-track cubits already do — never replace the record. An SSE push
+    // carries position, speed, heading, ignition and the fix time; it does not
+    // carry the overspeed limit, the type, the icon or the alert counts, so a
+    // wholesale swap blanked those and a vehicle filtered by "Overspeed"
+    // vanished from the list the moment it moved. The merge also brings the
+    // ordering guard, so a late packet cannot walk a marker backwards.
+    final merged = _liveVehicles[index].mergeLiveFixFrom(incoming);
+    if (identical(merged, _liveVehicles[index])) return; // stale, rejected
     final updated = List<VehicleRecord>.from(_liveVehicles);
-    updated[index] = incoming;
+    updated[index] = merged;
     setState(() => _liveVehicles = List<VehicleRecord>.unmodifiable(updated));
   }
 

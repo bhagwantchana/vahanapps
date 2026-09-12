@@ -649,7 +649,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                       children: [
                         Icon(LucideIcons.clock, size: 12, color: Colors.grey),
                         const SizedBox(width: 6),
-                        Text('${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle.createdAt, strings)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                        Text('${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle, strings)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
                       ],
                     ),
                   ],
@@ -779,10 +779,23 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     );
   }
 
-  String _formatUpdatedAtShort(String value, AppStrings strings) {
-    final parsed = DateTime.tryParse(value);
+  /// Localised twin of VehicleRecord.lastUpdateLabel — same epoch, same rules,
+  /// translated units.
+  ///
+  /// This used to parse `vehicle.createdAt`, the server's wall-clock string.
+  /// Dart reads a zone-less string as phone-local, so any zone mismatch
+  /// between the box and the phone showed a fix that had JUST arrived as
+  /// hours old — the "Updated 5 hr ago" on a moving car the owner reported.
+  /// The epoch has no zone to get wrong. It also had no negative guard, so a
+  /// device clock a little ahead printed "-330 min ago".
+  String _formatUpdatedAtShort(VehicleRecord vehicle, AppStrings strings) {
+    final ts = vehicle.tsEpochMs;
+    final DateTime? parsed = ts > 0
+        ? DateTime.fromMillisecondsSinceEpoch(ts)
+        : DateTime.tryParse(vehicle.createdAt); // older server, no epoch yet
     if (parsed == null) return strings.t('now');
     final diff = DateTime.now().difference(parsed);
+    if (diff.isNegative || diff.inMinutes < 1) return strings.t('now');
     if (diff.inMinutes < 60) return '${diff.inMinutes} ${strings.t('min_ago')}';
     if (diff.inHours < 24) return '${diff.inHours} ${strings.t('hr_ago')}';
     return '${diff.inDays} ${strings.t('days_ago')}';

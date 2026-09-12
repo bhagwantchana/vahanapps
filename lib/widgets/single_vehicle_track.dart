@@ -1768,9 +1768,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     const SizedBox(width: 6),
                                     Expanded(
                                       child: Text(
-                                        vehicle.createdAt.isNotEmpty
-                                            ? 'Last updated: ${vehicle.createdAt}'
-                                            : 'Last updated: —',
+                                        // Relative, from the epoch — never the
+                                        // raw server date, which read in the
+                                        // server's zone on the customer's phone.
+                                        'Last updated: ${vehicle.lastUpdateLabel}',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w600,
