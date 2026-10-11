@@ -127,7 +127,7 @@ class _ProfileWidgetState extends State<ProfileWidget>
         name: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),
         email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
+        phone: userData.phone,
         address: _addressController.text.trim(),
         file: _pickedImagePath,
       );
@@ -541,9 +541,10 @@ class _ProfileWidgetState extends State<ProfileWidget>
                   const SizedBox(height: 16),
                   _buildInputField(
                     controller: _phoneController,
-                    label: 'Phone Number',
+                    label: 'Phone Number (Registered)',
                     icon: Icons.phone_outlined,
                     keyboardType: TextInputType.phone,
+                    readOnly: true,
                     prefix: _buildCountryPrefix(),
                     suffix: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -554,6 +555,8 @@ class _ProfileWidgetState extends State<ProfileWidget>
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
+                          Icon(Icons.lock_outline_rounded, size: 12, color: AppColors.green),
+                          SizedBox(width: 4),
                           Icon(Icons.verified_rounded, size: 13, color: AppColors.green),
                           SizedBox(width: 4),
                           Text(
@@ -874,6 +877,7 @@ class _ProfileWidgetState extends State<ProfileWidget>
     Widget? prefix,
     Widget? suffix,
     bool obscureText = false,
+    bool readOnly = false,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
@@ -892,12 +896,13 @@ class _ProfileWidgetState extends State<ProfileWidget>
         TextFormField(
           controller: controller,
           obscureText: obscureText,
+          readOnly: readOnly,
           keyboardType: keyboardType,
           validator: validator,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w600,
-            color: AppColors.primary,
+            color: readOnly ? Colors.grey.shade700 : AppColors.primary,
           ),
           decoration: InputDecoration(
             hintText: hint,
