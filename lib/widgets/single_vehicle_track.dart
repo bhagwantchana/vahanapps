@@ -1707,31 +1707,98 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                         // Persistent address card — sits DIRECTLY below the
                         // map (first child of the scroll area) so the user
                         // sees the resolved street address without having
-                        // to scroll past metrics. Uses the same
-                        // LiveAddressText coord-keyed cache as the list +
-                        // map popup so the rendered string is identical
-                        // across all three surfaces.
-                        if (vehicle.hasLiveLocation) ...<Widget>[
-                          Container(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).cardColor,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: AppTheme.primaryBlue.withValues(alpha: 0.08),
-                                width: 1,
-                              ),
-                              boxShadow: <BoxShadow>[
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
+                        // to scroll past metrics.
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppTheme.primaryBlue.withValues(alpha: 0.08),
+                              width: 1,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              // Vehicle Header: Avatar + Display Name + Expiry (with days left in brackets)
+                              Row(
+                                children: <Widget>[
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: _statusColorFor(vehicle)
+                                        .withValues(alpha: 0.12),
+                                    child: Icon(
+                                      LucideIcons.car,
+                                      size: 24,
+                                      color: _statusColorFor(vehicle),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Text(
+                                          vehicle.displayName,
+                                          style: const TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppTheme.primaryBlue,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          'Plan expiry: ${_formatExpiryDateOnly(vehicle)}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: vehicle.isExpired
+                                                ? Colors.red.shade600
+                                                : Colors.grey.shade600,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        if (vehicle.expiryBadgeLabel.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '(${vehicle.expiryBadgeLabel})',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: vehicle.isExpired
+                                                  ? Colors.red.shade600
+                                                  : (vehicle.isExpiringSoon
+                                                      ? Colors.orange.shade700
+                                                      : Colors.grey.shade600),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (vehicle.hasLiveLocation) ...<Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  child: Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Theme.of(context)
+                                        .dividerColor
+                                        .withValues(alpha: 0.4),
+                                  ),
+                                ),
                                 Row(
                                   children: <Widget>[
                                     Container(
@@ -1744,11 +1811,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                       ),
                                       child: const Icon(
                                         LucideIcons.mapPin,
-                                        size: 16,
+                                        size: 14,
                                         color: AppTheme.primaryBlue,
                                       ),
                                     ),
-                                    const SizedBox(width: 10),
+                                    const SizedBox(width: 8),
                                     const Text(
                                       'CURRENT LOCATION',
                                       style: TextStyle(
@@ -1819,7 +1886,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 LiveAddressText(
                                   latitude: vehicle.latitude,
                                   longitude: vehicle.longitude,
-              initialAddress: vehicle.cachedAddress,
+                                  initialAddress: vehicle.cachedAddress,
                                   style: TextStyle(
                                     color:
                                         Theme.of(context).colorScheme.onSurface,
@@ -1876,98 +1943,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                   ],
                                 ),
                               ],
-                            ),
+                            ],
                           ),
-                          const SizedBox(height: 16),
-                        ],
+                        ),
+                        const SizedBox(height: 16),
                         // "My Stop" + ETA — renders nothing until the school
                         // has defined stops for this route.
                         _buildMyStopCard(vehicle),
-                        Row(
-                          children: <Widget>[
-                            CircleAvatar(
-                              radius: 28,
-                              backgroundColor: _statusColorFor(vehicle).withValues(
-                                alpha: 0.12,
-                              ),
-                              child: Icon(
-                                LucideIcons.car,
-                                size: 28,
-                                color: _statusColorFor(vehicle),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(
-                                    vehicle.displayName,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.primaryBlue,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    // Show the plan expiry here (customer-facing)
-                                    // instead of the technical device IMEI — red
-                                    // once the plan has expired.
-                                    'Plan expiry: ${_formatExpiry(vehicle)}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: vehicle.isExpired
-                                          ? Colors.red.shade600
-                                          : Colors.grey.shade600,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _statusColorFor(vehicle)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: _statusColorFor(vehicle)
-                                      .withValues(alpha: 0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 7,
-                                    height: 7,
-                                    decoration: BoxDecoration(
-                                      color: _statusColorFor(vehicle),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    vehicle.statusLabel.toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.5,
-                                      color: _statusColorFor(vehicle),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 16),
                         Row(
                           children: [
                             Expanded(child: _buildMetricBox(LucideIcons.gauge, '${vehicle.speed.round()}', 'km/h', 'Speed', Colors.green)),
@@ -3014,17 +2997,13 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     );
   }
 
-  /// Human-readable plan-expiry date for the overview tile, e.g. "06 Jul 2027".
-  /// Appends " · Expired" / " · N days left" so the customer sees the status at
-  /// a glance; "--" when the device has no expiry set.
-  String _formatExpiry(VehicleRecord vehicle) {
+  String _formatExpiryDateOnly(VehicleRecord vehicle) {
     final d = vehicle.expiryDateValue;
     if (d == null) return '--';
     const months = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final date = '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
-    final label = vehicle.expiryBadgeLabel; // 'Expired' / 'Expires today' / 'N days left' / ''
-    return label.isEmpty ? date : '$date · $label';
+    return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
   }
+
 
   Widget _buildDetailTile({
     required IconData icon,
