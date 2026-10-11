@@ -17,8 +17,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 /// Trip replay: pick a vehicle, fetch its track points for the chosen
-/// window, then animate a marker along the polyline with play/pause and
-/// 1×/2×/4× speed controls. Uses the existing `fetchTripHistoryTrail` API.
+/// window, then animate a marker along the polyline on a high-framerate,
+/// butter-smooth FlutterMap canvas with play/pause and 1×/2×/4× speed controls.
 class TripReplayScreen extends StatefulWidget {
   const TripReplayScreen({
     super.key,
@@ -60,8 +60,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   late final AnimationController _animController;
 
   /// Smoothed heading the marker is rotated by. Tracks the segment bearing
-  /// but eased over a few frames so that sharp turns don't snap the icon
-  /// — that's the difference between an "okay" replay and a polished one.
+  /// but eased over a few frames so that sharp turns don't snap the icon.
   double _displayedBearing = 0;
 
   /// The selected history window. Defaults to TODAY; the calendar button lets
@@ -99,25 +98,20 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   }
 
   Duration get _segmentDuration =>
-      Duration(milliseconds: (500 / _speedMultiplier).round());
+      Duration(milliseconds: (400 / _speedMultiplier).round());
 
   void _onAnimTick() {
     if (!mounted) return;
     // Ease the displayed bearing towards the segment's true bearing — keeps
     // the icon from snapping on sharp direction changes.
     final target = _segmentBearing(_currentIndex);
-    _displayedBearing = _easeBearing(_displayedBearing, target, 0.18);
-    // Pan the camera to track the marker every frame. Calling move() before
-    // setState avoids a double layout pass — the FlutterMap reads the new
-    // centre during the rebuild below. This is what makes the playback feel
-    // continuous instead of snapping at segment boundaries.
+    _displayedBearing = _easeBearing(_displayedBearing, target, 0.20);
+
+    // Pan the camera to track the marker every frame smoothly on Flutter's Dart engine.
     try {
       _mapController.move(_animatedPoint, _mapController.camera.zoom);
     } catch (_) {
-      // move()/camera throw "You need to have the FlutterMap ..." when the map
-      // isn't attached to the controller this frame (tick fired before the
-      // first layout, or after the map detached during a screen transition).
-      // Skip the pan for this frame; the next tick tracks the marker fine.
+      // Map detached or before first layout
     }
     setState(() {});
   }
@@ -127,8 +121,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     if (_currentIndex < _points.length - 2) {
       _currentIndex++;
       _animController.forward(from: 0);
-      // Camera already tracks the marker every tick — no extra move needed
-      // here, otherwise we'd cause a jitter on the segment hand-off.
     } else {
       // Reached the final sample — park the marker there.
       _currentIndex = _points.length - 1;
@@ -148,15 +140,13 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       _currentIndex = 0;
       _playing = false;
     });
+
     try {
       final fetched = await _repo.fetchTripHistoryTrail(
         imei: vehicle.imei,
         from: _from,
         to: _to,
       );
-      // Drop consecutive duplicate coordinates (a parked vehicle re-reporting
-      // the same fix). Zero-length segments would otherwise burn a full
-      // animation step doing nothing, making playback feel like it stalls.
       final points = _dedupeConsecutive(fetched);
       if (!mounted) return;
       setState(() {
@@ -164,13 +154,18 @@ class _TripReplayScreenState extends State<TripReplayScreen>
         _loading = false;
         _displayedBearing = _segmentBearing(0);
       });
-      // Centre on the first point so the user sees something even before
-      // they tap play. flutter_map throws if we move before a tile is laid
-      // out, so wrap in a post-frame callback.
+
       if (points.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          _mapController.move(points.first.toLatLng(), 14);
+          final polyline = points.map((p) => p.toLatLng()).toList();
+          final bounds = LatLngBounds.fromPoints(polyline);
+          _mapController.fitCamera(
+            CameraFit.bounds(
+              bounds: bounds,
+              padding: const EdgeInsets.fromLTRB(40, 40, 40, 180),
+            ),
+          );
         });
       }
     } catch (e) {
@@ -201,69 +196,32 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
 
-  /// Short label for the active window, e.g. "Today", "14/06", "12/06 – 14/06".
   String _windowLabel() {
     String dm(DateTime d) =>
         '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
     if (_isSameDay(_from, _to)) {
-      return _isSameDay(_from, DateTime.now()) ? 'Today' : dm(_from);
+      final now = DateTime.now();
+      if (_isSameDay(_from, now)) return 'Today';
+      return dm(_from);
     }
-    return '${dm(_from)} – ${dm(_to)}';
+    return '${dm(_from)} - ${dm(_to)}';
   }
 
-  /// Lets the user replay a single day or a date range. Defaults stay TODAY.
   Future<void> _pickWindow() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            ListTile(
-              leading: const Icon(LucideIcons.calendar),
-              title: Text(AppStrings.of(context).t('single_date')),
-              onTap: () => Navigator.pop(ctx, 'single'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.date_range),
-              title: Text(AppStrings.of(context).t('date_range')),
-              onTap: () => Navigator.pop(ctx, 'range'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || choice == null) return;
     final now = DateTime.now();
-    final first = DateTime(now.year - 3);
-    if (choice == 'single') {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: _from.isAfter(now) ? now : _from,
-        firstDate: first,
-        lastDate: now,
-      );
-      if (picked == null || !mounted) return;
-      setState(() {
-        _from = _dayStart(picked);
-        _to = _isSameDay(picked, now) ? now : _dayEnd(picked);
-      });
-    } else {
-      final range = await showDateRangePicker(
-        context: context,
-        initialDateRange: DateTimeRange(
-          start: _dayStart(_from),
-          end: _to.isAfter(now) ? now : _to,
-        ),
-        firstDate: first,
-        lastDate: now,
-      );
-      if (range == null || !mounted) return;
-      setState(() {
-        _from = _dayStart(range.start);
-        _to = _isSameDay(range.end, now) ? now : _dayEnd(range.end);
-      });
-    }
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: now.subtract(const Duration(days: 90)),
+      lastDate: now,
+      initialDateRange: DateTimeRange(start: _from, end: _to),
+    );
+    if (picked == null) return;
+    final range = picked;
+    if (!mounted) return;
+    setState(() {
+      _from = _dayStart(range.start);
+      _to = _isSameDay(range.end, now) ? now : _dayEnd(range.end);
+    });
     _loadTrail();
   }
 
@@ -274,13 +232,11 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       setState(() => _playing = false);
       return;
     }
-    // If we sit on the last sample, restart from the beginning.
     if (_currentIndex >= _points.length - 1) {
       _currentIndex = 0;
       _animController.value = 0;
       _displayedBearing = _segmentBearing(0);
-      _mapController.move(
-          _points[0].toLatLng(), _mapController.camera.zoom);
+      _mapController.move(_points[0].toLatLng(), _mapController.camera.zoom);
     }
     setState(() => _playing = true);
     _animController.forward(from: _animController.value);
@@ -294,9 +250,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     }
   }
 
-  /// Linear interpolation between consecutive GPS samples. Good enough at
-  /// city scale where samples are seconds apart — no need for great-circle
-  /// maths.
   LatLng get _animatedPoint {
     if (_points.isEmpty) return const LatLng(0, 0);
     if (_currentIndex >= _points.length - 1) return _points.last.toLatLng();
@@ -309,17 +262,12 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     );
   }
 
-  /// Initial bearing (in degrees, 0–360, 0 = north, clockwise) from the
-  /// start of the segment beginning at `index` to its end. Returns the
-  /// previous segment's bearing when `index` is the last sample so the
-  /// icon doesn't flip on the final point.
   double _segmentBearing(int index) {
     if (_points.length < 2) return _displayedBearing;
     final i = index.clamp(0, _points.length - 2);
     final a = _points[i].toLatLng();
     final b = _points[i + 1].toLatLng();
     if (a.latitude == b.latitude && a.longitude == b.longitude) {
-      // Vehicle parked — keep the previous heading rather than snap to 0.
       return _displayedBearing;
     }
     final lat1 = a.latitude * math.pi / 180;
@@ -331,9 +279,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 
-  /// Linear shortest-path ease between two compass bearings. Handles the
-  /// 359° → 1° wrap so the marker turns 2° clockwise instead of 358°
-  /// counter-clockwise.
   double _easeBearing(double current, double target, double t) {
     double delta = target - current;
     if (delta > 180) delta -= 360;
@@ -341,15 +286,11 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     return (current + delta * t + 360) % 360;
   }
 
-  /// Speed-coloured segments for the travelled polyline. `travelled` is
-  /// _points[0.._currentIndex] plus the interpolated tip, so vertex i takes
-  /// the speed of _points[min(i, _currentIndex)] — the tip inherits the
-  /// segment it is currently riding.
   List<Polyline> _speedColouredRuns(List<LatLng> travelled) {
     if (travelled.length < 2) return const <Polyline>[];
     Color colourFor(double kmh) => kmh <= 30
-        ? const Color(0xFF2FA719)
-        : (kmh <= 60 ? const Color(0xFFF59E0B) : const Color(0xFFDC2626));
+        ? const Color(0xFF16A34A)
+        : (kmh <= 60 ? const Color(0xFFEAB308) : const Color(0xFFEF4444));
     double speedAt(int i) =>
         _points[i < _currentIndex ? i : _currentIndex].speed;
 
@@ -359,9 +300,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     for (var i = 1; i <= travelled.length; i++) {
       final c = i < travelled.length ? colourFor(speedAt(i)) : null;
       if (c != runColour) {
-        final from = runStart == 0 ? 0 : runStart - 1; // joint vertex
-        // A single point is not a line - one fix whose colour differs from
-        // its neighbours would otherwise add a polyline that draws nothing.
+        final from = runStart == 0 ? 0 : runStart - 1;
         if (i - from >= 2) {
           runs.add(Polyline(
             points: travelled.sublist(from, i),
@@ -374,6 +313,18 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       }
     }
     return runs;
+  }
+
+  static IconData _vehicleIconData(String? type) {
+    final t = (type ?? '').toLowerCase();
+    if (t.contains('truck') || t.contains('lorry') || t.contains('tipper')) {
+      return LucideIcons.truck;
+    }
+    if (t.contains('bus')) return LucideIcons.bus;
+    if (t.contains('bike') || t.contains('motorcycle') || t.contains('scooter')) {
+      return LucideIcons.bike;
+    }
+    return LucideIcons.car;
   }
 
   @override
@@ -397,13 +348,47 @@ class _TripReplayScreenState extends State<TripReplayScreen>
                   color: Theme.of(context).appBarTheme.backgroundColor,
                   child: Row(
                     children: <Widget>[
-                      const Icon(LucideIcons.car, size: 18),
-                      const SizedBox(width: 8),
+                      Container(
+                        width: 38,
+                        height: 38,
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            _vehicleIconData(_vehicle!.vehicleType),
+                            size: 19,
+                            color: AppTheme.primaryBlue,
+                          ),
+                        ),
+                      ),
                       Expanded(
-                        child: Text(
-                          _vehicle!.displayName,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(
+                              _vehicle!.registrationNumber.isNotEmpty
+                                  ? _vehicle!.registrationNumber
+                                  : _vehicle!.displayName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '${_vehicle!.vehicleType.isNotEmpty ? _vehicle!.vehicleType : 'Vehicle'} • ${_vehicle!.name.isNotEmpty ? _vehicle!.name : _vehicle!.displayName}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                       ),
                       TextButton.icon(
@@ -411,8 +396,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
                         icon: const Icon(LucideIcons.calendar, size: 16),
                         label: Text(_windowLabel()),
                         style: TextButton.styleFrom(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
                       ),
                       TextButton(
@@ -438,7 +422,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Icon(LucideIcons.alertTriangle, color: Colors.red, size: 44),
+              const Icon(LucideIcons.alertTriangle, color: Colors.red, size: 44),
               const SizedBox(height: 16),
               Text(_error, textAlign: TextAlign.center),
               const SizedBox(height: 16),
@@ -461,9 +445,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     }
 
     final polyline = _points.map((p) => p.toLatLng()).toList();
-    // Build a "travelled so far" polyline that includes the interpolated
-    // marker position as its final vertex — that way the blue trail visibly
-    // grows under the moving icon instead of jumping by whole segments.
     final travelled = <LatLng>[
       ...polyline.sublist(0, _currentIndex + 1),
       _animatedPoint,
@@ -473,55 +454,74 @@ class _TripReplayScreenState extends State<TripReplayScreen>
       ...polyline.sublist(_currentIndex + 1),
     ];
 
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: polyline.first,
-        initialZoom: 14,
-      ),
+    return Stack(
       children: <Widget>[
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.vahanconnect.fleet_monitor',
-        ),
-        PolylineLayer(
-          polylines: <Polyline>[
-            // The travelled part is painted in SPEED colours — green under
-            // 30, amber to 60, red above — so the replay's line answers
-            // "where did it speed / crawl" at a glance. Split into runs of
-            // consecutive same-colour source points; each run starts on the
-            // previous run's last vertex so the line stays joined.
-            ..._speedColouredRuns(travelled),
-            Polyline(
-              points: remaining,
-              color: Colors.grey.withValues(alpha: 0.5),
-              strokeWidth: 3,
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: polyline.first,
+            initialZoom: 14,
+          ),
+          children: <Widget>[
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.vahanconnect.fleet_monitor',
+            ),
+            PolylineLayer(
+              polylines: <Polyline>[
+                ..._speedColouredRuns(travelled),
+                Polyline(
+                  points: remaining,
+                  color: Colors.grey.withValues(alpha: 0.45),
+                  strokeWidth: 3.5,
+                ),
+              ],
+            ),
+            MarkerLayer(
+              markers: <Marker>[
+                Marker(
+                  point: polyline.first,
+                  child: const Icon(Icons.flag, color: Colors.green, size: 28),
+                ),
+                Marker(
+                  point: polyline.last,
+                  child: const Icon(Icons.location_on, color: Colors.red, size: 28),
+                ),
+                Marker(
+                  point: _animatedPoint,
+                  width: 54,
+                  height: 54,
+                  child: Transform.rotate(
+                    angle: _displayedBearing * math.pi / 180,
+                    child: _VehicleMarker(vehicle: _vehicle!),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        MarkerLayer(
-          markers: <Marker>[
-            Marker(
-              point: polyline.first,
-              child: const Icon(Icons.flag, color: Colors.green, size: 28),
-            ),
-            Marker(
-              point: polyline.last,
-              child: const Icon(Icons.location_on, color: Colors.red, size: 28),
-            ),
-            Marker(
-              point: _animatedPoint,
-              width: 56,
-              height: 56,
-              // The PNG icons are designed nose-up (0° = north). Bearing is
-              // already measured clockwise from north, which is exactly what
-              // Transform.rotate expects (positive = clockwise on screen).
-              child: Transform.rotate(
-                angle: _displayedBearing * math.pi / 180,
-                child: _VehicleMarker(vehicle: _vehicle!),
-              ),
-            ),
-          ],
+        Positioned(
+          top: 12,
+          right: 12,
+          child: FloatingActionButton.small(
+            heroTag: 'replay_fit',
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black87,
+            elevation: 3,
+            tooltip: 'Fit route in view',
+            onPressed: () {
+              if (polyline.isNotEmpty) {
+                final bounds = LatLngBounds.fromPoints(polyline);
+                _mapController.fitCamera(
+                  CameraFit.bounds(
+                    bounds: bounds,
+                    padding: const EdgeInsets.fromLTRB(40, 40, 40, 180),
+                  ),
+                );
+              }
+            },
+            child: const Icon(LucideIcons.maximize2, size: 18),
+          ),
         ),
       ],
     );
@@ -530,8 +530,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   Widget _buildControls(AppStrings strings) {
     if (_points.isEmpty) return const SizedBox.shrink();
     final point = _points[_currentIndex];
-    // Progress includes the in-segment animation fraction so the slider
-    // thumb glides smoothly during playback instead of stepping per sample.
     final progress = _points.length <= 1
         ? 1.0
         : (_currentIndex + _animController.value) / (_points.length - 1);
@@ -563,8 +561,10 @@ class _TripReplayScreenState extends State<TripReplayScreen>
                 _displayedBearing = _segmentBearing(i);
               });
               _animController.value = 0;
-              _mapController.move(
-                  _points[i].toLatLng(), _mapController.camera.zoom);
+              try {
+                _mapController.move(
+                    _points[i].toLatLng(), _mapController.camera.zoom);
+              } catch (_) {}
               if (wasPlaying && i < _points.length - 1) {
                 setState(() => _playing = true);
                 _animController.forward(from: 0);
@@ -576,8 +576,10 @@ class _TripReplayScreenState extends State<TripReplayScreen>
               IconButton(
                 iconSize: 36,
                 onPressed: _togglePlay,
-                icon: Icon(_playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
-                    color: AppTheme.primaryBlue),
+                icon: Icon(
+                  _playing ? Icons.pause_circle_filled : Icons.play_circle_fill,
+                  color: AppTheme.primaryBlue,
+                ),
                 tooltip: _playing ? strings.t('pause') : strings.t('play'),
               ),
               const SizedBox(width: 8),
@@ -608,7 +610,6 @@ class _TripReplayScreenState extends State<TripReplayScreen>
     );
   }
 
-  /// Compact speed-over-trip graph with a live marker at the playback point.
   Widget _buildSpeedGraph() {
     if (_points.length < 2) return const SizedBox.shrink();
     var maxSpeed = 1.0;
@@ -649,7 +650,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
               verticalLines: <VerticalLine>[
                 VerticalLine(
                   x: _currentIndex.toDouble(),
-                  color: AppColors.red,
+                  color: AppColors.orange,
                   strokeWidth: 2,
                 ),
               ],
@@ -686,9 +687,7 @@ class _TripReplayScreenState extends State<TripReplayScreen>
   }
 }
 
-/// Clean vehicle marker — just the vehicle's own icon, nothing else.
-/// No background, no halo, no drop shadow (BoxShadow on a transparent PNG
-/// container draws a rectangle behind the icon which reads as a dark blob).
+/// Clean vehicle marker with drop shadow and high-DPI scaling.
 class _VehicleMarker extends StatelessWidget {
   const _VehicleMarker({required this.vehicle});
 
@@ -697,18 +696,30 @@ class _VehicleMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasIcon = vehicle.vehicleIconUrl.isNotEmpty;
-    const fallback = Icon(
-      LucideIcons.car,
+    final fallback = Icon(
+      _TripReplayScreenState._vehicleIconData(vehicle.vehicleType),
       color: AppTheme.primaryBlue,
-      size: 40,
+      size: 42,
     );
     if (!hasIcon) return fallback;
 
-    return CachedNetworkImage(
-      imageUrl: vehicle.vehicleIconUrl,
-      fit: BoxFit.contain,
-      placeholder: (c, u) => fallback,
-      errorWidget: (c, u, e) => fallback,
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: CachedNetworkImage(
+        imageUrl: vehicle.vehicleIconUrl,
+        fit: BoxFit.contain,
+        placeholder: (c, u) => fallback,
+        errorWidget: (c, u, e) => fallback,
+      ),
     );
   }
 }
@@ -743,13 +754,24 @@ class _VehiclePicker extends StatelessWidget {
                         imageUrl: v.vehicleIconUrl,
                         fit: BoxFit.contain,
                         errorWidget: (c, u, e) =>
-                            const Icon(LucideIcons.car),
+                            Icon(_TripReplayScreenState._vehicleIconData(v.vehicleType)),
                       )
-                    : const Icon(LucideIcons.car),
+                    : Icon(_TripReplayScreenState._vehicleIconData(v.vehicleType)),
               ),
-              title: Text(v.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text(v.imei),
+              title: Text(
+                v.registrationNumber.isNotEmpty
+                    ? v.registrationNumber
+                    : v.displayName,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                '${v.vehicleType.isNotEmpty ? v.vehicleType : 'Vehicle'} • ${v.name.isNotEmpty ? v.name : v.displayName}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => onPick(v),
             );

@@ -99,7 +99,9 @@ class AppDrawer extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              user?.email ?? '',
+                              user?.phone.isNotEmpty == true
+                                  ? user!.phone
+                                  : (user?.email ?? ''),
                               style: const TextStyle(
                                 color: Colors.white70,
                                 fontSize: 12,

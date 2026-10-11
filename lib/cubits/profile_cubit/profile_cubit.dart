@@ -32,6 +32,8 @@ class ProfileCubit extends Cubit<ProfileState> {
     String? name,
     String? lastName,
     String? email,
+    String? phone,
+    String? address,
     String? file,
   }) async {
     emit(ProfileLoadingState(userProfileModel: state.userProfileModel));
@@ -41,6 +43,8 @@ class ProfileCubit extends Cubit<ProfileState> {
         firstName: name,
         lastName: lastName,
         email: email,
+        phone: phone,
+        address: address,
         file: file,
       );
 
@@ -60,6 +64,24 @@ class ProfileCubit extends Cubit<ProfileState> {
         ),
       );
       return false;
+    }
+  }
+
+  Future<({bool success, String message})> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    try {
+      final msg = await _profileRepository.changePassword(
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+        confirmPassword: confirmPassword,
+      );
+      return (success: true, message: msg);
+    } catch (error) {
+      final msg = error.toString().replaceFirst('Exception: ', '');
+      return (success: false, message: msg);
     }
   }
 

@@ -272,10 +272,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (userData.email.isNotEmpty) ...<Widget>[
+                        if (userData.phone.isNotEmpty || userData.email.isNotEmpty) ...<Widget>[
                           const SizedBox(height: 6),
                           Text(
-                            userData.email,
+                            userData.phone.isNotEmpty ? userData.phone : userData.email,
                             style: TextStyle(
                               color: Colors.grey.shade600,
                               fontWeight: FontWeight.w500,
@@ -306,6 +306,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     GapWidget(size: 8),
                   ],
                   _sectionHeader(AppStrings.of(context).t('security')),
+                  if (!widget.isStudent)
+                    _settingsItem(
+                      Icons.lock_reset_rounded,
+                      'Change Password',
+                      'Update your account login password',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ProfileWidget(initialTab: 1),
+                          ),
+                        );
+                      },
+                    ),
                   _settingsSwitch(
                     Icons.fingerprint_rounded,
                     AppStrings.of(context).t('biometric_login'),
@@ -476,12 +490,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildDashboardTile() {
     return BlocBuilder<SettingsCubit, SettingsState>(
       builder: (context, settings) {
+        final label = settings.dashboardStyle == 'cards'
+            ? 'Executive Cards'
+            : (settings.dashboardStyle == 'overview'
+                ? 'Overview (chart)'
+                : 'Live map');
         return _settingsItem(
           Icons.dashboard_rounded,
           'Dashboard style',
-          settings.dashboardStyle == 'overview'
-              ? 'Overview (chart)'
-              : 'Live map',
+          label,
           onTap: _showDashboardPicker,
         );
       },
@@ -597,6 +614,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               const SizedBox(height: 16),
+              _optionTile(sheetCtx, 'cards', 'Executive Cards', current,
+                  'Telematics cards, live active stream & quick track'),
               _optionTile(sheetCtx, 'map', 'Live map', current,
                   'Full-screen fleet map'),
               _optionTile(sheetCtx, 'overview', 'Overview (chart)', current,

@@ -58,13 +58,13 @@ class SettingsCubit extends Cubit<SettingsState> {
           ? null
           : Locale(langCode),
       themeMode: _parseThemeMode(themeStr),
-      dashboardStyle: (dash == 'overview') ? 'overview' : 'map',
+      dashboardStyle: (dash == 'overview' || dash == 'cards') ? dash : 'map',
       alertFilterMode: (alerts == 'essential') ? 'essential' : 'all',
     ));
   }
 
   Future<void> setDashboardStyle(String style) async {
-    final normalized = style == 'overview' ? 'overview' : 'map';
+    final normalized = (style == 'overview' || style == 'cards') ? style : 'map';
     await LocalStorage.setValue(PreferencesKey.dashboardStyle, normalized);
     emit(state.copyWith(dashboardStyle: normalized));
   }

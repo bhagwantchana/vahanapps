@@ -3,23 +3,20 @@ import 'package:fleet_monitor/models/model_helpers.dart';
 import 'package:fleet_monitor/models/vehicle_settings_model.dart';
 
 class VehicleRecord {
-  /// How old a fix may be before the app stops claiming to know what the
-  /// vehicle is doing. ONE threshold for every map, list and counter — see
-  /// [statusKey], which is the only status rule any surface should apply.
-  ///
-  /// Several widgets used to carry their own 30-minute window while the
-  /// tracking server calls a device offline after 3 (GPS_OFFLINE_AFTER_SECONDS),
-  /// leaving a 27-minute gap in which the map painted a confident colour from a
-  /// fix that was minutes old. Real GPS gaps mid-drive run 3-9 minutes on this
-  /// fleet, so the classic failure was: a bus halts at a school gate (correctly
-  /// orange, engine idling), pulls away, its signal drops — and the map kept
-  /// insisting "idle" for the whole gap while the bus was driving. Grey is the
-  /// honest answer there.
-  ///
-  /// Floor is set by the server's parked-vehicle write interval
-  /// (GPS_STATIONARY_SAVE_INTERVAL_SECONDS, 5 min): anything shorter would grey
-  /// out every legitimately parked vehicle.
-  static const int staleFixMs = 8 * 60 * 1000;
+  /// Offline threshold: 2 hours (120 minutes). A vehicle shows as 'offline'
+  /// ONLY when no update has arrived for >= 2 hours. Until 2 hours of silence,
+  /// it is shown as STOPPED (or Moving / Idle if actively reporting within the
+  /// live motion window).
+  static const int staleOfflineMs = 2 * 60 * 60 * 1000;
+
+  /// Active reporting window for live motion / live idle (10 minutes).
+  /// If no update arrives for > 10 minutes, the vehicle is no longer considered
+  /// actively moving or idling, but it is NOT offline until 2 hours have passed
+  /// — it shows as STOPPED.
+  static const int liveMotionWindowMs = 10 * 60 * 1000;
+
+  /// Kept for backwards compatibility if referenced anywhere.
+  static const int staleFixMs = staleOfflineMs;
 
   final int id;
   final int userId;
@@ -428,30 +425,53 @@ class VehicleRecord {
   /// microphone, and we hold a number the server has already validated.
   bool get canCallVehicle => isCallDevice == 1 && simMsisdn.trim().isNotEmpty;
 
+  /// Alias for typeName (e.g. Car, Truck, Bus, Bike).
+  String get vehicleType => typeName;
+
   bool get engineOn => acc > 0;
 
-  /// The last fix is older than [staleFixMs], so nothing derived from it is
-  /// worth painting as a live status.
+  /// True if the last fix is older than 2 hours [staleOfflineMs], meaning the
+  /// device has gone completely silent / offline.
   bool get isLiveStale {
     final ts = tsEpochMs;
-    return ts > 0 && DateTime.now().millisecondsSinceEpoch - ts > staleFixMs;
+    if (ts > 0) {
+      return DateTime.now().millisecondsSinceEpoch - ts > staleOfflineMs;
+    }
+    if (createdAt.isNotEmpty) {
+      final parsed = DateTime.tryParse(createdAt);
+      if (parsed != null) {
+        return DateTime.now().difference(parsed.toLocal()).inMilliseconds >
+            staleOfflineMs;
+      }
+    }
+    return false;
   }
 
-  /// Real road speed means the vehicle is moving, whatever the ACC bit says.
-  /// OBD and PT06 units flicker or stick that bit, and a bus doing 60 km/h
-  /// rendering as a red "Stopped" marker is the worst thing the map can do.
-  ///
-  /// These three are STALE-AWARE: all three are false once the fix ages past
-  /// [staleFixMs], because "moving" and "stopped" are both claims about right
-  /// now. That makes them safe defaults but means they are NOT an exhaustive
-  /// set — never bucket a vehicle with `if (isMoving) … else if (isIdle) …
-  /// else stopped`, because a stale vehicle silently lands in the last branch.
-  /// Use [statusKey], which is exhaustive and has the offline case.
-  bool get isMoving => !isLiveStale && speed > 5;
+  /// True if the fix arrived within the recent live motion window (10 minutes).
+  bool get isRecentFix {
+    final ts = tsEpochMs;
+    if (ts > 0) {
+      return DateTime.now().millisecondsSinceEpoch - ts <= liveMotionWindowMs;
+    }
+    if (createdAt.isNotEmpty) {
+      final parsed = DateTime.tryParse(createdAt);
+      if (parsed != null) {
+        return DateTime.now().difference(parsed.toLocal()).inMilliseconds <=
+            liveMotionWindowMs;
+      }
+    }
+    return false;
+  }
 
-  bool get isIdle => !isLiveStale && !isMoving && engineOn;
+  /// Real road speed means moving ONLY while the fix is recent (< 10 min).
+  bool get isMoving => isRecentFix && speed > 5;
 
-  bool get isStopped => !isLiveStale && !isMoving && !engineOn;
+  /// Idle means engine is ON, not moving, and fix is recent (< 10 min).
+  bool get isIdle => isRecentFix && !isMoving && engineOn;
+
+  /// Stopped when not offline, and neither moving nor idling.
+  /// (Includes engine OFF, parked vehicles, and vehicles without updates up to 2 hours).
+  bool get isStopped => !isLiveStale && !isMoving && !isIdle;
 
   bool acceptsLiveFixFrom(VehicleRecord incoming) {
     if (incoming.tsEpochMs <= 0 || tsEpochMs <= 0) {
@@ -604,33 +624,63 @@ class VehicleRecord {
   /// as 5h30 old the moment it arrived ("Updated: 02:27" at 07:57 local). The
   /// epoch in [tsEpochMs] is unambiguous, and a relative label sidesteps the
   /// question of whose timezone to print in.
+  /// Formatted date and time string with AM/PM: e.g. "11 Oct, 01:10 PM"
+  String get lastUpdateDateTimeLabel {
+    final ts = tsEpochMs;
+    final DateTime dt;
+    if (ts > 0) {
+      dt = DateTime.fromMillisecondsSinceEpoch(ts).toLocal();
+    } else if (createdAt.isNotEmpty) {
+      final parsed = DateTime.tryParse(createdAt);
+      if (parsed != null) {
+        dt = parsed.toLocal();
+      } else {
+        return '';
+      }
+    } else {
+      return '';
+    }
+
+    final day = dt.day.toString().padLeft(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final monthStr = months[dt.month - 1];
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final hourStr = hour12.toString().padLeft(2, '0');
+    final minuteStr = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    return '$day $monthStr, $hourStr:$minuteStr $ampm';
+  }
+
+  /// "Just now" / "5m ago" / "2h ago", derived from [tsEpochMs].
+  ///
+  /// Pure relative label without date to fit cleanly inside chips and cards.
+  /// For formatted date and time with AM/PM, use [lastUpdateDateTimeLabel].
   String get lastUpdateLabel {
     final ts = tsEpochMs;
-    if (ts <= 0) return '—';
-    final diff =
-        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ts));
+    if (ts <= 0 && createdAt.isEmpty) return '—';
+    final dt = ts > 0
+        ? DateTime.fromMillisecondsSinceEpoch(ts).toLocal()
+        : (DateTime.tryParse(createdAt)?.toLocal() ?? DateTime.now());
+
+    final diff = DateTime.now().difference(dt);
     if (diff.isNegative || diff.inMinutes < 1) return 'Just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
   }
 
-  /// THE status rule. `offline` | `stopped` | `moving` | `idle`, in that
-  /// precedence, exactly one of which always holds.
-  ///
-  /// Every map, card, counter and filter must route through this. When widgets
-  /// each carried their own copy they drifted apart: three of them kept a
-  /// 30-minute offline window, so a vehicle silent for ten minutes fell past
-  /// their gate, found isStopped and isMoving both false, and landed on the
-  /// `idle` fallthrough — the map painted it orange, claiming an idling engine
-  /// on a device that had not spoken in ten minutes.
+  /// THE status rule. `offline` | `stopped` | `moving` | `idle`:
+  /// - Over 2 hours with no update = offline
+  /// - Under 2 hours, actively driving (>5 km/h, <10m old) = moving
+  /// - Under 2 hours, engine on (<10m old) = idle
+  /// - Everything else under 2 hours (parked, engine off, silence < 2h) = stopped
   String get statusKey {
     if (isLiveStale) {
       return 'offline';
     }
-    if (isStopped) return 'stopped';
     if (isMoving) return 'moving';
-    return 'idle';
+    if (isIdle) return 'idle';
+    return 'stopped';
   }
 
   /// Human label for [statusKey] — Offline / Stopped / Moving / Idle.

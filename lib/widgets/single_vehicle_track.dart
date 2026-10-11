@@ -25,10 +25,12 @@ import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/live_address_text.dart';
 import 'package:fleet_monitor/widgets/google_fleet_map.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
+import 'package:fleet_monitor/widgets/map_motion.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -212,14 +214,21 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         to: now,
       );
       final limit = _trailPointLimit(settings);
-      final trail = points
+      final raw = points
           .map((item) => SpeedPoint(item.toLatLng(), item.speed))
           .where((sp) => sp.p.latitude != 0 || sp.p.longitude != 0)
           .toList();
-      if (trail.length <= limit) {
-        return trail;
+      final scoped = raw.length <= limit ? raw : raw.sublist(raw.length - limit);
+      if (scoped.length >= 3) {
+        final cleaned = cleanGpsTrail(
+          scoped.map((e) => MotionPoint(e.p.latitude, e.p.longitude)).toList(),
+        );
+        return <SpeedPoint>[
+          for (var i = 0; i < cleaned.length && i < scoped.length; i++)
+            SpeedPoint(LatLng(cleaned[i].lat, cleaned[i].lng), scoped[i].kmh),
+        ];
       }
-      return trail.sublist(trail.length - limit);
+      return scoped;
     } catch (_) {
       return <SpeedPoint>[];
     }
@@ -411,18 +420,20 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
           ..add(SpeedPoint(next, kmh));
         return;
       }
-      if (meters < 5) return;
+      // Stationary jitter suppression: when vehicle is stopped or idling (< 4 km/h),
+      // ignore GPS drift under 8 meters so the trail does not creep outside the road.
+      if (kmh < 4 && meters < 8) return;
+      if (meters < 4) return;
       // Jitter spur: the trail went OUT to the last point and came straight
-      // back — a multipath flick at a signal-poor chowk, not a turn the bike
-      // made. Replace the spur with the new point so the line stays on the
-      // road. Real corners survive: their detour ratio stays small.
+      // back — a multipath flick at a signal-poor chowk, not a turn the vehicle
+      // made. Replace the spur with the new point so the line stays centered on the road.
       if (_liveTrail.length >= 2) {
         final anchor = _liveTrail[_liveTrail.length - 2].p;
         const d = Distance();
         final aToLast = d.as(LengthUnit.Meter, anchor, last);
         final lastToNext = meters;
         final aToNext = d.as(LengthUnit.Meter, anchor, next);
-        if (aToNext < 60 && (aToLast + lastToNext) > (aToNext * 1.8 + 20)) {
+        if (aToNext < 120 && (aToLast + lastToNext) > (aToNext * 1.35 + 8)) {
           _liveTrail.removeLast();
         }
       }
@@ -702,6 +713,31 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   /// Safely reduce a "HH:mm:ss" (or shorter) time string to "HH:mm" without
   /// throwing RangeError when the server sends a short value like "6:00".
   String _hhmm(String t) => t.length >= 5 ? t.substring(0, 5) : t;
+
+  Future<void> _copyAddress(VehicleRecord vehicle) async {
+    final addr = vehicle.cachedAddress.trim();
+    final text = addr.isNotEmpty
+        ? addr
+        : '${vehicle.latitude.toStringAsFixed(5)}, ${vehicle.longitude.toStringAsFixed(5)}';
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Address copied to clipboard'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _shareAddress(VehicleRecord vehicle) async {
+    final addr = vehicle.cachedAddress.trim();
+    final loc = addr.isNotEmpty
+        ? '$addr\nhttps://maps.google.com/?q=${vehicle.latitude},${vehicle.longitude}'
+        : 'https://maps.google.com/?q=${vehicle.latitude},${vehicle.longitude}';
+    final shareText = 'Vehicle: ${vehicle.displayName}\nLocation: $loc';
+    await Share.share(shareText);
+  }
 
   Future<void> _openLiveMap(VehicleRecord vehicle) async {
     // Native mode gets a native full-screen (map-mode consistent) — the
@@ -1724,6 +1760,42 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                     ),
                                     const Spacer(),
                                     GestureDetector(
+                                      onTap: () => _copyAddress(vehicle),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryBlue
+                                              .withValues(alpha: 0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          LucideIcons.copy,
+                                          size: 14,
+                                          color: AppTheme.primaryBlue,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      onTap: () => _shareAddress(vehicle),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primaryBlue
+                                              .withValues(alpha: 0.08),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          LucideIcons.share2,
+                                          size: 14,
+                                          color: AppTheme.primaryBlue,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
                                       onTap: () =>
                                           _showFullAddressModal(vehicle),
                                       child: Container(
@@ -1815,16 +1887,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                           children: <Widget>[
                             CircleAvatar(
                               radius: 28,
-                              backgroundColor: AppTheme.primaryBlue.withValues(
-                                alpha: 0.1,
+                              backgroundColor: _statusColorFor(vehicle).withValues(
+                                alpha: 0.12,
                               ),
-                              child: const Icon(
+                              child: Icon(
                                 LucideIcons.car,
                                 size: 28,
-                                color: AppTheme.primaryBlue,
+                                color: _statusColorFor(vehicle),
                               ),
                             ),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 14),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1854,10 +1926,45 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                                 ],
                               ),
                             ),
-                            // Status badge removed here — the address card
-                            // directly above already shows the live status
-                            // pill (MOVING/IDLE/STOPPED). Two badges on
-                            // one screen looked unprofessional.
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _statusColorFor(vehicle)
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: _statusColorFor(vehicle)
+                                      .withValues(alpha: 0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: _statusColorFor(vehicle),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    vehicle.statusLabel.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                      color: _statusColorFor(vehicle),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
@@ -2708,28 +2815,28 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
         children: [
           Icon(icon, size: 16, color: color),
           const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Flexible(
-                child: Text(
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
                   val,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-              ),
-              if (unit.isNotEmpty) ...[
-                const SizedBox(width: 1),
-                Text(unit, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey)),
+                if (unit.isNotEmpty) ...[
+                  const SizedBox(width: 1),
+                  Text(unit, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.grey)),
+                ],
               ],
-            ],
+            ),
           ),
           const SizedBox(height: 2),
           Text(
@@ -2843,11 +2950,47 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             builder: (context, constraints) {
               final itemWidth = (constraints.maxWidth - 12) / 2;
               final tiles = <Widget>[
-                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.badgeCheck, label: 'Reg. Number', value: vehicle.registrationNumber)),
+                SizedBox(
+                  width: itemWidth,
+                  child: _buildDetailTile(
+                    icon: LucideIcons.badgeCheck,
+                    label: 'Reg. Number',
+                    value: vehicle.registrationNumber,
+                    onCopy: vehicle.registrationNumber.isNotEmpty
+                        ? () {
+                            Clipboard.setData(ClipboardData(text: vehicle.registrationNumber));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Registration number copied'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
+                ),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.car, label: 'Vehicle Name', value: vehicle.name)),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.layers, label: 'Type', value: vehicle.typeName)),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.cpu, label: 'Model', value: vehicle.model)),
-                SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.info, label: 'Device ID', value: vehicle.imei)),
+                SizedBox(
+                  width: itemWidth,
+                  child: _buildDetailTile(
+                    icon: LucideIcons.info,
+                    label: 'Device ID',
+                    value: vehicle.imei,
+                    onCopy: vehicle.imei.isNotEmpty
+                        ? () {
+                            Clipboard.setData(ClipboardData(text: vehicle.imei));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Device ID copied'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
+                ),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.gauge, label: 'Speed Limit', value: '${vehicle.overspeedLimit} km/h')),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.shieldAlert, label: 'Radius Alert', value: '${vehicle.geofenceRadius} m')),
                 SizedBox(width: itemWidth, child: _buildDetailTile(icon: LucideIcons.history, label: 'Odometer', value: '${(vehicle.currentOdometer > 0 ? vehicle.currentOdometer : 0).toStringAsFixed(0)} km')),
@@ -2887,31 +3030,40 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     required IconData icon,
     required String label,
     required String value,
+    VoidCallback? onCopy,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, size: 14, color: AppTheme.primaryBlue),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w700)),
-                Text(value.isEmpty ? '--' : value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
-              ],
+    return GestureDetector(
+      onTap: onCopy,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, size: 14, color: AppTheme.primaryBlue),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 9, fontWeight: FontWeight.w700)),
+                  Text(value.isEmpty ? '--' : value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            if (onCopy != null) ...[
+              const SizedBox(width: 4),
+              Icon(LucideIcons.copy, size: 12, color: Colors.grey.shade400),
+            ],
+          ],
+        ),
       ),
     );
   }

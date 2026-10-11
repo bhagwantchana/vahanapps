@@ -1,4 +1,4 @@
-﻿import 'package:fleet_monitor/models/vehicle_record.dart';
+import 'package:fleet_monitor/models/vehicle_record.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Status drives the marker colour on the live map — green moving, orange idle,
@@ -104,24 +104,26 @@ void main() {
               DateTime.now().subtract(age).millisecondsSinceEpoch,
         );
 
-    test('45 minutes old is offline', () {
+    test('45 minutes old is stopped (under 2 hours)', () {
       expect(agedFix(const Duration(minutes: 45), speed: 60).statusKey,
+          'stopped',
+          reason: 'a vehicle under 2 hours without live movement shows stopped');
+    });
+
+    test('130 minutes (over 2 hours) is offline', () {
+      expect(agedFix(const Duration(minutes: 130), speed: 60).statusKey,
           'offline',
-          reason: 'a stale fix must not be shown as live movement');
+          reason: 'vehicle with no update for >= 2 hours flips to offline');
     });
 
-    test('12 minutes old is offline, not idle', () {
-      // The bug the schools hit: bus idles at the gate, pulls away, signal
-      // drops. The old 30-minute window kept insisting "idle" the whole time.
-      expect(agedFix(const Duration(minutes: 12)).statusKey, 'offline',
-          reason: 'app claimed idle from a fix minutes old while driving');
+    test('12 minutes old is stopped, not idle or offline', () {
+      expect(agedFix(const Duration(minutes: 12)).statusKey, 'stopped',
+          reason: 'under 2 hours silence shows stopped');
     });
 
-    test('a parked vehicle on its 5-minute write interval stays idle', () {
-      // Must not grey out vehicles that are simply parked — the server only
-      // writes their position every 5 minutes by design.
-      expect(agedFix(const Duration(minutes: 6)).statusKey, 'idle',
-          reason: 'parked vehicles would flicker to offline');
+    test('a parked vehicle on its 5-minute write interval stays idle if engine on', () {
+      expect(agedFix(const Duration(minutes: 6), speed: 0, acc: 1).statusKey, 'idle',
+          reason: 'recent fix with engine on is idle');
     });
 
     test('a fresh fix is unaffected', () {
@@ -131,14 +133,8 @@ void main() {
   });
 
   group('statusKey is the one exhaustive rule every surface buckets by', () {
-    // The regression this group exists to stop: isMoving/isIdle/isStopped are
-    // stale-aware, so ALL THREE go false past staleFixMs. Widgets that carried
-    // their own 30-minute offline gate then fell through to `idle` and painted
-    // a vehicle silent for ten minutes orange — an idling engine on a device
-    // that had stopped speaking. Anything bucketing vehicles must use
-    // statusKey, which always answers, and answers exactly once.
     List<VehicleRecord> fleet() => <VehicleRecord>[
-          for (final ageMinutes in <int>[0, 1, 6, 9, 12, 25, 31, 90])
+          for (final ageMinutes in <int>[0, 1, 6, 9, 12, 25, 31, 90, 130])
             for (final speed in <double>[0, 3, 6, 70])
               for (final acc in <int>[0, 1])
                 VehicleRecord(
@@ -182,9 +178,8 @@ void main() {
           reason: 'a chip would show a count its own filtered list disagrees with');
     });
 
-    test('the 8-30 minute window is offline, never idle', () {
-      // Exactly the window three widgets used to leave on the idle fallthrough.
-      for (final minutes in <int>[9, 12, 20, 29]) {
+    test('under 2 hours is stopped, over 2 hours is offline', () {
+      for (final minutes in <int>[15, 30, 60, 110]) {
         final v = VehicleRecord(
           id: 1,
           speed: 0,
@@ -193,7 +188,19 @@ void main() {
               .subtract(Duration(minutes: minutes))
               .millisecondsSinceEpoch,
         );
-        expect(v.statusKey, 'offline', reason: '$minutes min old');
+        expect(v.statusKey, 'stopped', reason: '$minutes min old is stopped');
+        expect(v.statusLabel, 'Stopped');
+      }
+      for (final minutes in <int>[125, 180, 300]) {
+        final v = VehicleRecord(
+          id: 1,
+          speed: 0,
+          acc: 0,
+          tsEpochMs: DateTime.now()
+              .subtract(Duration(minutes: minutes))
+              .millisecondsSinceEpoch,
+        );
+        expect(v.statusKey, 'offline', reason: '$minutes min old is offline');
         expect(v.statusLabel, 'Offline');
       }
     });

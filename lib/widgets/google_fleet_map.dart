@@ -539,18 +539,12 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         // the corner IS the sideways slide through a junction.
         final p0 = i > 0 ? q[i - 1] : a;
         final p3 = (i + 2) < q.length ? q[i + 2] : b;
-        final p = catmullRom(p0, a, b, p3, f);
+        final p = catmullRom(p0, a, b, p3, f, maxDeviationMeters: kRoadLaneGuardMeters);
         _renderedFleet[v.id] = LatLng(p.lat, p.lng);
 
-        // Heading from real movement, sampled slightly ahead so the vehicle
-        // noses into the turn, then eased toward that target instead of the
-        // device's raw course snapping.
-        if (distanceMeters(a.lat, a.lng, b.lat, b.lng) > 3) {
-          final ahead = catmullRom(p0, a, b, p3, (f + 0.08).clamp(0.0, 1.0));
-          final target =
-              distanceMeters(p.lat, p.lng, ahead.lat, ahead.lng) > 0.5
-                  ? bearingDegrees(p.lat, p.lng, ahead.lat, ahead.lng)
-                  : bearingDegrees(a.lat, a.lng, b.lat, b.lng);
+        // Heading from real movement via exact spline tangent, eased smoothly.
+        if (distanceMeters(a.lat, a.lng, b.lat, b.lng) > 1.5) {
+          final target = catmullRomTangentHeading(p0, a, b, p3, f);
           final cur = _fleetBearing[v.id];
           _fleetBearing[v.id] = cur == null
               ? target
@@ -656,6 +650,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
           (meters / secs) * 3.6 > 220) {
         return; // implausible short hop → GPS error
       }
+      // Stationary jitter suppression: if vehicle is stopped or idling (<3 km/h),
+      // ignore GPS multipath drift under 8 meters so the marker doesn't creep into roadside buildings.
+      if (v.speed <= 3 && meters < 8.0) {
+        return;
+      }
     }
     if (_fixQueue.isNotEmpty) _noteFixInterval(ts - _fixQueue.last.ts);
     _fixQueue.add(_Fix(v.latitude, v.longitude, ts));
@@ -696,15 +695,6 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
     return 2 * r * math.asin(math.min(1.0, math.sqrt(a)));
   }
 
-  static double _bearing(double lat1, double lng1, double lat2, double lng2) {
-    final rLat1 = lat1 * math.pi / 180;
-    final rLat2 = lat2 * math.pi / 180;
-    final dLng = (lng2 - lng1) * math.pi / 180;
-    final y = math.sin(dLng) * math.cos(rLat2);
-    final x = math.cos(rLat1) * math.sin(rLat2) -
-        math.sin(rLat1) * math.cos(rLat2) * math.cos(dLng);
-    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
-  }
 
   @override
   void dispose() {
@@ -1276,8 +1266,9 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
         ? (_renderBearing ?? _followBearing)
         : _fleetBearing[v.id];
     final heading = easedBearing ?? (v.course % 360);
-    final rotation =
+    final rawRotation =
         navBillboard ? ((heading - _mapBearing) % 360 + 360) % 360 : heading;
+    final rotation = (rawRotation * 2).roundToDouble() / 2.0;
     markers.add(
       Marker(
         markerId: MarkerId(v.id.toString()),
@@ -1507,12 +1498,11 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _labelsShown = show;
       _refreshMarkers();
     }
-    // The map turning or pitching changes how the followed car must be drawn
-    // even when the car itself is stationary. Without this a parked vehicle
-    // kept its old rotation through the whole head-up animation and only
-    // corrected on the next fix — which for a parked vehicle is minutes away.
-    // _pushPose carries the 33 ms throttle, so an animation cannot flood it.
-    if (widget.followVehicleId != null) _pushPose();
+    // Map turning or pitching when follow is paused or locked:
+    // Update marker orientation without commanding a recursive followCamera loop.
+    if (widget.followVehicleId != null && (_followPaused || _cameraLocked)) {
+      _refreshMarkers();
+    }
   }
 
   Future<void> _fitToFleet() async {
@@ -1606,36 +1596,60 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       _trailSourceLen = src.length;
       _trailSourceLast = src.last;
       final speeds = widget.trailSpeeds;
-      if (speeds.length == src.length && speeds.isNotEmpty) {
-        // Split into consecutive same-colour runs BEFORE smoothing; each run
-        // starts on the previous run's last point so the line stays joined.
+
+      // Clean lateral multipath noise and GPS jitter first
+      final rawMotion = <MotionPoint>[
+        for (final p in src) MotionPoint(p.latitude, p.longitude),
+      ];
+      final cleanedMotion = cleanGpsTrail(rawMotion);
+
+      if (speeds.length == src.length && speeds.isNotEmpty && cleanedMotion.length >= 2) {
         int bucket(double kmh) => kmh <= 30 ? 0 : (kmh <= 60 ? 1 : 2);
+
+        // Build continuous unified curve segments: each segment is resampled
+        // with 4 vertices along the centripetal curve bounded to the road lane.
+        // Because adjacent segments share boundary tangents, the line never kinks.
         final runs = <_TrailRun>[];
-        var runStart = 0;
-        var runBucket = bucket(speeds[0]);
-        for (var i = 1; i <= src.length; i++) {
-          final b = i < src.length ? bucket(speeds[i]) : -99;
-          if (b != runBucket) {
-            final from = runStart == 0 ? 0 : runStart - 1; // joint point
-            runs.add(_TrailRun(
-              runBucket,
-              smoothPath(<MotionPoint>[
-                for (var j = from; j < i; j++)
-                  MotionPoint(src[j].latitude, src[j].longitude),
-              ]),
-            ));
-            runStart = i;
-            runBucket = b;
+        var currentBucket = bucket(speeds[0]);
+        var currentPoints = <MotionPoint>[];
+
+        for (var i = 0; i < cleanedMotion.length - 1; i++) {
+          final p1 = cleanedMotion[i];
+          final p2 = cleanedMotion[i + 1];
+          final p0 = i > 0 ? cleanedMotion[i - 1] : p1;
+          final p3 = (i + 2) < cleanedMotion.length ? cleanedMotion[i + 2] : p2;
+
+          final segSpeed = i < speeds.length ? speeds[i] : (speeds.isNotEmpty ? speeds.last : 0.0);
+          final segBucket = bucket(segSpeed);
+
+          if (segBucket != currentBucket && currentPoints.isNotEmpty) {
+            runs.add(_TrailRun(currentBucket, List<MotionPoint>.unmodifiable(currentPoints)));
+            currentPoints = <MotionPoint>[currentPoints.last];
+            currentBucket = segBucket;
           }
+
+          for (var s = 0; s < 4; s++) {
+            final t = s / 4.0;
+            currentPoints.add(catmullRom(
+              MotionFix(p0.lat, p0.lng, 0),
+              MotionFix(p1.lat, p1.lng, 0),
+              MotionFix(p2.lat, p2.lng, 0),
+              MotionFix(p3.lat, p3.lng, 0),
+              t,
+              maxDeviationMeters: kRoadLaneGuardMeters,
+            ));
+          }
+        }
+        if (currentPoints.isNotEmpty) {
+          currentPoints.add(cleanedMotion.last);
+          runs.add(_TrailRun(currentBucket, List<MotionPoint>.unmodifiable(currentPoints)));
         }
         _trailRuns = runs;
       } else {
         _trailRuns = <_TrailRun>[
           _TrailRun(
             -1,
-            smoothPath(<MotionPoint>[
-              for (final p in src) MotionPoint(p.latitude, p.longitude),
-            ]),
+            smoothPath(cleanedMotion, cleanJitter: false),
           ),
         ];
       }
@@ -1839,20 +1853,16 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       final p0 = i > 0 ? q[i - 1] : a;
       final p3 = (i + 2) < q.length ? q[i + 2] : b;
       _followRendered = _catmullRom(p0, a, b, p3, f);
-      // Heading from ACTUAL movement (accurate; device course can be noisy).
-      // Sampled slightly ahead on the same curve so the icon points where it is
-      // about to go — the car noses into the corner like a real vehicle.
-      // Hold the last heading while effectively stationary so a parked car
-      // doesn't spin.
-      if (_distM(a.lat, a.lng, b.lat, b.lng) > 3) {
-        final ahead = _catmullRom(p0, a, b, p3, (f + 0.08).clamp(0.0, 1.0));
-        final here = _followRendered!;
-        _followBearing = _distM(here.latitude, here.longitude,
-                    ahead.latitude, ahead.longitude) >
-                0.5
-            ? _bearing(
-                here.latitude, here.longitude, ahead.latitude, ahead.longitude)
-            : _bearing(a.lat, a.lng, b.lat, b.lng);
+      // Heading from exact analytical curve tangent, so the car noses into the
+      // corner naturally like a real vehicle without twitching or wobbling.
+      if (_distM(a.lat, a.lng, b.lat, b.lng) > 1.5) {
+        _followBearing = catmullRomTangentHeading(
+          MotionFix(p0.lat, p0.lng, p0.ts),
+          MotionFix(a.lat, a.lng, a.ts),
+          MotionFix(b.lat, b.lng, b.ts),
+          MotionFix(p3.lat, p3.lng, p3.ts),
+          f,
+        );
       }
     }
 
@@ -1959,6 +1969,7 @@ class _GoogleFleetMapState extends State<GoogleFleetMap>
       MotionFix(p2.lat, p2.lng, p2.ts),
       MotionFix(p3.lat, p3.lng, p3.ts),
       t,
+      maxDeviationMeters: kRoadLaneGuardMeters,
     );
     return LatLng(p.lat, p.lng);
   }

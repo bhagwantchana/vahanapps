@@ -474,50 +474,55 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                       _buildExpiryBadge(vehicle),
                     ],
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(width: 6, height: 6, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-                        const SizedBox(width: 6),
-                        Text(_localizedStatus(strings, vehicle.statusLabel), style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: 11)),
-                        const SizedBox(width: 10),
-                        // GSM signal mini-bars (0-4). Lets operators spot
-                        // weak-connectivity devices at a glance in the
-                        // fleet list without drilling into each one.
-                        Icon(
-                          vehicle.gsmSignal >= 1
-                              ? LucideIcons.wifi
-                              : LucideIcons.wifiOff,
-                          size: 12,
-                          color: vehicle.gsmSignal >= 3
-                              ? Colors.green
-                              : (vehicle.gsmSignal >= 2
-                                  ? Colors.orange
-                                  : Colors.red.shade400),
-                        ),
-                        const SizedBox(width: 6),
-                        // GPS lock dot — green if 5+ sats (solid), orange
-                        // if 3-4 (weak), red/grey if < 3.
-                        Icon(
-                          LucideIcons.satellite,
-                          size: 11,
-                          color: vehicle.satellites >= 5
-                              ? Colors.green
-                              : (vehicle.satellites >= 3
-                                  ? Colors.orange
-                                  : Colors.grey.shade400),
-                        ),
-                        if (vehicle.satellites > 0) ...<Widget>[
-                          const SizedBox(width: 2),
-                          Text(
-                            '${vehicle.satellites}',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.grey.shade600,
-                            ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(width: 6, height: 6, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                          const SizedBox(width: 6),
+                          Text(_localizedStatus(strings, vehicle.statusLabel), style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: 11)),
+                          const SizedBox(width: 10),
+                          // GSM signal mini-bars (0-4). Lets operators spot
+                          // weak-connectivity devices at a glance in the
+                          // fleet list without drilling into each one.
+                          Icon(
+                            vehicle.gsmSignal >= 1
+                                ? LucideIcons.wifi
+                                : LucideIcons.wifiOff,
+                            size: 12,
+                            color: vehicle.gsmSignal >= 3
+                                ? Colors.green
+                                : (vehicle.gsmSignal >= 2
+                                    ? Colors.orange
+                                    : Colors.red.shade400),
                           ),
+                          const SizedBox(width: 6),
+                          // GPS lock dot — green if 5+ sats (solid), orange
+                          // if 3-4 (weak), red/grey if < 3.
+                          Icon(
+                            LucideIcons.satellite,
+                            size: 11,
+                            color: vehicle.satellites >= 5
+                                ? Colors.green
+                                : (vehicle.satellites >= 3
+                                    ? Colors.orange
+                                    : Colors.grey.shade400),
+                          ),
+                          if (vehicle.satellites > 0) ...<Widget>[
+                            const SizedBox(width: 2),
+                            Text(
+                              '${vehicle.satellites}',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ],
                 ),
@@ -569,9 +574,9 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
           Row(
             children: [
               Expanded(child: _buildMetricTile(LucideIcons.gauge, '${vehicle.speed.round()}', 'km/h', strings.t('speed_label'), Colors.blue)),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(child: _buildMetricTile(LucideIcons.activity, vehicle.currentOdometer.toStringAsFixed(0), 'km', 'ODOMETER', Colors.purple)),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(child: _buildMetricTile(LucideIcons.power, vehicle.engineOn ? strings.t('on') : strings.t('off'), '', strings.t('engine'), vehicle.engineOn ? Colors.green : Colors.red)),
             ],
           ),
@@ -649,7 +654,14 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
                       children: [
                         Icon(LucideIcons.clock, size: 12, color: Colors.grey),
                         const SizedBox(width: 6),
-                        Text('${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle, strings)}', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                        Expanded(
+                          child: Text(
+                            '${strings.t('updated_label')} ${_formatUpdatedAtShort(vehicle, strings)}',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w500),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -730,7 +742,7 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
     final valColor = isDark ? Colors.white : const Color(0xFF1A1A1A);
     return Container(
       height: 55,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(color: tileBg, borderRadius: BorderRadius.circular(12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,25 +750,54 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 6),
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(val, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: valColor)),
-                    if (unit.isNotEmpty) ...[
-                      const SizedBox(width: 1),
-                      Text(unit, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.grey)),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        val,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          color: valColor,
+                        ),
+                      ),
+                      if (unit.isNotEmpty) ...[
+                        const SizedBox(width: 2),
+                        Text(
+                          unit,
+                          style: const TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 2),
-          Text(label.toUpperCase(), style: TextStyle(fontSize: 7, color: Colors.grey.shade500, fontWeight: FontWeight.w900, letterSpacing: 0.2)),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 7,
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -791,14 +832,24 @@ class _VehicleListWidgetState extends State<VehicleListWidget> {
   String _formatUpdatedAtShort(VehicleRecord vehicle, AppStrings strings) {
     final ts = vehicle.tsEpochMs;
     final DateTime? parsed = ts > 0
-        ? DateTime.fromMillisecondsSinceEpoch(ts)
-        : DateTime.tryParse(vehicle.createdAt); // older server, no epoch yet
+        ? DateTime.fromMillisecondsSinceEpoch(ts).toLocal()
+        : DateTime.tryParse(vehicle.createdAt)?.toLocal();
     if (parsed == null) return strings.t('now');
+
+    final day = parsed.day.toString().padLeft(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final monthStr = months[parsed.month - 1];
+    final hour12 = parsed.hour % 12 == 0 ? 12 : parsed.hour % 12;
+    final hourStr = hour12.toString().padLeft(2, '0');
+    final minuteStr = parsed.minute.toString().padLeft(2, '0');
+    final ampm = parsed.hour >= 12 ? 'PM' : 'AM';
+    final timeFormatted = '$day $monthStr, $hourStr:$minuteStr $ampm';
+
     final diff = DateTime.now().difference(parsed);
-    if (diff.isNegative || diff.inMinutes < 1) return strings.t('now');
-    if (diff.inMinutes < 60) return '${diff.inMinutes} ${strings.t('min_ago')}';
-    if (diff.inHours < 24) return '${diff.inHours} ${strings.t('hr_ago')}';
-    return '${diff.inDays} ${strings.t('days_ago')}';
+    if (diff.isNegative || diff.inMinutes < 1) return '${strings.t('now')} ($timeFormatted)';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} ${strings.t('min_ago')} ($timeFormatted)';
+    if (diff.inHours < 24) return '${diff.inHours} ${strings.t('hr_ago')} ($timeFormatted)';
+    return '${diff.inDays} ${strings.t('days_ago')} ($timeFormatted)';
   }
 
   // Maps the engine-derived English status label coming out of VehicleRecord

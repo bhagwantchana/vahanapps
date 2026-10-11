@@ -11,6 +11,7 @@ class AppUrl {
   static const String markAlertRead = '${baseUrl}markAlertRead';
   static const String myProfile = '${baseUrl}myProfile';
   static const String updateProfile = '${baseUrl}profileUpdate';
+  static const String changePassword = '${baseUrl}changePassword';
   static const String saveFcmToken = '${baseUrl}saveFcmToken';
   static const String setVoicePref = '${baseUrl}setVoicePref';
   static const String deviceHealth = '${baseUrl}deviceHealth';

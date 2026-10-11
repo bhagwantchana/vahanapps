@@ -20,6 +20,7 @@ import 'package:fleet_monitor/widgets/custom_text.dart';
 import 'package:fleet_monitor/widgets/drawer.dart';
 import 'package:fleet_monitor/widgets/fleet_full_map.dart';
 import 'package:fleet_monitor/widgets/overview_dashboard.dart';
+import 'package:fleet_monitor/widgets/cards_dashboard.dart';
 import 'package:fleet_monitor/widgets/native_vehicle_map.dart';
 import 'package:fleet_monitor/widgets/single_vehicle_track.dart';
 import 'package:flutter/material.dart';
@@ -471,6 +472,17 @@ class _HomeScreenState extends State<HomeScreen> {
             final liveList = _liveVehicles.isNotEmpty ? _liveVehicles : vehicles;
             final dashStyle =
                 context.watch<SettingsCubit>().state.dashboardStyle;
+            if (dashStyle == 'cards' && !_overviewMapOpen) {
+              return CardsDashboard(
+                vehicles: liveList,
+                onOpenMap: (filter) => setState(() {
+                  _overviewMapOpen = true;
+                  _overviewMapFilter = filter;
+                }),
+                onTrack: _openVehicleDetail,
+                onSelectTab: widget.onSelectTab,
+              );
+            }
             // Overview dashboard (pie) unless the user drilled into the map.
             if (dashStyle == 'overview' && !_overviewMapOpen) {
               return OverviewDashboard(
@@ -481,7 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 }),
               );
             }
-            final fromOverview = dashStyle == 'overview';
+            final fromOverview = dashStyle == 'overview' || dashStyle == 'cards';
             return FleetFullMap(
               vehicles: liveList,
               moveAnimationDuration: _mapMoveDuration,
@@ -683,12 +695,17 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
-                      Row(
-                        children: [
-                          _buildMapStatusMini(Colors.green, '${vehicles.where((v) => v.statusKey == 'moving').length} ${AppStrings.of(context).t('status_moving')}'),
-                          const SizedBox(width: 8),
-                          _buildMapStatusMini(Colors.orange, '${vehicles.where((v) => v.statusKey == 'idle').length} ${AppStrings.of(context).t('status_idle')}'),
-                        ],
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildMapStatusMini(Colors.green, '${vehicles.where((v) => v.statusKey == 'moving').length} ${AppStrings.of(context).t('status_moving')}'),
+                            const SizedBox(width: 8),
+                            _buildMapStatusMini(Colors.orange, '${vehicles.where((v) => v.statusKey == 'idle').length} ${AppStrings.of(context).t('status_idle')}'),
+                          ],
+                        ),
                       ),
                     ],
                   ),

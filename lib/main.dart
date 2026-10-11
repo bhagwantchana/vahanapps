@@ -120,8 +120,19 @@ class MyApp extends StatelessWidget {
             // Global "No internet" screen layered above every route. It only
             // surfaces when a real reachability probe fails, and auto-dismisses
             // when the connection returns.
-            builder: (context, child) =>
-                NoInternetOverlay(child: child ?? const SizedBox.shrink()),
+            builder: (context, child) {
+              final mediaQuery = MediaQuery.of(context);
+              // Clamp textScaler to keep fonts proportional and prevent UI overflow
+              // on older smartphones or devices with large accessibility text settings.
+              final constrainedScaler = mediaQuery.textScaler.clamp(
+                minScaleFactor: 0.85,
+                maxScaleFactor: 1.05,
+              );
+              return MediaQuery(
+                data: mediaQuery.copyWith(textScaler: constrainedScaler),
+                child: NoInternetOverlay(child: child ?? const SizedBox.shrink()),
+              );
+            },
             onGenerateRoute: Routes.onGenerateRoute,
             initialRoute: SplashScreen.routeName,
           );

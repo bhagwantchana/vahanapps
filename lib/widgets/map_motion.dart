@@ -57,31 +57,99 @@ double angleDeltaDegrees(double from, double to) {
 /// road; a slightly cut corner beats a wild loop.
 const double kSplineGuardMeters = 25;
 
+/// Road-lane lateral boundary (metres). Normal road curves rarely deviate more
+/// than 6-8 m from the corner chord. Bounding the curve within this lane
+/// ensures the polyline and marker never bulge into roadside buildings.
+const double kRoadLaneGuardMeters = 8.0;
+
 /// Catmull-Rom position along p1→p2, using p0/p3 as the surrounding tangents.
 ///
-/// A straight lerp cuts the corner — that is the "sideways slide" through a
-/// junction, where the marker leaves the road and slides diagonally to the next
-/// fix. The spline arcs through the turn instead. At the queue edges p0/p3
-/// collapse onto the segment ends and this degenerates to the straight line.
+/// Uses centripetal / chord-scaled tangents to eliminate the wild overshoot
+/// and loops of uniform Catmull-Rom. When a turn is sharp, lateral deviation is
+/// smoothly clamped to the road boundary rather than abruptly snapping to a
+/// straight line, eliminating jagged kinks ("teda meda").
 MotionPoint catmullRom(
-    MotionFix p0, MotionFix p1, MotionFix p2, MotionFix p3, double t) {
+    MotionFix p0, MotionFix p1, MotionFix p2, MotionFix p3, double t,
+    {double maxDeviationMeters = kSplineGuardMeters}) {
+  if (t <= 0.0) return MotionPoint(p1.lat, p1.lng);
+  if (t >= 1.0) return MotionPoint(p2.lat, p2.lng);
+
+  final d01 = distanceMeters(p0.lat, p0.lng, p1.lat, p1.lng);
+  final d12 = distanceMeters(p1.lat, p1.lng, p2.lat, p2.lng);
+  final d23 = distanceMeters(p2.lat, p2.lng, p3.lat, p3.lng);
+
+  // Centripetal tangent scale factors: scale tangents proportional to segment
+  // chord length so a long preceding straightaway never throws a huge tangent
+  // into a short turn segment (the primary cause of off-road bulging).
+  final w01 = (d01 + d12) > 0 ? (2.0 * d12 / (d01 + d12)) : 1.0;
+  final w23 = (d12 + d23) > 0 ? (2.0 * d12 / (d12 + d23)) : 1.0;
+
+  final m1Lat = 0.5 * (p2.lat - p0.lat) * w01;
+  final m1Lng = 0.5 * (p2.lng - p0.lng) * w01;
+  final m2Lat = 0.5 * (p3.lat - p1.lat) * w23;
+  final m2Lng = 0.5 * (p3.lng - p1.lng) * w23;
+
   final t2 = t * t;
   final t3 = t2 * t;
-  double axis(double v0, double v1, double v2, double v3) =>
-      0.5 *
-      ((2 * v1) +
-          (-v0 + v2) * t +
-          (2 * v0 - 5 * v1 + 4 * v2 - v3) * t2 +
-          (-v0 + 3 * v1 - 3 * v2 + v3) * t3);
 
-  final lat = axis(p0.lat, p1.lat, p2.lat, p3.lat);
-  final lng = axis(p0.lng, p1.lng, p2.lng, p3.lng);
+  final h00 = 2 * t3 - 3 * t2 + 1;
+  final h10 = t3 - 2 * t2 + t;
+  final h01 = -2 * t3 + 3 * t2;
+  final h11 = t3 - t2;
+
+  final lat = h00 * p1.lat + h10 * m1Lat + h01 * p2.lat + h11 * m2Lat;
+  final lng = h00 * p1.lng + h10 * m1Lng + h01 * p2.lng + h11 * m2Lng;
+
   final linLat = p1.lat + (p2.lat - p1.lat) * t;
   final linLng = p1.lng + (p2.lng - p1.lng) * t;
-  if (distanceMeters(lat, lng, linLat, linLng) > kSplineGuardMeters) {
-    return MotionPoint(linLat, linLng);
+
+  final dev = distanceMeters(lat, lng, linLat, linLng);
+  if (dev > maxDeviationMeters) {
+    final scale = maxDeviationMeters / dev;
+    return MotionPoint(
+      linLat + (lat - linLat) * scale,
+      linLng + (lng - linLng) * scale,
+    );
   }
   return MotionPoint(lat, lng);
+}
+
+/// Analytical tangent heading (degrees, 0-360) along the Catmull-Rom spline at [t].
+///
+/// Evaluating the curve's velocity derivative dP/dt gives the vehicle's true
+/// instantaneous heading everywhere along the curve. This eliminates heading
+/// twitching or wobbling when passing waypoints or nearing the end of a segment.
+double catmullRomTangentHeading(
+    MotionFix p0, MotionFix p1, MotionFix p2, MotionFix p3, double t) {
+  final d01 = distanceMeters(p0.lat, p0.lng, p1.lat, p1.lng);
+  final d12 = distanceMeters(p1.lat, p1.lng, p2.lat, p2.lng);
+  final d23 = distanceMeters(p2.lat, p2.lng, p3.lat, p3.lng);
+
+  final w01 = (d01 + d12) > 0 ? (2.0 * d12 / (d01 + d12)) : 1.0;
+  final w23 = (d12 + d23) > 0 ? (2.0 * d12 / (d12 + d23)) : 1.0;
+
+  final m1Lat = 0.5 * (p2.lat - p0.lat) * w01;
+  final m1Lng = 0.5 * (p2.lng - p0.lng) * w01;
+  final m2Lat = 0.5 * (p3.lat - p1.lat) * w23;
+  final m2Lng = 0.5 * (p3.lng - p1.lng) * w23;
+
+  final clampedT = t.clamp(0.0, 1.0);
+  final t2 = clampedT * clampedT;
+
+  final dh00 = 6 * t2 - 6 * clampedT;
+  final dh10 = 3 * t2 - 4 * clampedT + 1;
+  final dh01 = -6 * t2 + 6 * clampedT;
+  final dh11 = 3 * t2 - 2 * clampedT;
+
+  final dLat = dh00 * p1.lat + dh10 * m1Lat + dh01 * p2.lat + dh11 * m2Lat;
+  final dLng = dh00 * p1.lng + dh10 * m1Lng + dh01 * p2.lng + dh11 * m2Lng;
+
+  if (dLat.abs() < 1e-9 && dLng.abs() < 1e-9) {
+    return bearingDegrees(p1.lat, p1.lng, p2.lat, p2.lng);
+  }
+
+  final cur = catmullRom(p0, p1, p2, p3, clampedT);
+  return bearingDegrees(cur.lat, cur.lng, cur.lat + dLat, cur.lng + dLng);
 }
 
 /// Shortest-path angular interpolation, handling the 359°→1° wrap. Easing the
@@ -99,6 +167,56 @@ const int kMaxLagMs = 8000;
 /// Lag past the cushion where playback runs at 2x to close the gap smoothly.
 const int kCatchUpMs = 2000;
 
+/// Clean lateral multipath noise and GPS jitter from a series of fixes.
+///
+/// GPS receivers frequently produce single-point multipath bounces (5-20 m to
+/// the side of a road before returning). Connecting these raw points produces
+/// a zig-zag ("teda meda") trail and causes splines to bulge off-road.
+/// This filter detects acute lateral spurs and relaxes them, keeping the line
+/// centered on the road.
+List<MotionPoint> cleanGpsTrail(List<MotionPoint> pts,
+    {double maxSpurMeters = 6.0, double maxDetourRatio = 1.30}) {
+  if (pts.length < 3) return List<MotionPoint>.unmodifiable(pts);
+
+  final result = <MotionPoint>[pts.first];
+  for (var i = 1; i < pts.length - 1; i++) {
+    final prev = result.last;
+    final curr = pts[i];
+    final next = pts[i + 1];
+
+    final dChord = distanceMeters(prev.lat, prev.lng, next.lat, next.lng);
+    final d1 = distanceMeters(prev.lat, prev.lng, curr.lat, curr.lng);
+    final d2 = distanceMeters(curr.lat, curr.lng, next.lat, next.lng);
+
+    if (dChord > 2.0 && dChord < 160.0) {
+      final detour = (d1 + d2) / dChord;
+      final s = (d1 + d2 + dChord) / 2.0;
+      final areaSq = s * (s - d1) * (s - d2) * (s - dChord);
+      final perp = areaSq > 0 ? (2.0 * math.sqrt(areaSq) / dChord) : 0.0;
+
+      if (perp > maxSpurMeters && detour > maxDetourRatio) {
+        final dx = next.lng - prev.lng;
+        final dy = next.lat - prev.lat;
+        final denom = dy * dy + dx * dx;
+        if (denom > 1e-12) {
+          final u = (((curr.lat - prev.lat) * dy + (curr.lng - prev.lng) * dx) / denom)
+              .clamp(0.1, 0.9);
+          final projLat = prev.lat + dy * u;
+          final projLng = prev.lng + dx * u;
+          result.add(MotionPoint(
+            curr.lat + (projLat - curr.lat) * 0.85,
+            curr.lng + (projLng - curr.lng) * 0.85,
+          ));
+          continue;
+        }
+      }
+    }
+    result.add(curr);
+  }
+  result.add(pts.last);
+  return result;
+}
+
 /// Resample a route line through the SAME Catmull-Rom curve the marker rides.
 ///
 /// The trail was drawn as raw straight segments between fixes ~8 s apart while
@@ -109,16 +227,18 @@ const int kCatchUpMs = 2000;
 /// [perSegment] points are emitted per input segment. Four is plenty: it is the
 /// corners that need the extra vertices, and a straight run resamples to points
 /// that lie on the straight line anyway.
-List<MotionPoint> smoothPath(List<MotionPoint> pts, {int perSegment = 4}) {
+List<MotionPoint> smoothPath(List<MotionPoint> pts,
+    {int perSegment = 4, bool cleanJitter = true}) {
   if (pts.length < 3 || perSegment < 2) {
     return List<MotionPoint>.unmodifiable(pts);
   }
+  final src = cleanJitter ? cleanGpsTrail(pts) : pts;
   final out = <MotionPoint>[];
-  for (var i = 0; i < pts.length - 1; i++) {
-    final p1 = pts[i];
-    final p2 = pts[i + 1];
-    final p0 = i > 0 ? pts[i - 1] : p1;
-    final p3 = (i + 2) < pts.length ? pts[i + 2] : p2;
+  for (var i = 0; i < src.length - 1; i++) {
+    final p1 = src[i];
+    final p2 = src[i + 1];
+    final p0 = i > 0 ? src[i - 1] : p1;
+    final p3 = (i + 2) < src.length ? src[i + 2] : p2;
     for (var s = 0; s < perSegment; s++) {
       final t = s / perSegment;
       out.add(catmullRom(
@@ -127,10 +247,11 @@ List<MotionPoint> smoothPath(List<MotionPoint> pts, {int perSegment = 4}) {
         MotionFix(p2.lat, p2.lng, 0),
         MotionFix(p3.lat, p3.lng, 0),
         t,
+        maxDeviationMeters: kRoadLaneGuardMeters,
       ));
     }
   }
-  out.add(pts.last);
+  out.add(src.last);
   return out;
 }
 
